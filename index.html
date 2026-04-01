@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="theme-color" content="#0d0f14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>ShiftTrack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:#0d0f14;--bg2:#13161e;--bg3:#1a1e28;--bg4:#222738;
+  --border:#2a2f42;--border2:#363c54;
+  --text:#e8eaf2;--muted:#7880a0;--dim:#4a5070;
+  --accent:#5b8fff;--green:#2ecc8a;--green-bg:#0d2a1f;
+  --orange:#f5a623;--orange-bg:#2a1e08;--red:#ff5f6d;--red-bg:#2a1018;
+  --mono:'DM Mono',monospace;--sans:'Syne',sans-serif;
+  --radius:14px;--radius-sm:8px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{font-size:16px;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+#app{display:flex;flex-direction:column;min-height:100dvh;}
+.screen{display:none;flex-direction:column;flex:1;padding-bottom:84px;animation:fadeIn .2s ease;}
+.screen.active{display:flex;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:52px 20px 16px;background:linear-gradient(to bottom,var(--bg) 80%,transparent);position:sticky;top:0;z-index:10;}
+.top-bar h1{font-size:22px;font-weight:800;letter-spacing:-.5px;}
+.logo{font-size:20px;font-weight:800;letter-spacing:-1px;}
+.logo span{color:var(--accent);}
+.icon-btn{width:38px;height:38px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:18px;transition:background .15s;}
+.icon-btn:active{background:var(--bg4);}
+#bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0 8px;cursor:pointer;color:var(--dim);font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;transition:color .15s;user-select:none;font-family:var(--mono);}
+.nav-item svg{width:22px;height:22px;}
+.nav-item.active{color:var(--accent);}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin:0 16px 12px;}
+.card-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;margin-bottom:12px;}
+.stat-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
+.stat-box .val{font-size:26px;font-weight:800;letter-spacing:-1px;font-family:var(--mono);line-height:1;}
+.stat-box .lbl{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--mono);}
+.stat-box.accent{border-color:var(--accent);}.stat-box.accent .val{color:var(--accent);}
+.stat-box.green{border-color:var(--green);}.stat-box.green .val{color:var(--green);}
+.stat-box.orange{border-color:var(--orange);}.stat-box.orange .val{color:var(--orange);}
+.stat-box.red{border-color:var(--red);}.stat-box.red .val{color:var(--red);}
+.prog-wrap{background:var(--bg3);border-radius:99px;height:6px;overflow:hidden;margin-top:10px;}
+.prog-bar{height:100%;border-radius:99px;background:var(--accent);transition:width .5s ease;}
+.prog-bar.warn{background:var(--orange);}.prog-bar.over{background:var(--red);}
+.shift-item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.shift-item:last-child{border-bottom:none;}
+.shift-item:active{background:var(--bg3);}
+.shift-item.base-item{background:rgba(91,143,255,.04);}
+.shift-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.shift-dot.sq{border-radius:3px;}
+.shift-info{flex:1;min-width:0;}
+.shift-info .name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.shift-info .sub{font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
+.shift-right{text-align:right;flex-shrink:0;}
+.shift-right .pay{font-weight:700;font-size:14px;font-family:var(--mono);}
+.shift-right .hrs{font-size:11px;color:var(--muted);font-family:var(--mono);}
+.badge{display:inline-block;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600;font-family:var(--mono);letter-spacing:.5px;margin-top:2px;}
+.badge.ot{background:var(--orange-bg);color:var(--orange);}
+.badge.base{background:rgba(91,143,255,.15);color:var(--accent);}
+.badge.reg{background:var(--bg3);color:var(--muted);}
+.badge.mix{background:rgba(245,166,35,.12);color:var(--orange);border:1px solid rgba(245,166,35,.25);}
+.form-group{margin-bottom:14px;}
+.form-group label{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
+.form-group input,.form-group select,.form-group textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:15px;padding:11px 14px;appearance:none;outline:none;transition:border-color .15s;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent);}
+.form-group textarea{resize:vertical;min-height:70px;}
+select option{background:var(--bg3);}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:var(--radius);font-family:var(--sans);font-size:15px;font-weight:700;border:none;cursor:pointer;transition:opacity .15s,transform .1s;}
+.btn:active{transform:scale(.98);opacity:.9;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border);}
+.btn-danger{background:var(--red-bg);color:var(--red);border:1px solid var(--red);}
+.btn-sm{padding:9px 16px;font-size:13px;width:auto;border-radius:var(--radius-sm);}
+.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:flex-end;backdrop-filter:blur(2px);}
+.sheet-overlay.open{display:flex;animation:overlayIn .2s ease;}
+@keyframes overlayIn{from{opacity:0}to{opacity:1}}
+.sheet{background:var(--bg2);border-radius:20px 20px 0 0;padding:0 0 env(safe-area-inset-bottom);width:100%;max-height:92dvh;overflow-y:auto;animation:sheetUp .25s cubic-bezier(.32,1,.4,1);}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+.sheet-handle{width:38px;height:4px;border-radius:2px;background:var(--border2);margin:12px auto 4px;}
+.sheet-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px 16px;border-bottom:1px solid var(--border);}
+.sheet-header h2{font-size:18px;font-weight:700;}
+.sheet-body{padding:20px;}
+.close-btn{font-size:22px;color:var(--muted);cursor:pointer;background:none;border:none;line-height:1;padding:4px;}
+.section-hd{display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;margin-top:4px;}
+.section-hd h2{font-size:15px;font-weight:700;letter-spacing:-.2px;}
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted);font-family:var(--mono);font-size:13px;}
+.empty-state .icon{font-size:36px;margin-bottom:12px;}
+.hr-bar-wrap{padding:0 16px 4px;}
+.hr-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.hr-bar-loc{font-size:12px;font-family:var(--mono);color:var(--muted);width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.hr-bar-bg{flex:1;background:var(--bg3);border-radius:99px;height:8px;overflow:hidden;}
+.hr-bar-fill{height:100%;border-radius:99px;}
+.hr-bar-val{font-size:11px;font-family:var(--mono);color:var(--muted);width:36px;text-align:right;}
+.color-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.color-swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .1s;}
+.color-swatch.selected{border-color:var(--text);}
+.notes-chip{font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:3px;}
+#toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg4);border:1px solid var(--border2);border-radius:99px;padding:10px 20px;font-size:13px;font-family:var(--mono);opacity:0;z-index:500;transition:all .25s;white-space:nowrap;pointer-events:none;max-width:88vw;text-align:center;line-height:1.4;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.err{border-color:var(--red);color:var(--red);}
+.week-nav{display:flex;align-items:center;}
+.wk-lbl{font-size:11px;font-family:var(--mono);color:var(--muted);padding:0 6px;}
+.arr-btn{width:26px;height:26px;border-radius:7px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.conflict-box{background:var(--red-bg);border:1px solid rgba(255,95,109,.4);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:12px;font-family:var(--mono);color:var(--red);line-height:1.5;display:none;}
+.calc-box{background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:13px;display:none;}
+.calc-row{display:flex;justify-content:space-between;margin-bottom:3px;}
+.calc-row.total{border-top:1px solid var(--border);padding-top:7px;margin-top:4px;margin-bottom:0;}
+.ot-note{font-size:11px;color:var(--orange);font-family:var(--mono);margin-top:2px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- DASHBOARD -->
+<div id="screen-dash" class="screen active">
+  <div class="top-bar">
+    <div class="logo">Shift<span>Track</span></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="week-nav">
+        <div class="arr-btn" onclick="changeWeek(-1)">‹</div>
+        <div class="wk-lbl" id="week-label">—</div>
+        <div class="arr-btn" onclick="changeWeek(1)">›</div>
+      </div>
+      <div class="icon-btn" onclick="openAddShift()">＋</div>
+    </div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-box accent">
+      <div class="val" id="stat-hours">0.0</div>
+      <div class="lbl">hrs this week</div>
+      <div class="prog-wrap"><div class="prog-bar" id="prog-hrs" style="width:0%"></div></div>
+    </div>
+    <div class="stat-box green">
+      <div class="val" id="stat-pay">$0</div>
+      <div class="lbl">est. earnings</div>
+    </div>
+    <div class="stat-box orange">
+      <div class="val" id="stat-ot">0.0</div>
+      <div class="lbl">overtime hrs</div>
+    </div>
+    <div class="stat-box">
+      <div class="val" id="stat-shifts">0</div>
+      <div class="lbl">shifts this week</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Pay period · 2-week total</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:4px">
+      <div>
+        <div style="font-size:28px;font-weight:800;font-family:var(--mono);letter-spacing:-1px" id="pp-pay">$0.00</div>
+        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-hrs">0 hrs total</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:var(--orange);font-family:var(--mono)" id="pp-ot-label"></div>
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-dates"></div>
+      </div>
+    </div>
+    <div class="prog-wrap"><div class="prog-bar" id="prog-pp" style="width:0%"></div></div>
+  </div>
+
+  <div class="section-hd"><h2>Hours by location</h2></div>
+  <div class="hr-bar-wrap" id="loc-bars">
+    <div class="empty-state" style="padding:12px"><div style="font-size:12px">No shifts this week</div></div>
+  </div>
+
+  <div class="section-hd" style="margin-top:4px"><h2>This week</h2></div>
+  <div class="card" style="padding:0">
+    <div id="shift-list-dash">
+      <div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ALL SHIFTS -->
+<div id="screen-log" class="screen">
+  <div class="top-bar">
+    <h1>All Shifts</h1>
+    <div class="icon-btn" onclick="openAddShift()">＋</div>
+  </div>
+  <div class="card" style="padding:0">
+    <div id="shift-list-all">
+      <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
+    </div>
+  </div>
+</div>
+
+<!-- SCHEDULE -->
+<div id="screen-schedule" class="screen">
+  <div class="top-bar">
+    <h1>Base Schedule</h1>
+    <div class="icon-btn" onclick="openAddBase()">＋</div>
+  </div>
+  <div style="padding:0 16px 12px;font-size:13px;color:var(--muted);font-family:var(--mono);line-height:1.6">
+    Your repeating 2-week schedule. These appear automatically on the dashboard every week.
+  </div>
+  <div class="section-hd"><h2>Week 1</h2></div>
+  <div class="card" style="padding:0"><div id="base-week1"><div class="empty-state" style="padding:20px;font-size:12px">No shifts for week 1</div></div></div>
+  <div class="section-hd"><h2>Week 2</h2></div>
+  <div class="card" style="padding:0"><div id="base-week2"><div class="empty-state" style="padding:20px;font-size:12px">No shifts for week 2</div></div></div>
+</div>
+
+<!-- SETTINGS -->
+<div id="screen-settings" class="screen">
+  <div class="top-bar"><h1>Settings</h1></div>
+  <div class="section-hd">
+    <h2>Locations &amp; pay rates</h2>
+    <button class="btn btn-ghost btn-sm" onclick="openAddLocation()">＋ Add</button>
+  </div>
+  <div class="card" style="padding:0"><div id="location-list"><div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div></div></div>
+
+  <div class="section-hd" style="margin-top:8px"><h2>Pay settings</h2></div>
+  <div class="card">
+    <div class="form-group">
+      <label>Overtime threshold (hrs/week)</label>
+      <input type="number" id="ot-threshold" value="40" min="1" max="80" onchange="saveSettings()"/>
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label>Pay period start date (anchor)</label>
+      <input type="date" id="pp-anchor" onchange="saveSettings()"/>
+      <div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:6px">Set to the first day of any known pay period. The app calculates all future periods from this.</div>
+    </div>
+  </div>
+
+  <div style="padding:0 16px;margin-top:16px">
+    <button class="btn btn-danger" onclick="confirmClearData()">Clear all data</button>
+  </div>
+  <div style="text-align:center;padding:24px 0 8px;font-size:11px;color:var(--dim);font-family:var(--mono)">
+    ShiftTrack v2.0 · Passavant Memorial Homes<br>All data stored locally on this device
+  </div>
+</div>
+
+<!-- NAV -->
+<nav id="bottom-nav">
+  <div class="nav-item active" data-screen="dash" onclick="switchScreen('dash',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Dashboard
+  </div>
+  <div class="nav-item" data-screen="log" onclick="switchScreen('log',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+    Shifts
+  </div>
+  <div class="nav-item" data-screen="schedule" onclick="switchScreen('schedule',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Schedule
+  </div>
+  <div class="nav-item" data-screen="settings" onclick="switchScreen('settings',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    Settings
+  </div>
+</nav>
+</div>
+
+<!-- SHEET: LOG SHIFT -->
+<div class="sheet-overlay" id="sheet-shift">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="sheet-shift-title">Log Shift</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-shift')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <input type="hidden" id="edit-shift-id"/>
+      <div class="conflict-box" id="conflict-msg"></div>
+      <div class="form-group">
+        <label>Location / House</label>
+        <select id="shift-location" onchange="updateCalc()"></select>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="shift-date" onchange="updateCalc()"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group"><label>Start time</label><input type="time" id="shift-start" onchange="updateCalc()"/></div>
+        <div class="form-group"><label>End time</label><input type="time" id="shift-end" onchange="updateCalc()"/></div>
+      </div>
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <textarea id="shift-notes" placeholder="Any notes about this shift…"></textarea>
+      </div>
+      <div class="calc-box" id="shift-calc">
+        <div class="calc-row"><span style="color:var(--muted)">Duration</span><span id="calc-dur">—</span></div>
+        <div class="calc-row"><span style="color:var(--muted)">Rate</span><span id="calc-rate">—</span></div>
+        <div class="calc-row" id="calc-ot-row" style="display:none"><span style="color:var(--muted)">OT portion</span><span id="calc-ot-hrs" style="color:var(--orange)">—</span></div>
+        <div class="calc-row total"><span style="color:var(--muted)">Est. pay</span><span id="calc-pay" style="color:var(--green);font-weight:700">—</span></div>
+      </div>
+      <button class="btn btn-primary" id="save-shift-btn" onclick="saveShift()">Save Shift</button>
+      <div id="delete-shift-btn" style="margin-top:10px;display:none">
+        <button class="btn btn-danger" onclick="deleteShift()">Delete Shift</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SHEET: BASE SHIFT -->
+<div class="sheet-overlay" id="sheet-base">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="sheet-base-title">Add Base Shift</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-base')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <input type="hidden" id="edit-base-id"/>
+      <div class="form-group">
+        <label>Week</label>
+        <select id="base-week"><option value="1">Week 1</option><option value="2">Week 2</option></select>
+      </div>
+      <div class="form-group">
+        <label>Day of week</label>
+        <select id="base-day">
+          <option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option>
+          <option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Location / House</label>
+        <select id="base-location"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group"><label>Start time</label><input type="time" id="base-start"/></div>
+        <div class="form-group"><label>End time</label><input type="time" id="base-end"/></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveBase()">Save</button>
+      <div id="delete-base-btn" style="margin-top:10px;display:none">
+        <button class="btn btn-danger" onclick="deleteBase()">Remove Shift</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SHEET: LOCATION -->
+<div class="sheet-overlay" id="sheet-location">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="sheet-loc-title">Add Location</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-location')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <input type="hidden" id="edit-loc-id"/>
+      <div class="form-group"><label>House / Location name</label><input type="text" id="loc-name" placeholder="e.g. Oakland House"/></div>
+      <div class="form-group"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
+      <div class="form-group">
+        <label>Color</label>
+        <div class="color-row" id="color-picker">
+          <div class="color-swatch selected" style="background:#5b8fff" data-c="#5b8fff" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#2ecc8a" data-c="#2ecc8a" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#f5a623" data-c="#f5a623" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#ff5f6d" data-c="#ff5f6d" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#c77dff" data-c="#c77dff" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#38bdf8" data-c="#38bdf8" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#fb923c" data-c="#fb923c" onclick="pickColor(this)"></div>
+          <div class="color-swatch" style="background:#f472b6" data-c="#f472b6" onclick="pickColor(this)"></div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveLocation()">Save Location</button>
+      <div id="delete-loc-btn" style="margin-top:10px;display:none">
+        <button class="btn btn-danger" onclick="deleteLocation()">Delete Location</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════
+const MAX_DAY_HOURS = 18;
+// Pay period anchor: March 22, 2026
+const DEFAULT_ANCHOR = '2026-03-22';
+
+// ═══════════════════════════════════════
+//  DATA LAYER
+// ═══════════════════════════════════════
+const DB = {
+  get(k){ try{ return JSON.parse(localStorage.getItem('st_'+k)||'null'); }catch(e){ return null; } },
+  set(k,v){ localStorage.setItem('st_'+k,JSON.stringify(v)); }
+};
+function getLocations(){ return DB.get('locations')||[]; }
+function getShifts()   { return DB.get('shifts')   ||[]; }
+function getBase()     { return DB.get('base')     ||[]; }
+function getSettings() {
+  const s=DB.get('settings')||{};
+  return { otThreshold: s.otThreshold||40, ppAnchor: s.ppAnchor||DEFAULT_ANCHOR };
+}
+function saveSettings(){
+  DB.set('settings',{
+    otThreshold: parseFloat(document.getElementById('ot-threshold').value)||40,
+    ppAnchor: document.getElementById('pp-anchor').value||DEFAULT_ANCHOR
+  });
+  renderDash();
+}
+
+// ═══════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+function parseTimeString(t){
+  if(!t) return null;
+  const raw=String(t).trim().toUpperCase();
+
+  // Handles values like 07:00, 15:00, 07:00 AM, 3:00 PM, and 15:00:00
+  const match=raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/);
+  if(!match) return null;
+
+  let h=parseInt(match[1],10);
+  const m=parseInt(match[2],10);
+  const meridiem=match[3]||'';
+
+  if(meridiem==='AM'){
+    if(h===12) h=0;
+  } else if(meridiem==='PM'){
+    if(h!==12) h+=12;
+  }
+
+  return { h, m, total: h*60+m };
+}
+
+function fmtTime(t){
+  const parsed=parseTimeString(t);
+  if(!parsed) return '—';
+  const { h, m } = parsed;
+  return `${h%12||12}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`;
+}
+
+// Hours between two times. Handles overnight when end <= start.
+function shiftHours(start,end){
+  const s=parseTimeString(start);
+  const e=parseTimeString(end);
+  if(!s||!e) return 0;
+  let mins=e.total-s.total;
+  if(mins<=0) mins+=1440;
+  return Math.round((mins/60)*10)/10; // 1 decimal
+}
+
+function formatPay(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+function toYMD(d){ return d.toISOString().slice(0,10); }
+function getLocById(id){ return getLocations().find(l=>l.id===id); }
+
+// ─── Pay period ───
+// Anchor: first day of a known period. Every 14 days from there is a new period.
+function getPayPeriod(){
+  const { ppAnchor } = getSettings();
+  const anchor = new Date(ppAnchor+'T00:00:00');
+  const today  = new Date(); today.setHours(0,0,0,0);
+  const diffDays = Math.round((today-anchor)/86400000);
+  const n = diffDays<0 ? Math.ceil(diffDays/14) : Math.floor(diffDays/14);
+  const start = new Date(anchor); start.setDate(anchor.getDate()+n*14);
+  const end   = new Date(start);  end.setDate(start.getDate()+13);
+  return { start, end };
+}
+
+// ─── Week helpers ───
+function getWeekStart(offset=0){
+  const d=new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()-d.getDay()+offset*7);
+  return d;
+}
+function getWeekDates(offset=0){
+  const s=getWeekStart(offset);
+  return Array.from({length:7},(_,i)=>{ const d=new Date(s); d.setDate(s.getDate()+i); return d; });
+}
+// Get the Sunday-anchored week that contains a given YYYY-MM-DD string
+function weekDatesForDate(dateStr){
+  const d=new Date(dateStr+'T12:00:00');
+  const sun=new Date(d); sun.setDate(d.getDate()-d.getDay()); sun.setHours(0,0,0,0);
+  return Array.from({length:7},(_,i)=>{ const x=new Date(sun); x.setDate(sun.getDate()+i); return x; });
+}
+
+// ─── Pay-period week number (1 or 2) for a given date ───
+function payWeekOf(dateStr){
+  const { ppAnchor }=getSettings();
+  const anchor=new Date(ppAnchor+'T00:00:00');
+  const d=new Date(dateStr+'T00:00:00');
+  const diff=Math.round((d-anchor)/86400000);
+  const inPeriod=((diff%14)+14)%14; // 0–13
+  return inPeriod<7?1:2;
+}
+
+// ─── Resolve a base schedule entry to a concrete date within a given week ───
+// weekDates: array of 7 Date objects (Sun–Sat)
+function baseToDate(base, weekDates){
+  const sundayStr=toYMD(weekDates[0]);
+  if(payWeekOf(sundayStr)!==base.week) return null;
+  return toYMD(weekDates[base.day]);
+}
+
+// ═══════════════════════════════════════
+//  OT ENGINE
+//  Input: array of {id, locationId, date, start, end, isBase?}
+//  Output: totalHrs, totalPay, totalOt, breakdown[]
+//  OT = hours past the weekly threshold (resets each week)
+// ═══════════════════════════════════════
+function computeWeekPay(shifts){
+  const thresh=getSettings().otThreshold;
+  let regRunning=0, totalPay=0;
+  const sorted=[...shifts].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+  const breakdown=sorted.map(s=>{
+    const loc=getLocById(s.locationId);
+    const rate=loc?loc.rate:0;
+    const hrs=shiftHours(s.start,s.end);
+    const regHrs=Math.max(0,Math.min(hrs,thresh-regRunning));
+    const otHrs=hrs-regHrs;
+    const pay=regHrs*rate+otHrs*rate*1.5;
+    regRunning+=regHrs;
+    totalPay+=pay;
+    return {...s,hrs,regHrs,otHrs,pay,rate};
+  });
+  const totalHrs=breakdown.reduce((a,b)=>a+b.hrs,0);
+  const totalOt =breakdown.reduce((a,b)=>a+b.otHrs,0);
+  return {totalHrs,totalPay,totalOt,breakdown};
+}
+
+// ═══════════════════════════════════════
+//  CONFLICT CHECKER
+//  Returns error string or null
+// ═══════════════════════════════════════
+function toMins(t){ const parsed=parseTimeString(t); return parsed?parsed.total:0; }
+function toMinsEnd(start,end){ let s=toMins(start),e=toMins(end); if(e<=s) e+=1440; return e; }
+
+function checkConflicts(newShift, skipId=null){
+  const {date,start,end}=newShift;
+  const hrs=shiftHours(start,end);
+
+  // 1. Single shift too long
+  if(hrs>MAX_DAY_HOURS)
+    return `This shift is ${hrs.toFixed(1)} hrs. Max consecutive hours allowed is ${MAX_DAY_HOURS}.`;
+
+  // 2. Collect all other shifts on this date
+  const loggedSameDay=getShifts().filter(s=>s.date===date&&s.id!==skipId);
+  const wkDates=weekDatesForDate(date);
+  const baseSameDay=getBase()
+    .filter(b=>baseToDate(b,wkDates)===date)
+    .map(b=>({...b,isBase:true,name:getLocById(b.locationId)?.name||'base shift'}));
+
+  const existing=[
+    ...loggedSameDay.map(s=>({start:s.start,end:s.end,name:getLocById(s.locationId)?.name||'shift',isBase:false})),
+    ...baseSameDay.map(b=>({start:b.start,end:b.end,name:b.name,isBase:true}))
+  ];
+
+  // 3. Total hours on this date would exceed max
+  const dayTotal=existing.reduce((a,s)=>a+shiftHours(s.start,s.end),0)+hrs;
+  if(dayTotal>MAX_DAY_HOURS)
+    return `Total hours on ${date} would be ${dayTotal.toFixed(1)} hrs. Max allowed is ${MAX_DAY_HOURS} hrs in one day.`;
+
+  // 4. Time overlap
+  const ns=toMins(start), ne=toMinsEnd(start,end);
+  for(const ex of existing){
+    const es=toMins(ex.start), ee=toMinsEnd(ex.start,ex.end);
+    if(ns<ee&&ne>es)
+      return `Overlap with your ${ex.isBase?'base ':''}shift at ${fmtTime(ex.start)}–${fmtTime(ex.end)} (${ex.name}).`;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════
+//  NAV
+// ═══════════════════════════════════════
+let weekOffset=0;
+function changeWeek(dir){ weekOffset+=dir; renderDash(); }
+
+function switchScreen(name,el){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  el.classList.add('active');
+  if(name==='dash')     renderDash();
+  if(name==='log')      renderAllShifts();
+  if(name==='schedule') renderSchedule();
+  if(name==='settings') renderSettings();
+}
+function openSheet(id){ document.getElementById(id).classList.add('open'); }
+function closeSheet(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.sheet-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('open'); });
+});
+
+// ═══════════════════════════════════════
+//  LOCATIONS
+// ═══════════════════════════════════════
+function openAddLocation(id=null){
+  document.getElementById('edit-loc-id').value=id||'';
+  document.getElementById('loc-name').value='';
+  document.getElementById('loc-rate').value='';
+  document.getElementById('delete-loc-btn').style.display='none';
+  document.getElementById('sheet-loc-title').textContent=id?'Edit Location':'Add Location';
+  document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
+  document.querySelector('.color-swatch').classList.add('selected');
+  if(id){
+    const loc=getLocById(id);
+    if(loc){
+      document.getElementById('loc-name').value=loc.name;
+      document.getElementById('loc-rate').value=loc.rate;
+      document.querySelectorAll('.color-swatch').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
+      document.getElementById('delete-loc-btn').style.display='block';
+    }
+  }
+  openSheet('sheet-location');
+}
+function pickColor(el){
+  document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function saveLocation(){
+  const name=document.getElementById('loc-name').value.trim();
+  const rate=parseFloat(document.getElementById('loc-rate').value);
+  const color=document.querySelector('.color-swatch.selected')?.dataset.c||'#5b8fff';
+  if(!name){ showToast('Enter a location name',true); return; }
+  if(isNaN(rate)||rate<0){ showToast('Enter a valid pay rate',true); return; }
+  const locs=getLocations(), editId=document.getElementById('edit-loc-id').value;
+  if(editId){ const i=locs.findIndex(l=>l.id===editId); if(i>=0) locs[i]={...locs[i],name,rate,color}; }
+  else locs.push({id:uid(),name,rate,color});
+  DB.set('locations',locs);
+  closeSheet('sheet-location'); renderSettings(); showToast('Location saved');
+}
+function deleteLocation(){
+  DB.set('locations',getLocations().filter(l=>l.id!==document.getElementById('edit-loc-id').value));
+  closeSheet('sheet-location'); renderSettings(); showToast('Location removed');
+}
+
+// ═══════════════════════════════════════
+//  SHIFT FORM
+// ═══════════════════════════════════════
+function openAddShift(id=null){
+  const locs=getLocations();
+  if(!locs.length){ showToast('Add a location first in Settings',true); switchScreen('settings',document.querySelector('[data-screen="settings"]')); return; }
+  document.getElementById('edit-shift-id').value=id||'';
+  document.getElementById('sheet-shift-title').textContent=id?'Edit Shift':'Log Shift';
+  document.getElementById('delete-shift-btn').style.display=id?'block':'none';
+  document.getElementById('shift-calc').style.display='none';
+  document.getElementById('conflict-msg').style.display='none';
+  document.getElementById('save-shift-btn').disabled=false;
+  document.getElementById('save-shift-btn').style.opacity='1';
+
+  const sel=document.getElementById('shift-location');
+  sel.innerHTML=locs.map(l=>`<option value="${l.id}">${l.name} — $${l.rate}/hr</option>`).join('');
+
+  if(id){
+    const s=getShifts().find(x=>x.id===id);
+    if(s){ sel.value=s.locationId; document.getElementById('shift-date').value=s.date; document.getElementById('shift-start').value=s.start; document.getElementById('shift-end').value=s.end; document.getElementById('shift-notes').value=s.notes||''; }
+  } else {
+    document.getElementById('shift-date').value=toYMD(new Date());
+    document.getElementById('shift-start').value='07:00';
+    document.getElementById('shift-end').value='15:00';
+    document.getElementById('shift-notes').value='';
+  }
+  updateCalc(); openSheet('sheet-shift');
+}
+
+function updateCalc(){
+  const start=document.getElementById('shift-start').value;
+  const end  =document.getElementById('shift-end').value;
+  const date =document.getElementById('shift-date').value;
+  const locId=document.getElementById('shift-location').value;
+  const loc  =getLocById(locId);
+  const editId=document.getElementById('edit-shift-id').value;
+  const conflEl=document.getElementById('conflict-msg');
+  const saveBtn=document.getElementById('save-shift-btn');
+
+  // Conflict check
+  if(start&&end&&date){
+    const err=checkConflicts({date,start,end,locationId:locId},editId||null);
+    if(err){
+      conflEl.textContent='⛔  '+err; conflEl.style.display='block';
+      saveBtn.disabled=true; saveBtn.style.opacity='.45';
+    } else {
+      conflEl.style.display='none'; saveBtn.disabled=false; saveBtn.style.opacity='1';
+    }
+  }
+  if(!start||!end||!loc) return;
+
+  // OT preview: how many hours are already locked in this week before this shift
+  const hrs=shiftHours(start,end);
+  const wkDates=weekDatesForDate(date||toYMD(new Date()));
+  const wkYMDs=wkDates.map(toYMD);
+  const thresh=getSettings().otThreshold;
+
+  const otherLogged=getShifts().filter(s=>wkYMDs.includes(s.date)&&s.id!==(editId||'__'));
+  const baseShifts=getBase()
+    .map(b=>({...b,date:baseToDate(b,wkDates)}))
+    .filter(b=>b.date&&wkYMDs.includes(b.date));
+  const {totalHrs:priorHrs}=computeWeekPay([...otherLogged,...baseShifts]);
+
+  const regHrs=Math.max(0,Math.min(hrs,thresh-priorHrs));
+  const otHrs=hrs-regHrs;
+  const pay=regHrs*loc.rate+otHrs*loc.rate*1.5;
+
+  document.getElementById('shift-calc').style.display='block';
+  document.getElementById('calc-dur').textContent=hrs.toFixed(1)+' hrs';
+  document.getElementById('calc-rate').textContent='$'+loc.rate+'/hr';
+  const otRow=document.getElementById('calc-ot-row');
+  if(otHrs>0){ otRow.style.display='flex'; document.getElementById('calc-ot-hrs').textContent=otHrs.toFixed(1)+' hrs @ 1.5×'; }
+  else { otRow.style.display='none'; }
+  document.getElementById('calc-pay').textContent=formatPay(pay)+(otHrs>0?' (incl. OT)':'');
+}
+
+function saveShift(){
+  const locationId=document.getElementById('shift-location').value;
+  const date=document.getElementById('shift-date').value;
+  const start=document.getElementById('shift-start').value;
+  const end=document.getElementById('shift-end').value;
+  const notes=document.getElementById('shift-notes').value.trim();
+  const editId=document.getElementById('edit-shift-id').value;
+  if(!locationId||!date||!start||!end){ showToast('Fill in all required fields',true); return; }
+  const err=checkConflicts({date,start,end,locationId},editId||null);
+  if(err){ showToast(err,true); return; }
+  const shifts=getShifts();
+  if(editId){ const i=shifts.findIndex(s=>s.id===editId); if(i>=0) shifts[i]={...shifts[i],locationId,date,start,end,notes}; }
+  else shifts.push({id:uid(),locationId,date,start,end,notes,createdAt:Date.now()});
+  DB.set('shifts',shifts);
+  closeSheet('sheet-shift'); renderDash(); renderAllShifts(); showToast('Shift saved ✓');
+}
+
+function deleteShift(){
+  DB.set('shifts',getShifts().filter(s=>s.id!==document.getElementById('edit-shift-id').value));
+  closeSheet('sheet-shift'); renderDash(); renderAllShifts(); showToast('Shift deleted');
+}
+
+// ═══════════════════════════════════════
+//  BASE SCHEDULE
+// ═══════════════════════════════════════
+const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function openAddBase(id=null){
+  const locs=getLocations();
+  if(!locs.length){ showToast('Add a location first',true); return; }
+  document.getElementById('edit-base-id').value=id||'';
+  document.getElementById('sheet-base-title').textContent=id?'Edit Base Shift':'Add Base Shift';
+  document.getElementById('delete-base-btn').style.display=id?'block':'none';
+  const sel=document.getElementById('base-location');
+  sel.innerHTML=locs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  if(id){
+    const b=getBase().find(x=>x.id===id);
+    if(b){ document.getElementById('base-week').value=b.week; document.getElementById('base-day').value=b.day; sel.value=b.locationId; document.getElementById('base-start').value=b.start; document.getElementById('base-end').value=b.end; }
+  } else {
+    document.getElementById('base-week').value='1';
+    document.getElementById('base-day').value='1';
+    document.getElementById('base-start').value='07:00';
+    document.getElementById('base-end').value='15:00';
+  }
+  openSheet('sheet-base');
+}
+
+function saveBase(){
+  const week=parseInt(document.getElementById('base-week').value);
+  const day=parseInt(document.getElementById('base-day').value);
+  const locationId=document.getElementById('base-location').value;
+  const start=document.getElementById('base-start').value;
+  const end=document.getElementById('base-end').value;
+  if(!locationId||!start||!end){ showToast('Fill in all fields',true); return; }
+  const base=getBase(), editId=document.getElementById('edit-base-id').value;
+  if(editId){ const i=base.findIndex(b=>b.id===editId); if(i>=0) base[i]={...base[i],week,day,locationId,start,end}; }
+  else base.push({id:uid(),week,day,locationId,start,end});
+  DB.set('base',base); closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift saved');
+}
+
+function deleteBase(){
+  DB.set('base',getBase().filter(b=>b.id!==document.getElementById('edit-base-id').value));
+  closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift removed');
+}
+
+// ═══════════════════════════════════════
+//  RENDER: DASHBOARD
+// ═══════════════════════════════════════
+function renderDash(){
+  const settings=getSettings();
+  const thresh=settings.otThreshold;
+  const wkDates=getWeekDates(weekOffset);
+  const wkYMDs=wkDates.map(toYMD);
+
+  // Week label
+  const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  document.getElementById('week-label').textContent=`${fmt(wkDates[0])}–${fmt(wkDates[6])}`;
+
+  // Logged shifts this week
+  const logged=getShifts().filter(s=>wkYMDs.includes(s.date));
+
+  // Base shifts that fall in this week
+  const baseThisWeek=getBase()
+    .map(b=>({...b,date:baseToDate(b,wkDates),isBase:true}))
+    .filter(b=>b.date!==null);
+
+  // All shifts combined (base + logged). OT engine sorts by date+time.
+  const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false}))];
+  const {totalHrs,totalPay,totalOt,breakdown}=computeWeekPay(allShifts);
+
+  document.getElementById('stat-hours').textContent=totalHrs.toFixed(1);
+  document.getElementById('stat-pay').textContent  =formatPay(totalPay);
+  document.getElementById('stat-ot').textContent   =totalOt.toFixed(1);
+  document.getElementById('stat-shifts').textContent=allShifts.length;
+
+  const pct=Math.min(100,(totalHrs/thresh)*100);
+  const bar=document.getElementById('prog-hrs');
+  bar.style.width=pct+'%';
+  bar.className='prog-bar'+(totalOt>0?' over':totalHrs>=thresh*.8?' warn':'');
+
+  // ── Pay period ──
+  const {start:ppS,end:ppE}=getPayPeriod();
+  const ppYMDs=[];
+  for(let d=new Date(ppS);d<=ppE;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
+  const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
+
+  function ppWeekShifts(ymdSet){
+    // Need the week dates for this set so we can resolve base shifts
+    const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
+    const ppLogged=getShifts().filter(s=>ymdSet.includes(s.date));
+    const ppBase=getBase()
+      .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
+      .filter(b=>b.date&&ymdSet.includes(b.date));
+    return computeWeekPay([...ppLogged,...ppBase]);
+  }
+  const r1=ppWeekShifts(ppW1), r2=ppWeekShifts(ppW2);
+  const ppTotal=r1.totalPay+r2.totalPay;
+  const ppHrs  =r1.totalHrs+r2.totalHrs;
+  const ppOt   =r1.totalOt +r2.totalOt;
+
+  document.getElementById('pp-pay').textContent   =formatPay(ppTotal);
+  document.getElementById('pp-hrs').textContent   =ppHrs.toFixed(1)+' hrs total';
+  document.getElementById('pp-ot-label').textContent=ppOt>0?`${ppOt.toFixed(1)} hrs OT`:'';
+  document.getElementById('pp-dates').textContent =fmt(ppS)+' – '+fmt(ppE);
+  document.getElementById('prog-pp').style.width  =Math.min(100,(ppHrs/(thresh*2))*100)+'%';
+
+  // ── Hours by location ──
+  const locHrs={};
+  allShifts.forEach(s=>{ locHrs[s.locationId]=(locHrs[s.locationId]||0)+shiftHours(s.start,s.end); });
+  const locBars=document.getElementById('loc-bars');
+  if(!Object.keys(locHrs).length){
+    locBars.innerHTML='<div class="empty-state" style="padding:12px;font-size:12px">No shifts this week</div>';
+  } else {
+    const maxH=Math.max(...Object.values(locHrs));
+    locBars.innerHTML=Object.entries(locHrs).map(([lid,hrs])=>{
+      const loc=getLocById(lid); if(!loc) return '';
+      return `<div class="hr-bar-row">
+        <div class="hr-bar-loc" style="color:${loc.color}">${loc.name}</div>
+        <div class="hr-bar-bg"><div class="hr-bar-fill" style="width:${(hrs/maxH)*100}%;background:${loc.color}"></div></div>
+        <div class="hr-bar-val">${hrs.toFixed(1)}h</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Shift list ──
+  // Build a lookup from shift id → breakdown entry
+  const bdMap={};
+  breakdown.forEach(b=>{ bdMap[b.id+(b.isBase?'_b':'')]=b; });
+
+  const sorted=[...allShifts].sort((a,b2)=>a.date.localeCompare(b2.date)||a.start.localeCompare(b2.start));
+  const listEl=document.getElementById('shift-list-dash');
+  if(!sorted.length){
+    listEl.innerHTML='<div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>';
+    return;
+  }
+  listEl.innerHTML=sorted.map(s=>{
+    const key=s.id+(s.isBase?'_b':'');
+    return shiftItemHTML(s,bdMap[key]);
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+//  RENDER: ALL SHIFTS
+// ═══════════════════════════════════════
+function renderAllShifts(){
+  const shifts=getShifts();
+  const el=document.getElementById('shift-list-all');
+  if(!shifts.length){ el.innerHTML='<div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>'; return; }
+  const sorted=[...shifts].sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start));
+  el.innerHTML=sorted.map(s=>{
+    // Compute OT breakdown in context of that week
+    const wkD=weekDatesForDate(s.date);
+    const wkY=wkD.map(toYMD);
+    const weekShifts=[
+      ...getShifts().filter(x=>wkY.includes(x.date)),
+      ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkY.includes(b.date))
+    ];
+    const {breakdown}=computeWeekPay(weekShifts);
+    const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
+    return shiftItemHTML({...s,isBase:false},bd);
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+//  SHIFT ITEM HTML
+// ═══════════════════════════════════════
+function shiftItemHTML(s,bd){
+  const loc  =getLocById(s.locationId);
+  const color=loc?.color||'#888';
+  const name =loc?.name||'Unknown';
+  const rate =loc?.rate||0;
+  const hrs  =shiftHours(s.start,s.end);
+  const pay  =bd?bd.pay:hrs*rate;
+  const otHrs=bd?bd.otHrs:0;
+  const d    =new Date(s.date+'T12:00:00');
+  const ds   =d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
+  let badge='';
+  if(s.isBase)          badge='<span class="badge base">BASE</span>';
+  else if(otHrs>=hrs)   badge='<span class="badge ot">OT</span>';
+  else if(otHrs>0)      badge='<span class="badge mix">REG+OT</span>';
+  else                  badge='<span class="badge reg">REG</span>';
+
+  const otNote=otHrs>0&&!s.isBase
+    ?`<div class="ot-note">${(hrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
+
+  const click=s.isBase?`openAddBase('${s.id}')`:`openAddShift('${s.id}')`;
+  const payStr=s.isBase?'—':formatPay(pay);
+  const schedLabel=s.isBase?` <span style="font-size:10px;opacity:.6">(schedule)</span>`:'';
+
+  return `<div class="shift-item${s.isBase?' base-item':''}" onclick="${click}">
+    <div class="shift-dot${s.isBase?' sq':''}" style="background:${color}"></div>
+    <div class="shift-info">
+      <div class="name">${name}${schedLabel}</div>
+      <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
+      ${otNote}
+      ${s.notes?`<div class="notes-chip">${s.notes.slice(0,40)}${s.notes.length>40?'…':''}</div>`:''}
+    </div>
+    <div class="shift-right">
+      <div class="pay">${payStr}</div>
+      <div class="hrs">${hrs.toFixed(1)} hrs</div>
+      ${badge}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════
+//  RENDER: SCHEDULE
+// ═══════════════════════════════════════
+function renderSchedule(){
+  [1,2].forEach(wk=>{
+    const wkShifts=getBase().filter(b=>b.week===wk).sort((a,b)=>a.day-b.day||a.start.localeCompare(b.start));
+    const el=document.getElementById(`base-week${wk}`);
+    if(!wkShifts.length){ el.innerHTML=`<div class="empty-state" style="padding:20px;font-size:12px">No shifts for week ${wk}</div>`; return; }
+    el.innerHTML=wkShifts.map(b=>{
+      const loc=getLocById(b.locationId);
+      return `<div class="shift-item base-item" onclick="openAddBase('${b.id}')">
+        <div class="shift-dot sq" style="background:${loc?.color||'#888'}"></div>
+        <div class="shift-info">
+          <div class="name">${DAYS[b.day]}</div>
+          <div class="sub">${loc?.name||'—'} · ${fmtTime(b.start)}–${fmtTime(b.end)}</div>
+        </div>
+        <div class="shift-right">
+          <div class="hrs">${shiftHours(b.start,b.end).toFixed(1)} hrs</div>
+          <span class="badge base">BASE</span>
+        </div>
+      </div>`;
+    }).join('');
+  });
+}
+
+// ═══════════════════════════════════════
+//  RENDER: SETTINGS
+// ═══════════════════════════════════════
+function renderSettings(){
+  const settings=getSettings();
+  document.getElementById('ot-threshold').value=settings.otThreshold;
+  document.getElementById('pp-anchor').value=settings.ppAnchor||DEFAULT_ANCHOR;
+  const locs=getLocations();
+  const el=document.getElementById('location-list');
+  if(!locs.length){ el.innerHTML='<div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div>'; return; }
+  el.innerHTML=locs.map(l=>`
+    <div class="shift-item" onclick="openAddLocation('${l.id}')">
+      <div class="shift-dot" style="background:${l.color}"></div>
+      <div class="shift-info"><div class="name">${l.name}</div><div class="sub">$${l.rate.toFixed(2)}/hr</div></div>
+      <div style="color:var(--muted);font-size:18px">›</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════
+function showToast(msg,isErr=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=isErr?'err':'';
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show','err'),2800);
+}
+function confirmClearData(){
+  if(confirm('Delete ALL shifts, locations, and settings? This cannot be undone.')){
+    ['locations','shifts','base','settings'].forEach(k=>localStorage.removeItem('st_'+k));
+    weekOffset=0; renderDash(); renderAllShifts(); renderSchedule(); renderSettings();
+    showToast('All data cleared');
+  }
+}
+
+// ═══════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════
+renderDash();
+renderSettings();
+</script>
+</body>
+</html>
