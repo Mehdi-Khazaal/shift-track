@@ -106,6 +106,7 @@ select option{background:var(--bg3);}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 #toast.err{border-color:var(--red);color:var(--red);}
 .week-nav{display:flex;align-items:center;}
+.pp-nav{display:flex;align-items:center;gap:6px;}
 .wk-lbl{font-size:11px;font-family:var(--mono);color:var(--muted);padding:0 6px;}
 .arr-btn{width:26px;height:26px;border-radius:7px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 .conflict-box{background:var(--red-bg);border:1px solid rgba(255,95,109,.4);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:12px;font-family:var(--mono);color:var(--red);line-height:1.5;display:none;}
@@ -153,8 +154,15 @@ select option{background:var(--bg3);}
   </div>
 
   <div class="card">
-    <div class="card-label">Pay period · 2-week total</div>
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:4px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div class="card-label" style="margin-bottom:0">Pay period · 2-week total</div>
+      <div class="pp-nav">
+        <div class="arr-btn" onclick="changePayPeriod(-1)">‹</div>
+        <div class="wk-lbl" id="pp-nav-label">—</div>
+        <div class="arr-btn" onclick="changePayPeriod(1)">›</div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px">
       <div>
         <div style="font-size:28px;font-weight:800;font-family:var(--mono);letter-spacing:-1px" id="pp-pay">$0.00</div>
         <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-hrs">0 hrs total</div>
@@ -451,13 +459,13 @@ function getLocById(id){ return getLocations().find(l=>l.id===id); }
 
 // ─── Pay period ───
 // Anchor: first day of a known period. Every 14 days from there is a new period.
-function getPayPeriod(){
+function getPayPeriod(offset=0){
   const { ppAnchor } = getSettings();
   const anchor = new Date(ppAnchor+'T00:00:00');
   const today  = new Date(); today.setHours(0,0,0,0);
   const diffDays = Math.round((today-anchor)/86400000);
   const n = diffDays<0 ? Math.ceil(diffDays/14) : Math.floor(diffDays/14);
-  const start = new Date(anchor); start.setDate(anchor.getDate()+n*14);
+  const start = new Date(anchor); start.setDate(anchor.getDate()+(n+offset)*14);
   const end   = new Date(start);  end.setDate(start.getDate()+13);
   return { start, end };
 }
@@ -569,7 +577,9 @@ function checkConflicts(newShift, skipId=null){
 //  NAV
 // ═══════════════════════════════════════
 let weekOffset=0;
+let payPeriodOffset=0;
 function changeWeek(dir){ weekOffset+=dir; renderDash(); }
+function changePayPeriod(dir){ payPeriodOffset+=dir; renderDash(); }
 
 function switchScreen(name,el){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -807,7 +817,7 @@ function renderDash(){
   bar.className='prog-bar'+(totalOt>0?' over':totalHrs>=thresh*.8?' warn':'');
 
   // ── Pay period ──
-  const {start:ppS,end:ppE}=getPayPeriod();
+  const {start:ppS,end:ppE}=getPayPeriod(payPeriodOffset);
   const ppYMDs=[];
   for(let d=new Date(ppS);d<=ppE;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
   const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
@@ -830,6 +840,7 @@ function renderDash(){
   document.getElementById('pp-hrs').textContent   =ppHrs.toFixed(1)+' hrs total';
   document.getElementById('pp-ot-label').textContent=ppOt>0?`${ppOt.toFixed(1)} hrs OT`:'';
   document.getElementById('pp-dates').textContent =fmt(ppS)+' – '+fmt(ppE);
+  document.getElementById('pp-nav-label').textContent = payPeriodOffset===0 ? 'Current' : (payPeriodOffset<0 ? `${Math.abs(payPeriodOffset)} back` : `+${payPeriodOffset}`);
   document.getElementById('prog-pp').style.width  =Math.min(100,(ppHrs/(thresh*2))*100)+'%';
 
   // ── Hours by location ──
