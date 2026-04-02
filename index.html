@@ -114,6 +114,60 @@ select option{background:var(--bg3);}
 .calc-row{display:flex;justify-content:space-between;margin-bottom:3px;}
 .calc-row.total{border-top:1px solid var(--border);padding-top:7px;margin-top:4px;margin-bottom:0;}
 .ot-note{font-size:11px;color:var(--orange);font-family:var(--mono);margin-top:2px;}
+/* ── Phase 2: Calendar ── */
+.view-tog{padding:5px 12px;font-size:11px;font-family:var(--mono);font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;letter-spacing:.5px;}
+.view-tog.active{background:var(--accent);color:#fff;}
+.cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);padding:4px 10px 6px;gap:2px;}
+.cal-dow-row span{text-align:center;font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;}
+.cal-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 10px 16px;}
+.cal-cell{min-height:52px;border-radius:8px;padding:4px 3px;cursor:pointer;transition:background .1s;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;}
+.cal-cell:active{background:var(--bg3);}
+.cal-cell.other-month .cal-dn{color:var(--dim);}
+.cal-cell.today .cal-dn{background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;}
+.cal-cell.has-shift{background:var(--bg3);}
+.cal-dn{font-size:13px;font-weight:600;line-height:1;width:22px;height:22px;display:flex;align-items:center;justify-content:center;}
+.cal-dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:32px;}
+.cal-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.cal-dot.sq{border-radius:2px;}
+/* Week view */
+.cal-week-row{display:flex;align-items:stretch;border-bottom:1px solid var(--border);min-height:56px;}
+.cal-week-row:last-child{border-bottom:none;}
+.cal-week-day-label{width:52px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;gap:1px;}
+.cal-week-day-label .wd{font-size:9px;font-family:var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;}
+.cal-week-day-label .dn{font-size:18px;font-weight:800;line-height:1;}
+.cal-week-day-label.today .dn{color:var(--accent);}
+.cal-week-shifts{flex:1;display:flex;flex-direction:column;gap:4px;padding:6px 10px 6px 0;justify-content:center;}
+.cal-week-empty{font-size:11px;color:var(--dim);font-family:var(--mono);}
+.cal-shift-pill{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;background:var(--bg3);cursor:pointer;}
+.cal-shift-pill:active{opacity:.7;}
+.cal-shift-pill .pill-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cal-shift-pill .pill-dot.sq{border-radius:2px;}
+.cal-shift-pill .pill-name{font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cal-shift-pill .pill-time{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap;}
+.cal-add-pill{display:flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:6px;border:1px dashed var(--border2);cursor:pointer;color:var(--dim);font-size:11px;font-family:var(--mono);}
+.cal-add-pill:active{background:var(--bg3);}
+/* History */
+.hist-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin:0 16px 10px;cursor:pointer;transition:border-color .15s;}
+.hist-card:active{border-color:var(--border2);}
+.hist-card.current{border-color:var(--accent);}
+.hist-period{font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:6px;}
+.hist-pay{font-size:24px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;}
+.hist-meta{display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;}
+.hist-chip{font-size:11px;font-family:var(--mono);color:var(--muted);}
+.hist-chip span{color:var(--text);}
+.hist-chip.ot span{color:var(--orange);}
+/* Notif banner */
+.notif-banner{margin:0 16px 12px;padding:12px 14px;background:rgba(91,143,255,.08);border:1px solid rgba(91,143,255,.25);border-radius:var(--radius-sm);display:flex;align-items:center;gap:10px;cursor:pointer;}
+.notif-banner svg{flex-shrink:0;color:var(--accent);}
+.notif-banner p{font-size:12px;font-family:var(--mono);color:var(--muted);line-height:1.4;}
+.notif-banner p strong{color:var(--accent);}
+/* Toggle switch */
+.toggle-wrap{position:relative;display:inline-block;cursor:pointer;}
+.toggle-wrap input{opacity:0;width:0;height:0;position:absolute;}
+.toggle-track{display:block;width:44px;height:26px;background:var(--bg4);border-radius:99px;border:1px solid var(--border2);transition:background .2s;}
+.toggle-wrap input:checked ~ .toggle-track{background:var(--accent);border-color:var(--accent);}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;}
+.toggle-wrap input:checked ~ .toggle-track .toggle-thumb{transform:translateX(18px);}
 </style>
 </head>
 <body>
@@ -201,21 +255,6 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
-<!-- SCHEDULE -->
-<div id="screen-schedule" class="screen">
-  <div class="top-bar">
-    <h1>Base Schedule</h1>
-    <div class="icon-btn" onclick="openAddBase()">＋</div>
-  </div>
-  <div style="padding:0 16px 12px;font-size:13px;color:var(--muted);font-family:var(--mono);line-height:1.6">
-    Your repeating 2-week schedule. These appear automatically on the dashboard every week.
-  </div>
-  <div class="section-hd"><h2>Week 1</h2></div>
-  <div class="card" style="padding:0"><div id="base-week1"><div class="empty-state" style="padding:20px;font-size:12px">No shifts for week 1</div></div></div>
-  <div class="section-hd"><h2>Week 2</h2></div>
-  <div class="card" style="padding:0"><div id="base-week2"><div class="empty-state" style="padding:20px;font-size:12px">No shifts for week 2</div></div></div>
-</div>
-
 <!-- SETTINGS -->
 <div id="screen-settings" class="screen">
   <div class="top-bar"><h1>Settings</h1></div>
@@ -224,6 +263,21 @@ select option{background:var(--bg3);}
     <button class="btn btn-ghost btn-sm" onclick="openAddLocation()">＋ Add</button>
   </div>
   <div class="card" style="padding:0"><div id="location-list"><div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div></div></div>
+
+  <div class="section-hd" style="margin-top:8px"><h2>Notifications</h2></div>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div>
+        <div style="font-weight:600;font-size:14px">Shift reminders</div>
+        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px">1 hour before each shift</div>
+      </div>
+      <label class="toggle-wrap">
+        <input type="checkbox" id="notif-toggle" onchange="toggleNotifications()"/>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div id="notif-status" style="font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:6px"></div>
+  </div>
 
   <div class="section-hd" style="margin-top:8px"><h2>Pay settings</h2></div>
   <div class="card">
@@ -241,9 +295,50 @@ select option{background:var(--bg3);}
   <div style="padding:0 16px;margin-top:16px">
     <button class="btn btn-danger" onclick="confirmClearData()">Clear all data</button>
   </div>
-  <div style="text-align:center;padding:24px 0 8px;font-size:11px;color:var(--dim);font-family:var(--mono)">
-    ShiftTrack v2.0 · Passavant Memorial Homes<br>All data stored locally on this device
+
+  <div class="section-hd" style="margin-top:20px"><h2>Base schedule</h2>
+    <button class="btn btn-ghost btn-sm" onclick="openAddBase()">＋ Add</button>
   </div>
+  <div style="padding:0 16px 12px;font-size:12px;color:var(--muted);font-family:var(--mono);line-height:1.5">
+    Your repeating 2-week schedule. Appears automatically on calendar &amp; dashboard.
+  </div>
+  <div class="section-hd" style="margin-top:0;padding-top:0"><h2 style="font-size:13px;color:var(--muted)">Week 1</h2></div>
+  <div class="card" style="padding:0"><div id="base-week1"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 1</div></div></div>
+  <div class="section-hd"><h2 style="font-size:13px;color:var(--muted)">Week 2</h2></div>
+  <div class="card" style="padding:0"><div id="base-week2"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 2</div></div></div>
+
+  <div style="text-align:center;padding:24px 0 8px;font-size:11px;color:var(--dim);font-family:var(--mono)">
+    ShiftTrack v3.0 · Passavant Memorial Homes<br>All data stored locally on this device
+  </div>
+</div>
+
+<!-- CALENDAR -->
+<div id="screen-calendar" class="screen">
+  <div class="top-bar">
+    <h1 id="cal-title">April 2026</h1>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <div id="btn-month" class="view-tog active" onclick="setCalView('month')">Mo</div>
+        <div id="btn-week"  class="view-tog"        onclick="setCalView('week')">Wk</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <div class="arr-btn" onclick="calNav(-1)">‹</div>
+        <div class="arr-btn" onclick="calNav(1)">›</div>
+      </div>
+    </div>
+  </div>
+  <div class="cal-dow-row"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+  <div id="cal-month-view"><div id="cal-month-grid" class="cal-month-grid"></div></div>
+  <div id="cal-week-view" style="display:none"><div id="cal-week-grid"></div></div>
+</div>
+
+<!-- HISTORY -->
+<div id="screen-history" class="screen">
+  <div class="top-bar"><h1>Pay History</h1></div>
+  <div style="padding:0 16px 12px;font-size:13px;color:var(--muted);font-family:var(--mono);line-height:1.6">
+    Past pay periods. Base schedule hours included in totals.
+  </div>
+  <div id="history-list"><div class="empty-state"><div class="icon">📊</div>No history yet.</div></div>
 </div>
 
 <!-- NAV -->
@@ -256,9 +351,13 @@ select option{background:var(--bg3);}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
     Shifts
   </div>
-  <div class="nav-item" data-screen="schedule" onclick="switchScreen('schedule',this)">
+  <div class="nav-item" data-screen="calendar" onclick="switchScreen('calendar',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-    Schedule
+    Calendar
+  </div>
+  <div class="nav-item" data-screen="history" onclick="switchScreen('history',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    History
   </div>
   <div class="nav-item" data-screen="settings" onclick="switchScreen('settings',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -373,6 +472,27 @@ select option{background:var(--bg3);}
       <button class="btn btn-primary" onclick="saveLocation()">Save Location</button>
       <div id="delete-loc-btn" style="margin-top:10px;display:none">
         <button class="btn btn-danger" onclick="deleteLocation()">Delete Location</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SHEET: DAY DETAIL -->
+<div class="sheet-overlay" id="sheet-day">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="day-sheet-title">Monday, Apr 7</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-day')">✕</button>
+    </div>
+    <div class="sheet-body" style="padding-top:8px">
+      <div id="day-shift-list"></div>
+      <div style="margin-top:14px">
+        <button class="btn btn-primary" id="day-add-btn" onclick="openAddShiftForDay()">＋ Log shift for this day</button>
+      </div>
+      <div id="day-summary" style="margin-top:14px;background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-family:var(--mono);font-size:13px;display:none">
+        <div class="calc-row"><span style="color:var(--muted)">Total hours</span><span id="day-total-hrs">—</span></div>
+        <div class="calc-row"><span style="color:var(--muted)">Est. pay</span><span id="day-total-pay" style="color:var(--green)">—</span></div>
       </div>
     </div>
   </div>
@@ -588,7 +708,8 @@ function switchScreen(name,el){
   el.classList.add('active');
   if(name==='dash')     renderDash();
   if(name==='log')      renderAllShifts();
-  if(name==='schedule') renderSchedule();
+  if(name==='calendar') renderCalendar();
+  if(name==='history')  renderHistory();
   if(name==='settings') renderSettings();
 }
 function openSheet(id){ document.getElementById(id).classList.add('open'); }
@@ -1002,6 +1123,352 @@ function confirmClearData(){
     showToast('All data cleared');
   }
 }
+
+// ═══════════════════════════════════════
+//  PHASE 2: CALENDAR
+// ═══════════════════════════════════════
+let calView = 'month'; // 'month' | 'week'
+let calOffset = 0;     // months offset for month view, weeks for week view
+let daySheetDate = ''; // currently open day sheet date
+
+function setCalView(v){
+  calView = v;
+  calOffset = 0;
+  document.getElementById('btn-month').classList.toggle('active', v==='month');
+  document.getElementById('btn-week').classList.toggle('active',  v==='week');
+  renderCalendar();
+}
+function calNav(dir){ calOffset += dir; renderCalendar(); }
+
+// Get all shifts (logged + base) for a given YYYY-MM-DD
+function getShiftsForDate(dateStr){
+  const logged = getShifts().filter(s=>s.date===dateStr).map(s=>({...s,isBase:false}));
+  const wkD = weekDatesForDate(dateStr);
+  const base = getBase()
+    .filter(b=>baseToDate(b,wkD)===dateStr)
+    .map(b=>({...b,date:dateStr,isBase:true}));
+  return [...base,...logged].sort((a,b)=>a.start.localeCompare(b.start));
+}
+
+function renderCalendar(){
+  if(calView==='month') renderCalMonth();
+  else                  renderCalWeek();
+}
+
+function renderCalMonth(){
+  document.getElementById('cal-month-view').style.display='block';
+  document.getElementById('cal-week-view').style.display='none';
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const ref   = new Date(today.getFullYear(), today.getMonth()+calOffset, 1);
+  document.getElementById('cal-title').textContent =
+    ref.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+
+  // Build grid: pad to start on Sunday
+  const firstDay = ref.getDay(); // 0=Sun
+  const daysInMonth = new Date(ref.getFullYear(), ref.getMonth()+1, 0).getDate();
+  const cells = [];
+
+  // Prev month padding
+  for(let i=0;i<firstDay;i++){
+    const d=new Date(ref.getFullYear(), ref.getMonth(), -firstDay+i+1);
+    cells.push({date:d, otherMonth:true});
+  }
+  // This month
+  for(let i=1;i<=daysInMonth;i++){
+    cells.push({date:new Date(ref.getFullYear(),ref.getMonth(),i), otherMonth:false});
+  }
+  // Next month padding to complete last row
+  while(cells.length%7!==0){
+    const last=cells[cells.length-1].date;
+    const d=new Date(last); d.setDate(d.getDate()+1);
+    cells.push({date:d, otherMonth:true});
+  }
+
+  const grid = document.getElementById('cal-month-grid');
+  grid.innerHTML = cells.map(({date,otherMonth})=>{
+    const ymd = toYMD(date);
+    const isToday = toYMD(date)===toYMD(today);
+    const shifts = getShiftsForDate(ymd);
+    const dots = shifts.slice(0,4).map(s=>{
+      const loc=getLocById(s.locationId);
+      return `<div class="cal-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>`;
+    }).join('');
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${shifts.length?' has-shift':''}" onclick="openDaySheet('${ymd}')">
+      <div class="cal-dn">${date.getDate()}</div>
+      ${dots?`<div class="cal-dots">${dots}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function renderCalWeek(){
+  document.getElementById('cal-month-view').style.display='none';
+  document.getElementById('cal-week-view').style.display='block';
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const wkDates = getWeekDates(calOffset);
+  const fmt = d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  document.getElementById('cal-title').textContent =
+    `${fmt(wkDates[0])} – ${fmt(wkDates[6])}`;
+
+  const DAY_SHORT=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const grid = document.getElementById('cal-week-grid');
+  grid.innerHTML = wkDates.map((d,i)=>{
+    const ymd = toYMD(d);
+    const isToday = ymd===toYMD(today);
+    const shifts = getShiftsForDate(ymd);
+    const pillsHTML = shifts.map(s=>{
+      const loc=getLocById(s.locationId);
+      return `<div class="cal-shift-pill" onclick="event.stopPropagation();openDaySheet('${ymd}')">
+        <div class="cal-shift-pill"><div class="pill-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>
+        <span class="pill-name">${loc?.name||'—'}${s.isBase?' (base)':''}</span>
+        <span class="pill-time">${fmtTime(s.start)}</span></div>
+      </div>`;
+    }).join('');
+    const addBtn = `<div class="cal-add-pill" onclick="event.stopPropagation();openAddShiftForDateStr('${ymd}')">+ add</div>`;
+    return `<div class="cal-week-row" onclick="openDaySheet('${ymd}')">
+      <div class="cal-week-day-label${isToday?' today':''}">
+        <div class="wd">${DAY_SHORT[i]}</div>
+        <div class="dn">${d.getDate()}</div>
+      </div>
+      <div class="cal-week-shifts">
+        ${shifts.length?pillsHTML:`<div class="cal-week-empty">—</div>`}
+        ${addBtn}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Day sheet ──
+function openDaySheet(dateStr){
+  daySheetDate = dateStr;
+  const d = new Date(dateStr+'T12:00:00');
+  const title = d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+  document.getElementById('day-sheet-title').textContent = title;
+
+  const shifts = getShiftsForDate(dateStr);
+  const listEl = document.getElementById('day-shift-list');
+
+  if(!shifts.length){
+    listEl.innerHTML='<div style="text-align:center;padding:16px 0;color:var(--muted);font-family:var(--mono);font-size:12px">No shifts on this day</div>';
+    document.getElementById('day-summary').style.display='none';
+  } else {
+    // Compute OT in weekly context
+    const wkD = weekDatesForDate(dateStr);
+    const wkY = wkD.map(toYMD);
+    const allWk = [
+      ...getShifts().filter(s=>wkY.includes(s.date)),
+      ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkY.includes(b.date))
+    ];
+    const {breakdown} = computeWeekPay(allWk);
+    const bdMap = {}; breakdown.forEach(b=>{ bdMap[b.id+(b.isBase?'_b':'')]=b; });
+
+    listEl.innerHTML = shifts.map(s=>{
+      const key = s.id+(s.isBase?'_b':'');
+      return shiftItemHTML(s, bdMap[key]);
+    }).join('');
+
+    // Summary
+    const dayShifts = shifts;
+    const dayHrs = dayShifts.reduce((a,s)=>a+shiftHours(s.start,s.end),0);
+    const dayPay = dayShifts.reduce((a,s)=>{
+      const key=s.id+(s.isBase?'_b':'');
+      const bd=bdMap[key];
+      return a+(bd?bd.pay:0);
+    },0);
+    document.getElementById('day-summary').style.display='block';
+    document.getElementById('day-total-hrs').textContent=dayHrs.toFixed(1)+' hrs';
+    document.getElementById('day-total-pay').textContent=formatPay(dayPay);
+  }
+  openSheet('sheet-day');
+}
+
+function openAddShiftForDay(){
+  closeSheet('sheet-day');
+  setTimeout(()=>openAddShiftForDateStr(daySheetDate), 200);
+}
+
+function openAddShiftForDateStr(dateStr){
+  const locs=getLocations();
+  if(!locs.length){ showToast('Add a location first in Settings',true); return; }
+  document.getElementById('edit-shift-id').value='';
+  document.getElementById('sheet-shift-title').textContent='Log Shift';
+  document.getElementById('delete-shift-btn').style.display='none';
+  document.getElementById('shift-calc').style.display='none';
+  document.getElementById('conflict-msg').style.display='none';
+  document.getElementById('save-shift-btn').disabled=false;
+  document.getElementById('save-shift-btn').style.opacity='1';
+  const sel=document.getElementById('shift-location');
+  sel.innerHTML=locs.map(l=>`<option value="${l.id}">${l.name} — $${l.rate}/hr</option>`).join('');
+  document.getElementById('shift-date').value=dateStr;
+  document.getElementById('shift-start').value='07:00';
+  document.getElementById('shift-end').value='15:00';
+  document.getElementById('shift-notes').value='';
+  updateCalc();
+  openSheet('sheet-shift');
+}
+
+// ═══════════════════════════════════════
+//  PHASE 2: PAY HISTORY
+// ═══════════════════════════════════════
+function renderHistory(){
+  const el = document.getElementById('history-list');
+  const { ppAnchor } = getSettings();
+  const anchor = new Date(ppAnchor+'T00:00:00');
+  const today  = new Date(); today.setHours(0,0,0,0);
+  const diffDays = Math.round((today-anchor)/86400000);
+  const currentN = diffDays<0 ? Math.ceil(diffDays/14) : Math.floor(diffDays/14);
+
+  // Show current period + 11 past ones
+  const cards = [];
+  for(let offset=0; offset>=-11; offset--){
+    const n = currentN+offset;
+    const start = new Date(anchor); start.setDate(anchor.getDate()+n*14);
+    const end   = new Date(start);  end.setDate(start.getDate()+13);
+
+    const ppYMDs=[];
+    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
+    const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
+
+    function ppWkShifts(ymdSet){
+      const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
+      return computeWeekPay([
+        ...getShifts().filter(s=>ymdSet.includes(s.date)),
+        ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&ymdSet.includes(b.date))
+      ]);
+    }
+    const r1=ppWkShifts(ppW1), r2=ppWkShifts(ppW2);
+    const total=r1.totalPay+r2.totalPay;
+    const hrs  =r1.totalHrs+r2.totalHrs;
+    const ot   =r1.totalOt +r2.totalOt;
+
+    const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const isCurrent=offset===0;
+    const isFuture=start>today;
+
+    cards.push(`<div class="hist-card${isCurrent?' current':''}">
+      <div class="hist-period">${fmt(start)} – ${fmt(end)}${isCurrent?' · <span style="color:var(--accent)">current</span>':''}</div>
+      <div class="hist-pay" style="color:${isFuture?'var(--muted)':'var(--text)'}">${formatPay(total)}</div>
+      <div class="hist-meta">
+        <div class="hist-chip"><span>${hrs.toFixed(1)}h</span> total</div>
+        ${ot>0?`<div class="hist-chip ot"><span>${ot.toFixed(1)}h</span> OT</div>`:''}
+        <div class="hist-chip"><span>${r1.totalHrs.toFixed(1)}h</span> wk1 · <span>${r2.totalHrs.toFixed(1)}h</span> wk2</div>
+      </div>
+    </div>`);
+  }
+  el.innerHTML = cards.join('');
+}
+
+// ═══════════════════════════════════════
+//  PHASE 2: NOTIFICATIONS
+// ═══════════════════════════════════════
+function toggleNotifications(){
+  const on = document.getElementById('notif-toggle').checked;
+  if(!on){ DB.set('notif',{enabled:false}); updateNotifStatus(); return; }
+
+  if(!('Notification' in window)){
+    showToast('Notifications not supported on this browser',true);
+    document.getElementById('notif-toggle').checked=false;
+    return;
+  }
+  Notification.requestPermission().then(perm=>{
+    if(perm==='granted'){
+      DB.set('notif',{enabled:true});
+      scheduleNotifications();
+      updateNotifStatus();
+      showToast('Shift reminders enabled ✓');
+    } else {
+      document.getElementById('notif-toggle').checked=false;
+      DB.set('notif',{enabled:false});
+      updateNotifStatus();
+      showToast('Permission denied — enable in browser settings',true);
+    }
+  });
+}
+
+function updateNotifStatus(){
+  const s = document.getElementById('notif-status');
+  const saved = DB.get('notif');
+  const enabled = saved?.enabled && Notification.permission==='granted';
+  document.getElementById('notif-toggle').checked = !!enabled;
+  if(enabled){
+    s.textContent='✓ Active — you\'ll be reminded 1 hour before each shift.';
+    s.style.color='var(--green)';
+  } else if(Notification.permission==='denied'){
+    s.textContent='Blocked by browser. Enable in your device settings.';
+    s.style.color='var(--red)';
+  } else {
+    s.textContent='Off';
+    s.style.color='var(--dim)';
+  }
+}
+
+function scheduleNotifications(){
+  if(!('Notification' in window)||Notification.permission!=='granted') return;
+  const saved=DB.get('notif'); if(!saved?.enabled) return;
+
+  const now=new Date();
+  const in7days=new Date(now); in7days.setDate(now.getDate()+7);
+
+  // Collect all upcoming shifts in next 7 days
+  const upcoming=[];
+  const wkD0=getWeekDates(0), wkD1=getWeekDates(1);
+
+  [wkD0,wkD1].forEach(wkDates=>{
+    getShifts().forEach(s=>{
+      if(wkDates.map(toYMD).includes(s.date)) upcoming.push(s);
+    });
+    getBase().forEach(b=>{
+      const d=baseToDate(b,wkDates);
+      if(d) upcoming.push({...b,date:d,isBase:true});
+    });
+  });
+
+  upcoming.forEach(s=>{
+    const [h,m]=s.start.split(':').map(Number);
+    const shiftTime=new Date(s.date+'T'+s.start+':00');
+    const notifTime=new Date(shiftTime.getTime()-60*60*1000); // 1hr before
+    if(notifTime>now && notifTime<in7days){
+      const delay=notifTime.getTime()-now.getTime();
+      const loc=getLocById(s.locationId);
+      setTimeout(()=>{
+        if(Notification.permission==='granted'){
+          new Notification('ShiftTrack — Shift in 1 hour',{
+            body:`${loc?.name||'Shift'} starts at ${fmtTime(s.start)}`,
+            icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="%230d0f14"/><text x="16" y="22" text-anchor="middle" font-size="18" fill="%235b8fff">S</text></svg>'
+          });
+        }
+      }, delay);
+    }
+  });
+}
+
+// ═══════════════════════════════════════
+//  UPDATED renderSettings (adds notif + base schedule)
+// ═══════════════════════════════════════
+const _origRenderSettings = renderSettings;
+renderSettings = function(){
+  _origRenderSettings();
+  updateNotifStatus();
+  renderSchedule();
+};
+
+// Re-render calendar after saving a shift
+const _origSaveShift = saveShift;
+saveShift = function(){
+  _origSaveShift();
+  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
+};
+const _origDeleteShift = deleteShift;
+deleteShift = function(){
+  _origDeleteShift();
+  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
+};
+
+// ═══════════════════════════════════════
+//  INIT PHASE 2
+// ═══════════════════════════════════════
+scheduleNotifications();
 
 // ═══════════════════════════════════════
 //  INIT
