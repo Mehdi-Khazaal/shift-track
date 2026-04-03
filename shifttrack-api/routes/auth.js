@@ -1,3 +1,9 @@
+const express  = require('express');
+const router   = express.Router();
+const db       = require('../db/index');
+const bcrypt   = require('bcrypt');
+const jwt      = require('jsonwebtoken');
+
 // POST /api/auth/register — admin only via secret key
 router.post('/register', async (req, res) => {
   const { email, name, password, adminKey } = req.body;
