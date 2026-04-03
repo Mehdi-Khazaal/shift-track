@@ -15,6 +15,8 @@ app.use(cors({ origin: '*' }));
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/shifts',   require('./routes/shifts'));
 app.use('/api/locations',require('./routes/locations'));
+app.use('/api/schedule', require('./routes/schedule'));
+app.use('/api/settings', require('./routes/settings'));
 
 // Health check
 app.get('/health', (req, res) => {
