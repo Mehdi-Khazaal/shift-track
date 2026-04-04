@@ -627,7 +627,10 @@ function getSettings() {
 }
 
 // Load all data from API into cache, then re-render
-async function loadAllData(){
+// Retries up to 3 times with increasing delays (handles Render cold start)
+async function loadAllData(attempt=1){
+  const MAX = 3;
+  showToast(attempt===1 ? 'Loading your data…' : `Connecting… (${attempt}/${MAX})`, false, 20000);
   try {
     const [locsRes, shiftsRes, baseRes, settingsRes] = await Promise.all([
       apiFetch('/api/locations'),
@@ -640,14 +643,22 @@ async function loadAllData(){
     if(baseRes?.ok)     cache.base      = baseRes.schedule.map(normalizeBase);
     if(settingsRes?.ok) cache.settings  = settingsRes.settings;
     cache.loaded = true;
+    showToast('Ready ✓');
     renderDash();
     renderAllShifts();
     renderSchedule();
     renderSettings();
     renderCalendar();
   } catch(e) {
-    console.error('Failed to load data:', e);
-    showToast('Could not load data. Check connection.',true);
+    console.error('Failed to load data (attempt '+attempt+'):', e);
+    if(attempt < MAX){
+      const delay = attempt * 15000; // 15s, 30s
+      showToast(`Server waking up… retrying in ${delay/1000}s`, false, delay+2000);
+      setTimeout(() => loadAllData(attempt+1), delay);
+    } else {
+      showToast('Could not connect. Tap here to retry.', true);
+      document.getElementById('toast').onclick = () => loadAllData(1);
+    }
   }
 }
 
@@ -734,7 +745,10 @@ function shiftHours(start,end){
 }
 
 function formatPay(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
-function toYMD(d){ return d.toISOString().slice(0,10); }
+function toYMD(d){
+  if(!d || typeof d.toISOString !== 'function') return null;
+  return d.toISOString().slice(0,10);
+}
 function getLocById(id){ return getLocations().find(l=>l.id===id); }
 
 // ─── Pay period ───
@@ -760,7 +774,6 @@ function getWeekDates(offset=0){
   const s=getWeekStart(offset);
   return Array.from({length:7},(_,i)=>{ const d=new Date(s); d.setDate(s.getDate()+i); return d; });
 }
-// Get the Sunday-anchored week that contains a given YYYY-MM-DD string
 function weekDatesForDate(dateStr){
   const d=new Date(dateStr+'T12:00:00');
   const sun=new Date(d); sun.setDate(d.getDate()-d.getDay()); sun.setHours(0,0,0,0);
@@ -773,16 +786,19 @@ function payWeekOf(dateStr){
   const anchor=new Date(ppAnchor+'T00:00:00');
   const d=new Date(dateStr+'T00:00:00');
   const diff=Math.round((d-anchor)/86400000);
-  const inPeriod=((diff%14)+14)%14; // 0–13
+  const inPeriod=((diff%14)+14)%14;
   return inPeriod<7?1:2;
 }
 
 // ─── Resolve a base schedule entry to a concrete date within a given week ───
-// weekDates: array of 7 Date objects (Sun–Sat)
 function baseToDate(base, weekDates){
+  if(!weekDates || !weekDates[0]) return null;
   const sundayStr=toYMD(weekDates[0]);
+  if(!sundayStr) return null;
   if(payWeekOf(sundayStr)!==base.week) return null;
-  return toYMD(weekDates[base.day]);
+  const dayDate = weekDates[base.day];
+  if(!dayDate) return null;
+  return toYMD(dayDate);
 }
 
 // ═══════════════════════════════════════
@@ -1298,11 +1314,13 @@ function renderSettings(){
 // ═══════════════════════════════════════
 //  UTILS
 // ═══════════════════════════════════════
-function showToast(msg,isErr=false){
+function showToast(msg,isErr=false,duration=2800){
   const t=document.getElementById('toast');
   t.textContent=msg; t.className=isErr?'err':'';
+  t.onclick=null;
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show','err'),2800);
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>t.classList.remove('show','err'),duration);
 }
 function confirmClearData(){
   if(confirm('This will sign you out. Your data stays safe in the cloud.\n\nContinue?')){
