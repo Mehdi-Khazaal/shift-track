@@ -114,19 +114,6 @@ select option{background:var(--bg3);}
 .calc-row{display:flex;justify-content:space-between;margin-bottom:3px;}
 .calc-row.total{border-top:1px solid var(--border);padding-top:7px;margin-top:4px;margin-bottom:0;}
 .ot-note{font-size:11px;color:var(--orange);font-family:var(--mono);margin-top:2px;}
-/* ── Login screen ── */
-#login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;animation:fadeIn .3s ease;}
-#login-screen.hidden{display:none;}
-.login-logo{font-size:36px;font-weight:800;letter-spacing:-2px;margin-bottom:8px;}
-.login-logo span{color:var(--accent);}
-.login-sub{font-size:13px;font-family:var(--mono);color:var(--muted);margin-bottom:48px;letter-spacing:.5px;}
-.login-form{width:100%;max-width:360px;}
-.login-error{background:var(--red-bg);border:1px solid rgba(255,95,109,.4);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;font-family:var(--mono);color:var(--red);margin-bottom:14px;display:none;line-height:1.5;}
-.login-footer{font-size:11px;font-family:var(--mono);color:var(--dim);margin-top:32px;text-align:center;line-height:1.8;}
-.user-chip{display:flex;align-items:center;gap:8px;}
-.user-name{font-size:12px;font-family:var(--mono);color:var(--muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.logout-btn{width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:14px;transition:all .15s;}
-.logout-btn:active{background:var(--red-bg);color:var(--red);border-color:var(--red);}
 /* ── Phase 2: Calendar ── */
 .view-tog{padding:5px 12px;font-size:11px;font-family:var(--mono);font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;letter-spacing:.5px;}
 .view-tog.active{background:var(--accent);color:#fff;}
@@ -181,9 +168,23 @@ select option{background:var(--bg3);}
 .toggle-wrap input:checked ~ .toggle-track{background:var(--accent);border-color:var(--accent);}
 .toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;}
 .toggle-wrap input:checked ~ .toggle-track .toggle-thumb{transform:translateX(18px);}
+/* Login screen */
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;animation:fadeIn .3s ease;}
+#login-screen.hidden{display:none;}
+.login-logo{font-size:36px;font-weight:800;letter-spacing:-2px;margin-bottom:8px;}
+.login-logo span{color:var(--accent);}
+.login-sub{font-size:13px;font-family:var(--mono);color:var(--muted);margin-bottom:48px;}
+.login-form{width:100%;max-width:360px;}
+.login-error{background:var(--red-bg);border:1px solid rgba(255,95,109,.4);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;font-family:var(--mono);color:var(--red);margin-bottom:14px;display:none;line-height:1.5;}
+.login-footer{font-size:11px;font-family:var(--mono);color:var(--dim);margin-top:28px;text-align:center;line-height:1.8;}
+.user-chip{display:flex;align-items:center;gap:6px;}
+.user-name{font-size:12px;font-family:var(--mono);color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.logout-btn{width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:13px;}
+.logout-btn:active{background:var(--red-bg);color:var(--red);}
 </style>
 </head>
 <body>
+
 <!-- LOGIN SCREEN -->
 <div id="login-screen">
   <div class="login-logo">Shift<span>Track</span></div>
@@ -199,9 +200,7 @@ select option{background:var(--bg3);}
       <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"/>
     </div>
     <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
-    <div class="login-footer">
-      Don't have an account?<br>Contact your administrator to get access.
-    </div>
+    <div class="login-footer">Don't have an account?<br>Contact your administrator to get access.</div>
   </div>
 </div>
 
@@ -540,90 +539,48 @@ select option{background:var(--bg3);}
 
 <script>
 // ═══════════════════════════════════════
-//  CONFIG
+//  CONFIG & AUTH
 // ═══════════════════════════════════════
 const API = 'https://shifttrack-api.onrender.com';
 
-// ═══════════════════════════════════════
-//  AUTH LAYER
-// ═══════════════════════════════════════
 function getToken(){ return localStorage.getItem('st_token'); }
-function getUser() {
-  try{ return JSON.parse(localStorage.getItem('st_user')||'null'); }catch(e){ return null; }
-}
-function setAuth(token, user){
-  localStorage.setItem('st_token', token);
-  localStorage.setItem('st_user', JSON.stringify(user));
-}
-function clearAuth(){
-  localStorage.removeItem('st_token');
-  localStorage.removeItem('st_user');
-}
+function getUser(){ try{ return JSON.parse(localStorage.getItem('st_user')||'null'); }catch(e){ return null; } }
+function setAuth(token,user){ localStorage.setItem('st_token',token); localStorage.setItem('st_user',JSON.stringify(user)); }
+function clearAuth(){ localStorage.removeItem('st_token'); localStorage.removeItem('st_user'); }
 
-// Central fetch wrapper — attaches token automatically
-async function apiFetch(path, options={}){
-  const token = getToken();
-  const res = await fetch(API+path, {
+async function apiFetch(path,options={}){
+  const token=getToken();
+  const res=await fetch(API+path,{
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: 'Bearer '+token } : {}),
-      ...(options.headers||{})
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(options.headers||{})},
+    body:options.body?JSON.stringify(options.body):undefined
   });
-  const data = await res.json();
+  const data=await res.json();
   if(res.status===401){ doLogout(); return null; }
   return data;
 }
 
-// ── Login ──
 async function doLogin(){
-  const email    = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-  const errEl    = document.getElementById('login-error');
-  const btn      = document.getElementById('login-btn');
-
-  if(!email||!password){
-    errEl.textContent='Please enter your email and password.';
-    errEl.style.display='block'; return;
-  }
-
-  btn.textContent='Signing in…'; btn.disabled=true;
-  errEl.style.display='none';
-
+  const email=document.getElementById('login-email').value.trim();
+  const password=document.getElementById('login-password').value;
+  const errEl=document.getElementById('login-error');
+  const btn=document.getElementById('login-btn');
+  if(!email||!password){ errEl.textContent='Please enter your email and password.'; errEl.style.display='block'; return; }
+  btn.textContent='Signing in…'; btn.disabled=true; errEl.style.display='none';
   try{
-    const data = await apiFetch('/api/auth/login',{
-      method:'POST', body:{email,password}
-    });
-    if(!data||!data.ok){
-      errEl.textContent = data?.error||'Invalid email or password.';
-      errEl.style.display='block';
-      btn.textContent='Sign in'; btn.disabled=false;
-      return;
-    }
-    setAuth(data.token, data.user);
+    const data=await apiFetch('/api/auth/login',{method:'POST',body:{email,password}});
+    if(!data?.ok){ errEl.textContent=data?.error||'Invalid email or password.'; errEl.style.display='block'; btn.textContent='Sign in'; btn.disabled=false; return; }
+    setAuth(data.token,data.user);
     enterApp(data.user);
-  } catch(e){
-    errEl.textContent='Could not connect to server. Try again.';
-    errEl.style.display='block';
-    btn.textContent='Sign in'; btn.disabled=false;
+  }catch(e){
+    errEl.textContent='Could not connect to server. Try again.'; errEl.style.display='block'; btn.textContent='Sign in'; btn.disabled=false;
   }
 }
 
-// Allow pressing Enter to submit login
-document.addEventListener('DOMContentLoaded',()=>{
-  ['login-email','login-password'].forEach(id=>{
-    document.getElementById(id)?.addEventListener('keydown',e=>{
-      if(e.key==='Enter') doLogin();
-    });
-  });
-});
-
-// ── Logout ──
 function doLogout(){
   if(!confirm('Sign out of ShiftTrack?')) return;
   clearAuth();
+  cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.loaded=false;
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
@@ -632,25 +589,20 @@ function doLogout(){
   document.getElementById('login-error').style.display='none';
 }
 
-// ── Enter app after login ──
 function enterApp(user){
   document.getElementById('login-screen').classList.add('hidden');
-  // Show user name in dashboard
-  const nameEl = document.getElementById('dash-user-name');
-  if(nameEl) nameEl.textContent = user.email.split('@')[0];
-  renderDash();
-  renderSettings();
+  const nameEl=document.getElementById('dash-user-name');
+  if(nameEl) nameEl.textContent=user.email.split('@')[0];
+  loadAllData();
 }
 
-// ── Boot: check if already logged in ──
-(function boot(){
-  const token = getToken();
-  const user  = getUser();
-  if(token && user){
-    enterApp(user);
-  }
-  // Otherwise login screen stays visible (it's shown by default)
-})();
+document.addEventListener('DOMContentLoaded',()=>{
+  ['login-email','login-password'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+  });
+  const token=getToken(), user=getUser();
+  if(token&&user) enterApp(user);
+});
 
 // ═══════════════════════════════════════
 //  CONSTANTS
@@ -660,25 +612,82 @@ const MAX_DAY_HOURS = 18;
 const DEFAULT_ANCHOR = '2026-03-22';
 
 // ═══════════════════════════════════════
-//  DATA LAYER
+//  DATA LAYER — API-backed with local cache
+//  All data lives in Neon via the Render API.
+//  We keep an in-memory cache so renders are instant.
 // ═══════════════════════════════════════
-const DB = {
-  get(k){ try{ return JSON.parse(localStorage.getItem('st_'+k)||'null'); }catch(e){ return null; } },
-  set(k,v){ localStorage.setItem('st_'+k,JSON.stringify(v)); }
-};
-function getLocations(){ return DB.get('locations')||[]; }
-function getShifts()   { return DB.get('shifts')   ||[]; }
-function getBase()     { return DB.get('base')     ||[]; }
+const cache = { locations:[], shifts:[], base:[], settings:null, loaded:false };
+
+function getLocations(){ return cache.locations; }
+function getShifts()   { return cache.shifts;    }
+function getBase()     { return cache.base;      }
 function getSettings() {
-  const s=DB.get('settings')||{};
-  return { otThreshold: s.otThreshold||40, ppAnchor: s.ppAnchor||DEFAULT_ANCHOR };
+  const s = cache.settings || {};
+  return { otThreshold: s.ot_threshold||40, ppAnchor: s.pp_anchor||DEFAULT_ANCHOR };
 }
-function saveSettings(){
-  DB.set('settings',{
-    otThreshold: parseFloat(document.getElementById('ot-threshold').value)||40,
-    ppAnchor: document.getElementById('pp-anchor').value||DEFAULT_ANCHOR
+
+// Load all data from API into cache, then re-render
+async function loadAllData(){
+  try {
+    const [locsRes, shiftsRes, baseRes, settingsRes] = await Promise.all([
+      apiFetch('/api/locations'),
+      apiFetch('/api/shifts'),
+      apiFetch('/api/schedule'),
+      apiFetch('/api/settings'),
+    ]);
+    if(locsRes?.ok)     cache.locations = locsRes.locations.map(normalizeLocation);
+    if(shiftsRes?.ok)   cache.shifts    = shiftsRes.shifts.map(normalizeShift);
+    if(baseRes?.ok)     cache.base      = baseRes.schedule.map(normalizeBase);
+    if(settingsRes?.ok) cache.settings  = settingsRes.settings;
+    cache.loaded = true;
+    renderDash();
+    renderAllShifts();
+    renderSchedule();
+    renderSettings();
+    renderCalendar();
+  } catch(e) {
+    console.error('Failed to load data:', e);
+    showToast('Could not load data. Check connection.',true);
+  }
+}
+
+// Normalize API response fields to match what the app expects
+function normalizeLocation(l){
+  return { id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate) };
+}
+function normalizeShift(s){
+  return {
+    id:          s.id,
+    locationId:  s.location_id,
+    date:        s.date.slice(0,10),
+    start:       s.start_time.slice(0,5),
+    end:         s.end_time.slice(0,5),
+    notes:       s.notes||'',
+    isBase:      false,
+  };
+}
+function normalizeBase(b){
+  return {
+    id:         b.id,
+    locationId: b.location_id,
+    week:       b.week,
+    day:        b.day_of_week,
+    start:      b.start_time.slice(0,5),
+    end:        b.end_time.slice(0,5),
+  };
+}
+
+async function saveSettings(){
+  const otThreshold = parseFloat(document.getElementById('ot-threshold').value)||40;
+  const ppAnchor    = document.getElementById('pp-anchor').value||DEFAULT_ANCHOR;
+  const res = await apiFetch('/api/settings', {
+    method:'PUT', body:{ ot_threshold: otThreshold, pp_anchor: ppAnchor }
   });
-  renderDash();
+  if(res?.ok){
+    cache.settings = res.settings;
+    renderDash();
+    showToast('Settings saved');
+  }
 }
 
 // ═══════════════════════════════════════
@@ -895,20 +904,28 @@ function pickColor(el){
   document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
   el.classList.add('selected');
 }
-function saveLocation(){
+async function saveLocation(){
   const name=document.getElementById('loc-name').value.trim();
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.color-swatch.selected')?.dataset.c||'#5b8fff';
   if(!name){ showToast('Enter a location name',true); return; }
   if(isNaN(rate)||rate<0){ showToast('Enter a valid pay rate',true); return; }
-  const locs=getLocations(), editId=document.getElementById('edit-loc-id').value;
-  if(editId){ const i=locs.findIndex(l=>l.id===editId); if(i>=0) locs[i]={...locs[i],name,rate,color}; }
-  else locs.push({id:uid(),name,rate,color});
-  DB.set('locations',locs);
+  const editId=document.getElementById('edit-loc-id').value;
+  const res = await apiFetch(
+    editId ? `/api/locations/${editId}` : '/api/locations',
+    { method: editId?'PUT':'POST', body:{name,rate,color} }
+  );
+  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
+  // Update cache
+  if(editId){ const i=cache.locations.findIndex(l=>l.id===editId); if(i>=0) cache.locations[i]=normalizeLocation(res.location); }
+  else cache.locations.push(normalizeLocation(res.location));
   closeSheet('sheet-location'); renderSettings(); showToast('Location saved');
 }
-function deleteLocation(){
-  DB.set('locations',getLocations().filter(l=>l.id!==document.getElementById('edit-loc-id').value));
+async function deleteLocation(){
+  const id=document.getElementById('edit-loc-id').value;
+  const res=await apiFetch(`/api/locations/${id}`,{method:'DELETE'});
+  if(!res?.ok){ showToast('Failed to delete',true); return; }
+  cache.locations=cache.locations.filter(l=>l.id!==id);
   closeSheet('sheet-location'); renderSettings(); showToast('Location removed');
 }
 
@@ -988,7 +1005,7 @@ function updateCalc(){
   document.getElementById('calc-pay').textContent=formatPay(pay)+(otHrs>0?' (incl. OT)':'');
 }
 
-function saveShift(){
+async function saveShift(){
   const locationId=document.getElementById('shift-location').value;
   const date=document.getElementById('shift-date').value;
   const start=document.getElementById('shift-start').value;
@@ -998,16 +1015,27 @@ function saveShift(){
   if(!locationId||!date||!start||!end){ showToast('Fill in all required fields',true); return; }
   const err=checkConflicts({date,start,end,locationId},editId||null);
   if(err){ showToast(err,true); return; }
-  const shifts=getShifts();
-  if(editId){ const i=shifts.findIndex(s=>s.id===editId); if(i>=0) shifts[i]={...shifts[i],locationId,date,start,end,notes}; }
-  else shifts.push({id:uid(),locationId,date,start,end,notes,createdAt:Date.now()});
-  DB.set('shifts',shifts);
-  closeSheet('sheet-shift'); renderDash(); renderAllShifts(); showToast('Shift saved ✓');
+  const res=await apiFetch(
+    editId?`/api/shifts/${editId}`:'/api/shifts',
+    { method:editId?'PUT':'POST', body:{location_id:locationId,date,start_time:start,end_time:end,notes} }
+  );
+  if(!res?.ok){ showToast(res?.error||'Failed to save shift',true); return; }
+  const norm=normalizeShift(res.shift);
+  if(editId){ const i=cache.shifts.findIndex(s=>s.id===editId); if(i>=0) cache.shifts[i]=norm; }
+  else cache.shifts.push(norm);
+  closeSheet('sheet-shift'); renderDash(); renderAllShifts();
+  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
+  showToast('Shift saved ✓');
 }
 
-function deleteShift(){
-  DB.set('shifts',getShifts().filter(s=>s.id!==document.getElementById('edit-shift-id').value));
-  closeSheet('sheet-shift'); renderDash(); renderAllShifts(); showToast('Shift deleted');
+async function deleteShift(){
+  const id=document.getElementById('edit-shift-id').value;
+  const res=await apiFetch(`/api/shifts/${id}`,{method:'DELETE'});
+  if(!res?.ok){ showToast('Failed to delete',true); return; }
+  cache.shifts=cache.shifts.filter(s=>s.id!==id);
+  closeSheet('sheet-shift'); renderDash(); renderAllShifts();
+  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
+  showToast('Shift deleted');
 }
 
 // ═══════════════════════════════════════
@@ -1035,21 +1063,30 @@ function openAddBase(id=null){
   openSheet('sheet-base');
 }
 
-function saveBase(){
+async function saveBase(){
   const week=parseInt(document.getElementById('base-week').value);
   const day=parseInt(document.getElementById('base-day').value);
   const locationId=document.getElementById('base-location').value;
   const start=document.getElementById('base-start').value;
   const end=document.getElementById('base-end').value;
   if(!locationId||!start||!end){ showToast('Fill in all fields',true); return; }
-  const base=getBase(), editId=document.getElementById('edit-base-id').value;
-  if(editId){ const i=base.findIndex(b=>b.id===editId); if(i>=0) base[i]={...base[i],week,day,locationId,start,end}; }
-  else base.push({id:uid(),week,day,locationId,start,end});
-  DB.set('base',base); closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift saved');
+  const editId=document.getElementById('edit-base-id').value;
+  const res=await apiFetch(
+    editId?`/api/schedule/${editId}`:'/api/schedule',
+    { method:editId?'PUT':'POST', body:{week,day_of_week:day,location_id:locationId,start_time:start,end_time:end} }
+  );
+  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
+  const norm=normalizeBase(res.entry);
+  if(editId){ const i=cache.base.findIndex(b=>b.id===editId); if(i>=0) cache.base[i]=norm; }
+  else cache.base.push(norm);
+  closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift saved');
 }
 
-function deleteBase(){
-  DB.set('base',getBase().filter(b=>b.id!==document.getElementById('edit-base-id').value));
+async function deleteBase(){
+  const id=document.getElementById('edit-base-id').value;
+  const res=await apiFetch(`/api/schedule/${id}`,{method:'DELETE'});
+  if(!res?.ok){ showToast('Failed to delete',true); return; }
+  cache.base=cache.base.filter(b=>b.id!==id);
   closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift removed');
 }
 
@@ -1268,10 +1305,8 @@ function showToast(msg,isErr=false){
   setTimeout(()=>t.classList.remove('show','err'),2800);
 }
 function confirmClearData(){
-  if(confirm('Delete ALL shifts, locations, and settings? This cannot be undone.')){
-    ['locations','shifts','base','settings'].forEach(k=>localStorage.removeItem('st_'+k));
-    weekOffset=0; renderDash(); renderAllShifts(); renderSchedule(); renderSettings();
-    showToast('All data cleared');
+  if(confirm('This will sign you out. Your data stays safe in the cloud.\n\nContinue?')){
+    doLogout();
   }
 }
 
@@ -1515,7 +1550,7 @@ function renderHistory(){
 // ═══════════════════════════════════════
 function toggleNotifications(){
   const on = document.getElementById('notif-toggle').checked;
-  if(!on){ DB.set('notif',{enabled:false}); updateNotifStatus(); return; }
+  if(!on){ localStorage.removeItem('st_notif'); updateNotifStatus(); return; }
 
   if(!('Notification' in window)){
     showToast('Notifications not supported on this browser',true);
@@ -1524,13 +1559,13 @@ function toggleNotifications(){
   }
   Notification.requestPermission().then(perm=>{
     if(perm==='granted'){
-      DB.set('notif',{enabled:true});
+      localStorage.setItem('st_notif', JSON.stringify({enabled:true}));
       scheduleNotifications();
       updateNotifStatus();
       showToast('Shift reminders enabled ✓');
     } else {
       document.getElementById('notif-toggle').checked=false;
-      DB.set('notif',{enabled:false});
+      localStorage.setItem('st_notif', JSON.stringify({enabled:false}));
       updateNotifStatus();
       showToast('Permission denied — enable in browser settings',true);
     }
@@ -1539,93 +1574,17 @@ function toggleNotifications(){
 
 function updateNotifStatus(){
   const s = document.getElementById('notif-status');
-  const saved = DB.get('notif');
-  const enabled = saved?.enabled && Notification.permission==='granted';
-  document.getElementById('notif-toggle').checked = !!enabled;
-  if(enabled){
-    s.textContent='✓ Active — you\'ll be reminded 1 hour before each shift.';
-    s.style.color='var(--green)';
-  } else if(Notification.permission==='denied'){
-    s.textContent='Blocked by browser. Enable in your device settings.';
-    s.style.color='var(--red)';
-  } else {
-    s.textContent='Off';
-    s.style.color='var(--dim)';
-  }
+  if(!s) return;
+  s.textContent='Notifications require backend push support (coming soon)';
+  s.style.color='var(--dim)';
+  document.getElementById('notif-toggle').checked=false;
 }
-
-function scheduleNotifications(){
-  if(!('Notification' in window)||Notification.permission!=='granted') return;
-  const saved=DB.get('notif'); if(!saved?.enabled) return;
-
-  const now=new Date();
-  const in7days=new Date(now); in7days.setDate(now.getDate()+7);
-
-  // Collect all upcoming shifts in next 7 days
-  const upcoming=[];
-  const wkD0=getWeekDates(0), wkD1=getWeekDates(1);
-
-  [wkD0,wkD1].forEach(wkDates=>{
-    getShifts().forEach(s=>{
-      if(wkDates.map(toYMD).includes(s.date)) upcoming.push(s);
-    });
-    getBase().forEach(b=>{
-      const d=baseToDate(b,wkDates);
-      if(d) upcoming.push({...b,date:d,isBase:true});
-    });
-  });
-
-  upcoming.forEach(s=>{
-    const [h,m]=s.start.split(':').map(Number);
-    const shiftTime=new Date(s.date+'T'+s.start+':00');
-    const notifTime=new Date(shiftTime.getTime()-60*60*1000); // 1hr before
-    if(notifTime>now && notifTime<in7days){
-      const delay=notifTime.getTime()-now.getTime();
-      const loc=getLocById(s.locationId);
-      setTimeout(()=>{
-        if(Notification.permission==='granted'){
-          new Notification('ShiftTrack — Shift in 1 hour',{
-            body:`${loc?.name||'Shift'} starts at ${fmtTime(s.start)}`,
-            icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="%230d0f14"/><text x="16" y="22" text-anchor="middle" font-size="18" fill="%235b8fff">S</text></svg>'
-          });
-        }
-      }, delay);
-    }
-  });
-}
-
-// ═══════════════════════════════════════
-//  UPDATED renderSettings (adds notif + base schedule)
-// ═══════════════════════════════════════
-const _origRenderSettings = renderSettings;
-renderSettings = function(){
-  _origRenderSettings();
-  updateNotifStatus();
-  renderSchedule();
-};
-
-// Re-render calendar after saving a shift
-const _origSaveShift = saveShift;
-saveShift = function(){
-  _origSaveShift();
-  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
-};
-const _origDeleteShift = deleteShift;
-deleteShift = function(){
-  _origDeleteShift();
-  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
-};
-
-// ═══════════════════════════════════════
-//  INIT PHASE 2
-// ═══════════════════════════════════════
-scheduleNotifications();
 
 // ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
-renderDash();
-renderSettings();
+// Data is loaded in enterApp() → loadAllData() after login.
+// Nothing to init here — the login screen handles the boot sequence.
 </script>
 </body>
 </html>
