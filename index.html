@@ -623,7 +623,11 @@ function getShifts()   { return cache.shifts;    }
 function getBase()     { return cache.base;      }
 function getSettings() {
   const s = cache.settings || {};
-  return { otThreshold: s.ot_threshold||40, ppAnchor: s.pp_anchor||DEFAULT_ANCHOR };
+  // ppAnchor may come back as full ISO timestamp "2026-03-22T00:00:00.000Z" — strip to date only
+  const rawAnchor = s.pp_anchor || DEFAULT_ANCHOR;
+  const ppAnchor = rawAnchor.slice(0,10);
+  const otThreshold = parseFloat(s.ot_threshold) || 40;
+  return { otThreshold, ppAnchor };
 }
 
 // Load all data from API into cache, then re-render
