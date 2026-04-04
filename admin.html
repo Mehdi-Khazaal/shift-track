@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ShiftTrack — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0a0c12;--bg2:#11141c;--bg3:#181c28;--bg4:#1f2436;
+  --border:#252a3d;--border2:#2e3550;
+  --text:#e8eaf2;--muted:#7880a0;--dim:#3d4460;
+  --accent:#5b8fff;--green:#2ecc8a;--orange:#f5a623;--red:#ff5f6d;
+  --red-bg:#1a0a0e;--green-bg:#071a12;
+  --mono:'DM Mono',monospace;--sans:'Syne',sans-serif;
+  --radius:12px;--radius-sm:7px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;font-size:16px;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+
+/* ── Login ── */
+#login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;}
+#login-screen.hidden{display:none;}
+.login-badge{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;border:1px solid rgba(91,143,255,.3);padding:4px 12px;border-radius:99px;margin-bottom:20px;}
+.login-logo{font-size:32px;font-weight:800;letter-spacing:-1.5px;margin-bottom:4px;}
+.login-logo span{color:var(--accent);}
+.login-sub{font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:40px;}
+.login-form{width:100%;max-width:360px;}
+.login-err{background:var(--red-bg);border:1px solid rgba(255,95,109,.3);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;font-family:var(--mono);color:var(--red);margin-bottom:14px;display:none;}
+.form-group{margin-bottom:14px;}
+.form-group label{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.form-group input,.form-group select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:14px;padding:11px 14px;appearance:none;outline:none;transition:border-color .15s;}
+.form-group input:focus,.form-group select:focus{border-color:var(--accent);}
+select option{background:var(--bg3);}
+
+/* ── Layout ── */
+#app{display:none;min-height:100vh;flex-direction:column;}
+#app.visible{display:flex;}
+
+/* ── Top bar ── */
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:50;}
+.top-logo{font-size:18px;font-weight:800;letter-spacing:-1px;}
+.top-logo span{color:var(--accent);}
+.top-logo small{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-left:10px;vertical-align:middle;}
+.top-right{display:flex;align-items:center;gap:12px;}
+.admin-badge{font-size:10px;font-family:var(--mono);color:var(--accent);background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);padding:3px 10px;border-radius:99px;letter-spacing:.5px;}
+.top-user{font-size:12px;font-family:var(--mono);color:var(--muted);}
+.logout-btn{font-size:12px;font-family:var(--mono);color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;cursor:pointer;transition:all .15s;}
+.logout-btn:hover{color:var(--red);border-color:var(--red);}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:2px;padding:16px 28px 0;border-bottom:1px solid var(--border);background:var(--bg2);}
+.tab{font-size:13px;font-family:var(--mono);color:var(--muted);padding:8px 18px;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;letter-spacing:.3px;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.active){color:var(--text);}
+
+/* ── Content ── */
+.content{flex:1;padding:28px;max-width:1100px;width:100%;margin:0 auto;}
+.panel{display:none;animation:fadeIn .2s ease;}
+.panel.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ── Section header ── */
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.sec-hd h2{font-size:20px;font-weight:700;letter-spacing:-.5px;}
+.sec-hd p{font-size:12px;font-family:var(--mono);color:var(--muted);margin-top:3px;}
+
+/* ── Cards / grid ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px;}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;}
+.stat-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;}
+.stat-box .val{font-size:28px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;line-height:1;}
+.stat-box .lbl{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:4px;}
+.stat-box.accent{border-color:var(--accent);}.stat-box.accent .val{color:var(--accent);}
+.stat-box.green{border-color:var(--green);}.stat-box.green .val{color:var(--green);}
+.stat-box.orange{border-color:var(--orange);}.stat-box.orange .val{color:var(--orange);}
+
+/* ── Table ── */
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{background:var(--bg3);padding:10px 14px;text-align:left;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:var(--bg3);}
+tbody td{padding:11px 14px;color:var(--text);font-size:13px;}
+tbody td.mono{font-family:var(--mono);}
+tbody td.muted{color:var(--muted);font-family:var(--mono);}
+
+/* ── Badges ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;font-family:var(--mono);letter-spacing:.3px;}
+.badge.admin{background:rgba(91,143,255,.15);color:var(--accent);}
+.badge.user{background:var(--bg3);color:var(--muted);}
+.badge.ot{background:rgba(245,166,35,.12);color:var(--orange);}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:var(--radius-sm);font-family:var(--sans);font-size:13px;font-weight:700;border:none;cursor:pointer;transition:all .15s;}
+.btn:active{transform:scale(.98);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border);}
+.btn-danger{background:var(--red-bg);color:var(--red);border:1px solid rgba(255,95,109,.3);}
+.btn-sm{padding:6px 12px;font-size:12px;}
+
+/* ── User expand ── */
+.user-row-detail{display:none;background:var(--bg3);border-top:1px solid var(--border);}
+.user-row-detail.open{display:table-row;}
+.user-detail-inner{padding:16px 20px;}
+.pay-period-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px;}
+.pp-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;}
+.pp-card .period{font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px;}
+.pp-card .amount{font-size:20px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;}
+.pp-card .meta{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px;}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px);}
+.modal-overlay.open{display:flex;animation:fadeIn .15s ease;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;}
+.modal h3{font-size:18px;font-weight:700;margin-bottom:20px;}
+.modal-footer{display:flex;gap:10px;margin-top:20px;justify-content:flex-end;}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg4);border:1px solid var(--border2);border-radius:99px;padding:10px 20px;font-size:12px;font-family:var(--mono);opacity:0;z-index:999;transition:all .25s;pointer-events:none;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.err{border-color:var(--red);color:var(--red);}
+
+/* ── Empty ── */
+.empty{text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:13px;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-badge">Admin Access</div>
+  <div class="login-logo">Shift<span>Track</span></div>
+  <div class="login-sub">Passavant Memorial Homes · Admin Panel</div>
+  <div class="login-form">
+    <div class="login-err" id="login-err"></div>
+    <div class="form-group"><label>Email</label><input type="email" id="l-email" placeholder="admin@email.com"/></div>
+    <div class="form-group"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"/></div>
+    <button class="btn btn-primary" style="width:100%;padding:13px" id="l-btn" onclick="doLogin()">Sign in as Admin</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="top-bar">
+    <div>
+      <div class="top-logo">Shift<span>Track</span><small>Admin</small></div>
+    </div>
+    <div class="top-right">
+      <span class="admin-badge">ADMIN</span>
+      <span class="top-user" id="top-user"></span>
+      <button class="logout-btn" onclick="doLogout()">Sign out</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
+    <div class="tab" onclick="switchTab('users',this)">Users</div>
+    <div class="tab" onclick="switchTab('locations',this)">Locations</div>
+    <div class="tab" onclick="switchTab('create',this)">Create Account</div>
+  </div>
+
+  <div class="content">
+
+    <!-- OVERVIEW -->
+    <div class="panel active" id="panel-overview">
+      <div class="sec-hd">
+        <div><h2>Overview</h2><p>Current pay period summary across all employees</p></div>
+        <div id="pp-label" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div class="stat-row" id="overview-stats">
+        <div class="stat-box accent"><div class="val" id="ov-users">—</div><div class="lbl">employees</div></div>
+        <div class="stat-box green"><div class="val" id="ov-pay">—</div><div class="lbl">total payroll</div></div>
+        <div class="stat-box"><div class="val" id="ov-hrs">—</div><div class="lbl">total hours</div></div>
+        <div class="stat-box orange"><div class="val" id="ov-ot">—</div><div class="lbl">overtime hours</div></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>This period hrs</th><th>OT hrs</th><th>Est. pay</th><th>Shifts</th></tr></thead>
+          <tbody id="overview-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div class="panel" id="panel-users">
+      <div class="sec-hd">
+        <div><h2>Users</h2><p>All employee accounts and their full history</p></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Name / Email</th><th>Role</th><th>Joined</th><th>All-time hrs</th><th>All-time pay</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- LOCATIONS -->
+    <div class="panel" id="panel-locations">
+      <div class="sec-hd">
+        <div><h2>Locations</h2><p>Houses and pay rates — admin controlled</p></div>
+        <button class="btn btn-primary" onclick="openLocModal()">＋ Add Location</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Color</th><th>Name</th><th>Pay rate</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="locs-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CREATE ACCOUNT -->
+    <div class="panel" id="panel-create">
+      <div class="sec-hd"><div><h2>Create Account</h2><p>Add a new employee to ShiftTrack</p></div></div>
+      <div class="card" style="max-width:480px">
+        <div class="form-group"><label>Full name</label><input type="text" id="new-name" placeholder="John Smith"/></div>
+        <div class="form-group"><label>Email</label><input type="email" id="new-email" placeholder="john@email.com"/></div>
+        <div class="form-group"><label>Password</label><input type="password" id="new-pass" placeholder="Temporary password"/></div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Role</label>
+          <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px">
+          <button class="btn btn-primary" onclick="createAccount()">Create Account</button>
+          <button class="btn btn-ghost" onclick="clearCreateForm()">Clear</button>
+        </div>
+        <div id="create-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- LOCATION MODAL -->
+<div class="modal-overlay" id="loc-modal">
+  <div class="modal">
+    <h3 id="loc-modal-title">Add Location</h3>
+    <input type="hidden" id="loc-edit-id"/>
+    <div class="form-group"><label>Name</label><input type="text" id="loc-name" placeholder="Oakland House"/></div>
+    <div class="form-group"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
+    <div class="form-group">
+      <label>Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="loc-colors">
+        <div class="csw selected" style="background:#5b8fff" data-c="#5b8fff" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#2ecc8a" data-c="#2ecc8a" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#f5a623" data-c="#f5a623" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#ff5f6d" data-c="#ff5f6d" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#c77dff" data-c="#c77dff" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#38bdf8" data-c="#38bdf8" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#fb923c" data-c="#fb923c" onclick="pickColor(this)"></div>
+        <div class="csw" style="background:#f472b6" data-c="#f472b6" onclick="pickColor(this)"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeLocModal()">Cancel</button>
+      <div id="loc-delete-btn" style="display:none"><button class="btn btn-danger btn-sm" onclick="deleteLoc()">Delete</button></div>
+      <button class="btn btn-primary" onclick="saveLoc()">Save</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.csw{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .1s;flex-shrink:0;}
+.csw.selected{border-color:var(--text);}
+</style>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════
+//  CONFIG
+// ══════════════════════════════
+const API = 'https://shifttrack-api.onrender.com';
+const PP_ANCHOR = '2026-03-22';
+const OT_THRESH = 40;
+
+// ══════════════════════════════
+//  AUTH
+// ══════════════════════════════
+function getToken(){ return localStorage.getItem('st_admin_token'); }
+function getUser(){ try{ return JSON.parse(localStorage.getItem('st_admin_user')||'null'); }catch(e){ return null; } }
+function setAuth(t,u){ localStorage.setItem('st_admin_token',t); localStorage.setItem('st_admin_user',JSON.stringify(u)); }
+function clearAuth(){ localStorage.removeItem('st_admin_token'); localStorage.removeItem('st_admin_user'); }
+
+async function apiFetch(path,opts={}){
+  const token=getToken();
+  const res=await fetch(API+path,{
+    ...opts,
+    headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(opts.headers||{})},
+    body:opts.body?JSON.stringify(opts.body):undefined
+  });
+  const data=await res.json();
+  if(res.status===401||res.status===403){ doLogout(); return null; }
+  return data;
+}
+
+async function doLogin(){
+  const email=document.getElementById('l-email').value.trim();
+  const pass=document.getElementById('l-pass').value;
+  const errEl=document.getElementById('login-err');
+  const btn=document.getElementById('l-btn');
+  if(!email||!pass){ errEl.textContent='Enter email and password'; errEl.style.display='block'; return; }
+  btn.textContent='Signing in…'; btn.disabled=true; errEl.style.display='none';
+  try{
+    const data=await apiFetch('/api/auth/login',{method:'POST',body:{email,pass:undefined,password:pass}});
+    if(!data?.ok){ errEl.textContent=data?.error||'Invalid credentials'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false; return; }
+    if(data.user.role!=='admin'){ errEl.textContent='This account does not have admin access.'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false; return; }
+    setAuth(data.token,data.user);
+    enterApp(data.user);
+  }catch(e){
+    errEl.textContent='Could not connect. Try again.'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false;
+  }
+}
+
+document.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+
+function doLogout(){
+  clearAuth();
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('l-btn').textContent='Sign in as Admin';
+  document.getElementById('l-btn').disabled=false;
+}
+
+function enterApp(user){
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('top-user').textContent=user.email;
+  loadAll();
+}
+
+// Boot
+(function(){
+  const t=getToken(),u=getUser();
+  if(t&&u&&u.role==='admin') enterApp(u);
+})();
+
+// ══════════════════════════════
+//  TABS
+// ══════════════════════════════
+function switchTab(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+// ══════════════════════════════
+//  DATA
+// ══════════════════════════════
+let allUsers=[], allShifts={}, allSchedules={}, allLocs=[];
+
+async function loadAll(){
+  showToast('Loading data…');
+  try{
+    const [usersRes,locsRes]=await Promise.all([
+      apiFetch('/api/admin/users'),
+      apiFetch('/api/locations')
+    ]);
+    if(usersRes?.ok) allUsers=usersRes.users;
+    if(locsRes?.ok)  allLocs=locsRes.locations;
+
+    // Load shifts + schedule for every user
+    await Promise.all(allUsers.map(async u=>{
+      const [sr,scr]=await Promise.all([
+        apiFetch(`/api/admin/users/${u.id}/shifts`),
+        apiFetch(`/api/admin/users/${u.id}/schedule`)
+      ]);
+      if(sr?.ok)  allShifts[u.id]   = sr.shifts.map(normalizeShift);
+      if(scr?.ok) allSchedules[u.id]= scr.schedule.map(normalizeBase);
+    }));
+
+    renderOverview();
+    renderUsers();
+    renderLocs();
+    showToast('Ready ✓');
+  }catch(e){
+    showToast('Failed to load data',true);
+  }
+}
+
+// ── Normalize ──
+function normalizeShift(s){
+  return { id:s.id, locationId:s.location_id, date:s.date.slice(0,10),
+    start:s.start_time.slice(0,5), end:s.end_time.slice(0,5), notes:s.notes||'',
+    location_name:s.location_name, rate:parseFloat(s.rate) };
+}
+function normalizeBase(b){
+  return { id:b.id, locationId:b.location_id, week:b.week, day:b.day_of_week,
+    start:b.start_time.slice(0,5), end:b.end_time.slice(0,5),
+    location_name:b.location_name, rate:parseFloat(b.rate) };
+}
+
+// ── Helpers ──
+function shiftHours(start,end){
+  const [sh,sm]=start.split(':').map(Number);
+  const [eh,em]=end.split(':').map(Number);
+  let mins=(eh*60+em)-(sh*60+sm);
+  if(mins<=0) mins+=1440;
+  return Math.round(mins/6)/10;
+}
+function formatPay(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+function toYMD(d){ if(!d||typeof d.toISOString!=='function') return null; return d.toISOString().slice(0,10); }
+function fmt(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function fmtShort(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+function getPayPeriods(){
+  // Returns array of {start,end,w1ymds,w2ymds} from anchor to today + 1 period
+  const anchor=new Date(PP_ANCHOR+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const diffDays=Math.round((today-anchor)/86400000);
+  const currentN=diffDays<0?Math.ceil(diffDays/14):Math.floor(diffDays/14);
+  const periods=[];
+  for(let n=0;n<=currentN;n++){
+    const start=new Date(anchor); start.setDate(anchor.getDate()+n*14);
+    const end=new Date(start); end.setDate(start.getDate()+13);
+    const ymds=[];
+    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ymds.push(toYMD(new Date(d)));
+    periods.push({start,end,ymds,w1:ymds.slice(0,7),w2:ymds.slice(7,14)});
+  }
+  return periods.reverse(); // newest first
+}
+
+function payWeekOf(dateStr){
+  const anchor=new Date(PP_ANCHOR+'T00:00:00');
+  const d=new Date(dateStr+'T00:00:00');
+  const diff=Math.round((d-anchor)/86400000);
+  const inPeriod=((diff%14)+14)%14;
+  return inPeriod<7?1:2;
+}
+
+function baseToDate(base,weekDates){
+  if(!weekDates||!weekDates[0]) return null;
+  const sundayStr=toYMD(weekDates[0]); if(!sundayStr) return null;
+  if(payWeekOf(sundayStr)!==base.week) return null;
+  const dd=weekDates[base.day]; if(!dd) return null;
+  return toYMD(dd);
+}
+
+function computePayForShifts(shifts,schedules,ymds){
+  // Combine logged + base shifts for a given set of dates (two weeks = two separate OT windows)
+  function weekShifts(wkYMDs){
+    const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
+    const logged=shifts.filter(s=>wkYMDs.includes(s.date));
+    const base=schedules
+      .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
+      .filter(b=>b.date&&wkYMDs.includes(b.date));
+    const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+    let regRun=0,pay=0,hrs=0,ot=0;
+    for(const s of all){
+      const h=shiftHours(s.start,s.end);
+      const rate=s.rate||0;
+      const reg=Math.max(0,Math.min(h,OT_THRESH-regRun));
+      const otH=h-reg;
+      pay+=reg*rate+otH*rate*1.5;
+      regRun+=reg; hrs+=h; ot+=otH;
+    }
+    return {pay,hrs,ot,count:all.length};
+  }
+  const w1=ymds.slice(0,7),w2=ymds.slice(7,14);
+  const r1=weekShifts(w1),r2=weekShifts(w2);
+  return {pay:r1.pay+r2.pay,hrs:r1.hrs+r2.hrs,ot:r1.ot+r2.ot,count:r1.count+r2.count};
+}
+
+// ══════════════════════════════
+//  OVERVIEW
+// ══════════════════════════════
+function renderOverview(){
+  const periods=getPayPeriods();
+  const current=periods[0];
+  document.getElementById('pp-label').textContent=`${fmtShort(current.start)} – ${fmtShort(current.end)}`;
+
+  let totPay=0,totHrs=0,totOt=0;
+  const rows=allUsers.map(u=>{
+    const shifts=allShifts[u.id]||[];
+    const sched=allSchedules[u.id]||[];
+    const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,current.ymds);
+    totPay+=pay; totHrs+=hrs; totOt+=ot;
+    return `<tr>
+      <td><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></td>
+      <td class="mono">${hrs.toFixed(1)} hrs</td>
+      <td class="mono" style="color:${ot>0?'var(--orange)':'var(--muted)'}">${ot.toFixed(1)} hrs</td>
+      <td class="mono" style="color:var(--green);font-weight:700">${formatPay(pay)}</td>
+      <td class="mono">${count}</td>
+    </tr>`;
+  });
+
+  document.getElementById('ov-users').textContent=allUsers.length;
+  document.getElementById('ov-pay').textContent=formatPay(totPay);
+  document.getElementById('ov-hrs').textContent=totHrs.toFixed(1);
+  document.getElementById('ov-ot').textContent=totOt.toFixed(1);
+  document.getElementById('overview-tbody').innerHTML=rows.join('')||'<tr><td colspan="5" class="empty">No employees yet</td></tr>';
+}
+
+// ══════════════════════════════
+//  USERS
+// ══════════════════════════════
+function renderUsers(){
+  const periods=getPayPeriods();
+  const rows=allUsers.map(u=>{
+    const shifts=allShifts[u.id]||[];
+    const sched=allSchedules[u.id]||[];
+    // All-time totals
+    let totPay=0,totHrs=0;
+    for(const p of periods){
+      const r=computePayForShifts(shifts,sched,p.ymds);
+      totPay+=r.pay; totHrs+=r.hrs;
+    }
+    const joined=new Date(u.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    return `<tr>
+      <td><div style="font-weight:600">${u.name||'—'}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${u.email}</div></td>
+      <td><span class="badge ${u.role}">${u.role}</span></td>
+      <td class="muted">${joined}</td>
+      <td class="mono">${totHrs.toFixed(1)} hrs</td>
+      <td class="mono" style="color:var(--green)">${formatPay(totPay)}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="toggleUserDetail('${u.id}')">History</button>
+          ${u.role==='user'?`<button class="btn btn-ghost btn-sm" onclick="promoteUser('${u.id}')">Make Admin</button>`:''}
+          <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+    <tr class="user-row-detail" id="detail-${u.id}">
+      <td colspan="6">
+        <div class="user-detail-inner">
+          <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:10px">Pay period history</div>
+          <div class="pay-period-list">
+            ${periods.map(p=>{
+              const r=computePayForShifts(shifts,sched,p.ymds);
+              return `<div class="pp-card">
+                <div class="period">${fmtShort(p.start)} – ${fmtShort(p.end)}</div>
+                <div class="amount" style="color:${r.pay>0?'var(--green)':'var(--muted)'}">${formatPay(r.pay)}</div>
+                <div class="meta">${r.hrs.toFixed(1)}h total${r.ot>0?' · '+r.ot.toFixed(1)+'h OT':''}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  });
+  document.getElementById('users-tbody').innerHTML=rows.join('')||'<tr><td colspan="6" class="empty">No users yet</td></tr>';
+}
+
+function toggleUserDetail(id){
+  const el=document.getElementById('detail-'+id);
+  if(el) el.classList.toggle('open');
+}
+
+async function promoteUser(id){
+  if(!confirm('Make this user an admin?')) return;
+  const res=await apiFetch(`/api/admin/users/${id}/role`,{method:'PATCH',body:{role:'admin'}});
+  if(res?.ok){ await loadAll(); showToast('User promoted to admin'); }
+  else showToast('Failed to update role',true);
+}
+
+async function deleteUser(id,email){
+  if(!confirm(`Delete account for ${email}?\nThis will remove all their shifts and data.`)) return;
+  const res=await apiFetch(`/api/admin/users/${id}`,{method:'DELETE'});
+  if(res?.ok){ await loadAll(); showToast('User deleted'); }
+  else showToast(res?.error||'Failed to delete',true);
+}
+
+// ══════════════════════════════
+//  LOCATIONS
+// ══════════════════════════════
+function renderLocs(){
+  const rows=allLocs.map(l=>`<tr>
+    <td><div style="width:16px;height:16px;border-radius:4px;background:${l.color}"></div></td>
+    <td style="font-weight:600">${l.name}</td>
+    <td class="mono" style="color:var(--green)">$${parseFloat(l.rate).toFixed(2)}/hr</td>
+    <td class="muted">${new Date(l.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+    <td><button class="btn btn-ghost btn-sm" onclick="openLocModal('${l.id}')">Edit</button></td>
+  </tr>`);
+  document.getElementById('locs-tbody').innerHTML=rows.join('')||'<tr><td colspan="5" class="empty">No locations yet</td></tr>';
+}
+
+function openLocModal(id=null){
+  document.getElementById('loc-edit-id').value=id||'';
+  document.getElementById('loc-modal-title').textContent=id?'Edit Location':'Add Location';
+  document.getElementById('loc-delete-btn').style.display=id?'block':'none';
+  document.querySelectorAll('.csw').forEach(s=>s.classList.remove('selected'));
+  document.querySelector('.csw').classList.add('selected');
+  document.getElementById('loc-name').value='';
+  document.getElementById('loc-rate').value='';
+  if(id){
+    const loc=allLocs.find(l=>l.id===id);
+    if(loc){
+      document.getElementById('loc-name').value=loc.name;
+      document.getElementById('loc-rate').value=parseFloat(loc.rate).toFixed(2);
+      document.querySelectorAll('.csw').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
+    }
+  }
+  document.getElementById('loc-modal').classList.add('open');
+}
+function closeLocModal(){ document.getElementById('loc-modal').classList.remove('open'); }
+function pickColor(el){ document.querySelectorAll('.csw').forEach(s=>s.classList.remove('selected')); el.classList.add('selected'); }
+
+async function saveLoc(){
+  const name=document.getElementById('loc-name').value.trim();
+  const rate=parseFloat(document.getElementById('loc-rate').value);
+  const color=document.querySelector('.csw.selected')?.dataset.c||'#5b8fff';
+  if(!name){ showToast('Enter a name',true); return; }
+  if(isNaN(rate)||rate<0){ showToast('Enter a valid rate',true); return; }
+  const editId=document.getElementById('loc-edit-id').value;
+  const res=await apiFetch(editId?`/api/locations/${editId}`:'/api/locations',
+    {method:editId?'PUT':'POST',body:{name,rate,color}});
+  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
+  closeLocModal(); await loadAll(); showToast('Location saved');
+}
+
+async function deleteLoc(){
+  const id=document.getElementById('loc-edit-id').value;
+  if(!confirm('Delete this location? Shifts using it will lose their rate.')) return;
+  const res=await apiFetch(`/api/locations/${id}`,{method:'DELETE'});
+  if(res?.ok){ closeLocModal(); await loadAll(); showToast('Location deleted'); }
+  else showToast('Failed to delete',true);
+}
+
+// Close modal on backdrop click
+document.getElementById('loc-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('loc-modal')) closeLocModal(); });
+
+// ══════════════════════════════
+//  CREATE ACCOUNT
+// ══════════════════════════════
+async function createAccount(){
+  const name=document.getElementById('new-name').value.trim();
+  const email=document.getElementById('new-email').value.trim();
+  const password=document.getElementById('new-pass').value;
+  const role=document.getElementById('new-role').value;
+  const res=document.getElementById('create-result');
+
+  if(!email||!password){ showToast('Email and password required',true); return; }
+
+  // Use admin route
+  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password}});
+  res.style.display='block';
+  if(data?.ok){
+    // If admin role selected, promote
+    if(role==='admin') await apiFetch(`/api/admin/users/${data.user.id}/role`,{method:'PATCH',body:{role:'admin'}});
+    res.style.color='var(--green)';
+    res.textContent=`✓ Account created for ${email}`;
+    clearCreateForm();
+    await loadAll();
+    showToast('Account created ✓');
+  } else {
+    res.style.color='var(--red)';
+    res.textContent='✗ '+(data?.error||'Failed to create account');
+  }
+}
+
+function clearCreateForm(){
+  ['new-name','new-email','new-pass'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('new-role').value='user';
+  const r=document.getElementById('create-result');
+  r.style.display='none'; r.textContent='';
+}
+
+// ══════════════════════════════
+//  TOAST
+// ══════════════════════════════
+function showToast(msg,isErr=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=isErr?'err':'';
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t=setTimeout(()=>t.classList.remove('show','err'),2500);
+}
+</script>
+</body>
+</html>
