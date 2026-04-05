@@ -160,6 +160,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
     <div class="tab" onclick="switchTab('users',this)">Users</div>
     <div class="tab" onclick="switchTab('locations',this)">Locations</div>
+    <div class="tab" onclick="switchTab('swaps',this)">Swap Requests <span id="swap-badge" style="display:none;background:var(--orange);color:#000;border-radius:99px;font-size:9px;padding:1px 6px;margin-left:4px;font-family:var(--mono)"></span></div>
     <div class="tab" onclick="switchTab('create',this)">Create Account</div>
   </div>
 
@@ -212,6 +213,20 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
     </div>
 
+    <!-- SWAP REQUESTS -->
+    <div class="panel" id="panel-swaps">
+      <div class="sec-hd">
+        <div><h2>Swap Requests</h2><p>Employee shift swap requests — approve or deny</p></div>
+        <button class="btn btn-ghost" onclick="loadSwaps()">↻ Refresh</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>From shift</th><th>Swap to date</th><th>Note</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="swaps-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- CREATE ACCOUNT -->
     <div class="panel" id="panel-create">
       <div class="sec-hd"><div><h2>Create Account</h2><p>Add a new employee to ShiftTrack</p></div></div>
@@ -231,6 +246,44 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- SCHEDULE MODAL -->
+<div class="modal-overlay" id="sched-modal">
+  <div class="modal" style="max-width:560px">
+    <h3 id="sched-modal-title">Manage Schedule</h3>
+    <input type="hidden" id="sched-user-id"/>
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0">
+        <label>Week</label>
+        <select id="sched-week"><option value="1">Week 1</option><option value="2">Week 2</option></select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0">
+        <label>Day</label>
+        <select id="sched-day">
+          <option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option>
+          <option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0">
+        <label>Location</label>
+        <select id="sched-loc"></select>
+      </div>
+      <div class="form-group" style="flex:0 0 100px;margin-bottom:0">
+        <label>Start</label>
+        <input type="time" id="sched-start" value="07:00"/>
+      </div>
+      <div class="form-group" style="flex:0 0 100px;margin-bottom:0">
+        <label>End</label>
+        <input type="time" id="sched-end" value="15:00"/>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="addSchedEntry()" style="margin-bottom:16px">＋ Add shift</button>
+    <div id="sched-list" style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:16px"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSchedModal()">Done</button>
+    </div>
   </div>
 </div>
 
@@ -376,6 +429,7 @@ async function loadAll(){
     renderOverview();
     renderUsers();
     renderLocs();
+    await loadSwaps();
     showToast('Ready ✓');
   }catch(e){
     showToast('Failed to load data',true);
@@ -518,7 +572,7 @@ function renderUsers(){
       <td class="mono" style="color:var(--green)">${formatPay(totPay)}</td>
       <td>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="toggleUserDetail('${u.id}')">History</button>
+          <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${u.name||u.email.split('@')[0]}')">Schedule</button>
           ${u.role==='user'?`<button class="btn btn-ghost btn-sm" onclick="promoteUser('${u.id}')">Make Admin</button>`:''}
           <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>
         </div>
@@ -658,6 +712,120 @@ function clearCreateForm(){
   const r=document.getElementById('create-result');
   r.style.display='none'; r.textContent='';
 }
+
+// ══════════════════════════════
+//  SWAP REQUESTS (ADMIN)
+// ══════════════════════════════
+let allSwaps = [];
+
+async function loadSwaps(){
+  const res = await apiFetch('/api/swaps/admin/all');
+  if(!res?.ok) return;
+  allSwaps = res.swaps;
+  renderSwaps();
+  // Update badge
+  const pending = allSwaps.filter(s=>s.status==='pending').length;
+  const badge = document.getElementById('swap-badge');
+  if(pending>0){ badge.textContent=pending; badge.style.display='inline'; }
+  else badge.style.display='none';
+}
+
+const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function renderSwaps(){
+  const tbody = document.getElementById('swaps-tbody');
+  if(!allSwaps.length){ tbody.innerHTML='<tr><td colspan="6" class="empty">No swap requests yet</td></tr>'; return; }
+  tbody.innerHTML = allSwaps.map(s=>{
+    const swapD = new Date(s.swap_date+'T12:00:00');
+    const swapFmt = swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const statusBadge =
+      s.status==='approved' ? '<span class="badge" style="background:rgba(46,204,138,.15);color:#2ecc8a">APPROVED</span>' :
+      s.status==='denied'   ? '<span class="badge" style="background:rgba(255,95,109,.12);color:#ff5f6d">DENIED</span>' :
+                              '<span class="badge" style="background:rgba(245,166,35,.12);color:#f5a623">PENDING</span>';
+    const actions = s.status==='pending'
+      ? `<div style="display:flex;gap:6px">
+           <button class="btn btn-primary btn-sm" onclick="processSwap('${s.id}','approved')">Approve</button>
+           <button class="btn btn-danger btn-sm" onclick="processSwap('${s.id}','denied')">Deny</button>
+         </div>`
+      : `<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">${s.admin_note||'—'}</span>`;
+    return `<tr>
+      <td><div style="font-weight:600">${s.requester_name||'—'}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${s.requester_email}</div></td>
+      <td class="mono">${DAYS_FULL[s.day_of_week]} · ${s.location_name}<br><span style="color:var(--muted);font-size:11px">${s.start_time?.slice(0,5)}–${s.end_time?.slice(0,5)}</span></td>
+      <td class="mono">${swapFmt}</td>
+      <td style="max-width:200px;font-size:12px">${s.note||'—'}</td>
+      <td>${statusBadge}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function processSwap(id, status){
+  const adminNote = status==='denied' ? (prompt('Reason for denial (optional):')||'') : '';
+  const res = await apiFetch(`/api/swaps/admin/${id}`,{method:'PATCH',body:{status,admin_note:adminNote}});
+  if(res?.ok){ await loadSwaps(); showToast(`Request ${status}`); }
+  else showToast('Failed to process request',true);
+}
+
+// ══════════════════════════════
+//  BASE SCHEDULE MANAGEMENT (ADMIN)
+// ══════════════════════════════
+let schedUserId = '';
+
+async function openScheduleModal(userId, userName){
+  schedUserId = userId;
+  document.getElementById('sched-modal-title').textContent = `Schedule — ${userName}`;
+  document.getElementById('sched-user-id').value = userId;
+  // Populate locations
+  const sel = document.getElementById('sched-loc');
+  sel.innerHTML = allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  await renderSchedList();
+  document.getElementById('sched-modal').classList.add('open');
+}
+
+async function renderSchedList(){
+  const res = await apiFetch(`/api/admin/users/${schedUserId}/schedule`);
+  const sched = res?.ok ? res.schedule : [];
+  const el = document.getElementById('sched-list');
+  if(!sched.length){ el.innerHTML='<div class="empty" style="padding:14px">No base shifts yet</div>'; return; }
+  el.innerHTML = sched.map(b=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
+      <div style="width:10px;height:10px;border-radius:2px;background:${b.color};flex-shrink:0"></div>
+      <div style="flex:1;font-size:13px">
+        <span style="font-weight:600">Week ${b.week} · ${DAYS_FULL[b.day_of_week]}</span>
+        <span style="color:var(--muted);font-family:var(--mono);font-size:11px;margin-left:8px">${b.location_name} · ${b.start_time?.slice(0,5)}–${b.end_time?.slice(0,5)}</span>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteSchedEntry('${b.id}')">✕</button>
+    </div>`).join('');
+}
+
+async function addSchedEntry(){
+  const week       = parseInt(document.getElementById('sched-week').value);
+  const day        = parseInt(document.getElementById('sched-day').value);
+  const locationId = document.getElementById('sched-loc').value;
+  const start      = document.getElementById('sched-start').value;
+  const end        = document.getElementById('sched-end').value;
+  if(!locationId||!start||!end){ showToast('Fill in all fields',true); return; }
+
+  // Use the schedule route but impersonate — we need to post on behalf of user
+  // We'll use a direct admin endpoint
+  const res = await apiFetch('/api/admin/schedule', {
+    method:'POST',
+    body:{ user_id:schedUserId, week, day_of_week:day, location_id:locationId, start_time:start, end_time:end }
+  });
+  if(!res?.ok){ showToast(res?.error||'Failed to add',true); return; }
+  await renderSchedList();
+  showToast('Shift added');
+}
+
+async function deleteSchedEntry(id){
+  const res = await apiFetch(`/api/admin/schedule/${id}`,{method:'DELETE'});
+  if(!res?.ok){ showToast('Failed to delete',true); return; }
+  await renderSchedList();
+  showToast('Shift removed');
+}
+
+function closeSchedModal(){ document.getElementById('sched-modal').classList.remove('open'); }
+document.getElementById('sched-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('sched-modal')) closeSchedModal(); });
 
 // ══════════════════════════════
 //  TOAST

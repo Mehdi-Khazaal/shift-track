@@ -113,7 +113,11 @@ select option{background:var(--bg3);}
 .calc-box{background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:13px;display:none;}
 .calc-row{display:flex;justify-content:space-between;margin-bottom:3px;}
 .calc-row.total{border-top:1px solid var(--border);padding-top:7px;margin-top:4px;margin-bottom:0;}
-.ot-note{font-size:11px;color:var(--orange);font-family:var(--mono);margin-top:2px;}
+.badge.swap{background:rgba(46,204,138,.12);color:var(--green);border:1px solid rgba(46,204,138,.25);}
+.badge.pending{background:rgba(245,166,35,.12);color:var(--orange);border:1px solid rgba(245,166,35,.25);}
+.badge.denied{background:var(--red-bg);color:var(--red);}
+.swap-btn{font-size:10px;font-family:var(--mono);color:var(--accent);background:rgba(91,143,255,.1);border:1px solid rgba(91,143,255,.25);border-radius:6px;padding:3px 8px;cursor:pointer;margin-top:3px;display:inline-block;}
+
 /* ── Phase 2: Calendar ── */
 .view-tog{padding:5px 12px;font-size:11px;font-family:var(--mono);font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;letter-spacing:.5px;}
 .view-tog.active{background:var(--accent);color:#fff;}
@@ -168,42 +172,9 @@ select option{background:var(--bg3);}
 .toggle-wrap input:checked ~ .toggle-track{background:var(--accent);border-color:var(--accent);}
 .toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;}
 .toggle-wrap input:checked ~ .toggle-track .toggle-thumb{transform:translateX(18px);}
-/* Login screen */
-#login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;animation:fadeIn .3s ease;}
-#login-screen.hidden{display:none;}
-.login-logo{font-size:36px;font-weight:800;letter-spacing:-2px;margin-bottom:8px;}
-.login-logo span{color:var(--accent);}
-.login-sub{font-size:13px;font-family:var(--mono);color:var(--muted);margin-bottom:48px;}
-.login-form{width:100%;max-width:360px;}
-.login-error{background:var(--red-bg);border:1px solid rgba(255,95,109,.4);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;font-family:var(--mono);color:var(--red);margin-bottom:14px;display:none;line-height:1.5;}
-.login-footer{font-size:11px;font-family:var(--mono);color:var(--dim);margin-top:28px;text-align:center;line-height:1.8;}
-.user-chip{display:flex;align-items:center;gap:6px;}
-.user-name{font-size:12px;font-family:var(--mono);color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.logout-btn{width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:13px;}
-.logout-btn:active{background:var(--red-bg);color:var(--red);}
 </style>
 </head>
 <body>
-
-<!-- LOGIN SCREEN -->
-<div id="login-screen">
-  <div class="login-logo">Shift<span>Track</span></div>
-  <div class="login-sub">Passavant Memorial Homes</div>
-  <div class="login-form">
-    <div class="login-error" id="login-error"></div>
-    <div class="form-group">
-      <label>Email</label>
-      <input type="email" id="login-email" placeholder="your@email.com" autocomplete="email"/>
-    </div>
-    <div class="form-group">
-      <label>Password</label>
-      <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"/>
-    </div>
-    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
-    <div class="login-footer">Don't have an account?<br>Contact your administrator to get access.</div>
-  </div>
-</div>
-
 <div id="app">
 
 <!-- DASHBOARD -->
@@ -215,10 +186,6 @@ select option{background:var(--bg3);}
         <div class="arr-btn" onclick="changeWeek(-1)">‹</div>
         <div class="wk-lbl" id="week-label">—</div>
         <div class="arr-btn" onclick="changeWeek(1)">›</div>
-      </div>
-      <div class="user-chip">
-        <span class="user-name" id="dash-user-name"></span>
-        <div class="logout-btn" onclick="doLogout()" title="Sign out">↪</div>
       </div>
       <div class="icon-btn" onclick="openAddShift()">＋</div>
     </div>
@@ -297,8 +264,8 @@ select option{background:var(--bg3);}
   <div class="top-bar"><h1>Settings</h1></div>
   <div class="section-hd">
     <h2>Locations &amp; pay rates</h2>
-    <button class="btn btn-ghost btn-sm" onclick="openAddLocation()">＋ Add</button>
   </div>
+  <div style="padding:0 16px 8px;font-size:12px;color:var(--muted);font-family:var(--mono)">Managed by your administrator.</div>
   <div class="card" style="padding:0"><div id="location-list"><div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div></div></div>
 
   <div class="section-hd" style="margin-top:8px"><h2>Notifications</h2></div>
@@ -333,16 +300,19 @@ select option{background:var(--bg3);}
     <button class="btn btn-danger" onclick="confirmClearData()">Clear all data</button>
   </div>
 
-  <div class="section-hd" style="margin-top:20px"><h2>Base schedule</h2>
-    <button class="btn btn-ghost btn-sm" onclick="openAddBase()">＋ Add</button>
+  <div class="section-hd" style="margin-top:20px">
+    <h2>Base schedule</h2>
   </div>
   <div style="padding:0 16px 12px;font-size:12px;color:var(--muted);font-family:var(--mono);line-height:1.5">
-    Your repeating 2-week schedule. Appears automatically on calendar &amp; dashboard.
+    Set by your administrator. Tap a shift to request a swap.
   </div>
   <div class="section-hd" style="margin-top:0;padding-top:0"><h2 style="font-size:13px;color:var(--muted)">Week 1</h2></div>
   <div class="card" style="padding:0"><div id="base-week1"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 1</div></div></div>
   <div class="section-hd"><h2 style="font-size:13px;color:var(--muted)">Week 2</h2></div>
   <div class="card" style="padding:0"><div id="base-week2"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 2</div></div></div>
+
+  <div class="section-hd" style="margin-top:20px"><h2>Swap requests</h2></div>
+  <div class="card" style="padding:0"><div id="swap-list"><div class="empty-state" style="padding:16px;font-size:12px">No swap requests</div></div></div>
 
   <div style="text-align:center;padding:24px 0 8px;font-size:11px;color:var(--dim);font-family:var(--mono)">
     ShiftTrack v3.0 · Passavant Memorial Homes<br>All data stored locally on this device
@@ -535,75 +505,36 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
+<!-- SHEET: SWAP REQUEST -->
+<div class="sheet-overlay" id="sheet-swap">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Request Shift Swap</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-swap')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <input type="hidden" id="swap-base-id"/>
+      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:13px;">
+        <div style="color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Swapping from</div>
+        <div id="swap-from-label" style="font-weight:600;color:var(--accent)">—</div>
+      </div>
+      <div class="form-group">
+        <label>Swap to date (same week only)</label>
+        <input type="date" id="swap-date"/>
+      </div>
+      <div class="form-group">
+        <label>Note (e.g. "Alex already agreed")</label>
+        <textarea id="swap-note" placeholder="Explain the swap and confirm the other person agreed…" style="min-height:80px"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="submitSwap()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
-// ═══════════════════════════════════════
-//  CONFIG & AUTH
-// ═══════════════════════════════════════
-const API = 'https://shifttrack-api.onrender.com';
-
-function getToken(){ return localStorage.getItem('st_token'); }
-function getUser(){ try{ return JSON.parse(localStorage.getItem('st_user')||'null'); }catch(e){ return null; } }
-function setAuth(token,user){ localStorage.setItem('st_token',token); localStorage.setItem('st_user',JSON.stringify(user)); }
-function clearAuth(){ localStorage.removeItem('st_token'); localStorage.removeItem('st_user'); }
-
-async function apiFetch(path,options={}){
-  const token=getToken();
-  const res=await fetch(API+path,{
-    ...options,
-    headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(options.headers||{})},
-    body:options.body?JSON.stringify(options.body):undefined
-  });
-  const data=await res.json();
-  if(res.status===401){ doLogout(); return null; }
-  return data;
-}
-
-async function doLogin(){
-  const email=document.getElementById('login-email').value.trim();
-  const password=document.getElementById('login-password').value;
-  const errEl=document.getElementById('login-error');
-  const btn=document.getElementById('login-btn');
-  if(!email||!password){ errEl.textContent='Please enter your email and password.'; errEl.style.display='block'; return; }
-  btn.textContent='Signing in…'; btn.disabled=true; errEl.style.display='none';
-  try{
-    const data=await apiFetch('/api/auth/login',{method:'POST',body:{email,password}});
-    if(!data?.ok){ errEl.textContent=data?.error||'Invalid email or password.'; errEl.style.display='block'; btn.textContent='Sign in'; btn.disabled=false; return; }
-    setAuth(data.token,data.user);
-    enterApp(data.user);
-  }catch(e){
-    errEl.textContent='Could not connect to server. Try again.'; errEl.style.display='block'; btn.textContent='Sign in'; btn.disabled=false;
-  }
-}
-
-function doLogout(){
-  if(!confirm('Sign out of ShiftTrack?')) return;
-  clearAuth();
-  cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.loaded=false;
-  document.getElementById('login-screen').classList.remove('hidden');
-  document.getElementById('login-email').value='';
-  document.getElementById('login-password').value='';
-  document.getElementById('login-btn').textContent='Sign in';
-  document.getElementById('login-btn').disabled=false;
-  document.getElementById('login-error').style.display='none';
-}
-
-function enterApp(user){
-  document.getElementById('login-screen').classList.add('hidden');
-  const nameEl=document.getElementById('dash-user-name');
-  if(nameEl) nameEl.textContent=user.email.split('@')[0];
-  loadAllData();
-}
-
-document.addEventListener('DOMContentLoaded',()=>{
-  ['login-email','login-password'].forEach(id=>{
-    document.getElementById(id)?.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-  });
-  const token=getToken(), user=getUser();
-  if(token&&user) enterApp(user);
-});
-
 // ═══════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════
@@ -612,97 +543,25 @@ const MAX_DAY_HOURS = 18;
 const DEFAULT_ANCHOR = '2026-03-22';
 
 // ═══════════════════════════════════════
-//  DATA LAYER — API-backed with local cache
-//  All data lives in Neon via the Render API.
-//  We keep an in-memory cache so renders are instant.
+//  DATA LAYER
 // ═══════════════════════════════════════
-const cache = { locations:[], shifts:[], base:[], settings:null, loaded:false };
-
-function getLocations(){ return cache.locations; }
-function getShifts()   { return cache.shifts;    }
-function getBase()     { return cache.base;      }
+const DB = {
+  get(k){ try{ return JSON.parse(localStorage.getItem('st_'+k)||'null'); }catch(e){ return null; } },
+  set(k,v){ localStorage.setItem('st_'+k,JSON.stringify(v)); }
+};
+function getLocations(){ return DB.get('locations')||[]; }
+function getShifts()   { return DB.get('shifts')   ||[]; }
+function getBase()     { return DB.get('base')     ||[]; }
 function getSettings() {
-  const s = cache.settings || {};
-  // ppAnchor may come back as full ISO timestamp "2026-03-22T00:00:00.000Z" — strip to date only
-  const rawAnchor = s.pp_anchor || DEFAULT_ANCHOR;
-  const ppAnchor = rawAnchor.slice(0,10);
-  const otThreshold = parseFloat(s.ot_threshold) || 40;
-  return { otThreshold, ppAnchor };
+  const s=DB.get('settings')||{};
+  return { otThreshold: s.otThreshold||40, ppAnchor: s.ppAnchor||DEFAULT_ANCHOR };
 }
-
-// Load all data from API into cache, then re-render
-// Retries up to 3 times with increasing delays (handles Render cold start)
-async function loadAllData(attempt=1){
-  const MAX = 3;
-  showToast(attempt===1 ? 'Loading your data…' : `Connecting… (${attempt}/${MAX})`, false, 20000);
-  try {
-    const [locsRes, shiftsRes, baseRes, settingsRes] = await Promise.all([
-      apiFetch('/api/locations'),
-      apiFetch('/api/shifts'),
-      apiFetch('/api/schedule'),
-      apiFetch('/api/settings'),
-    ]);
-    if(locsRes?.ok)     cache.locations = locsRes.locations.map(normalizeLocation);
-    if(shiftsRes?.ok)   cache.shifts    = shiftsRes.shifts.map(normalizeShift);
-    if(baseRes?.ok)     cache.base      = baseRes.schedule.map(normalizeBase);
-    if(settingsRes?.ok) cache.settings  = settingsRes.settings;
-    cache.loaded = true;
-    showToast('Ready ✓');
-    renderDash();
-    renderAllShifts();
-    renderSchedule();
-    renderSettings();
-    renderCalendar();
-  } catch(e) {
-    console.error('Failed to load data (attempt '+attempt+'):', e);
-    if(attempt < MAX){
-      const delay = attempt * 15000; // 15s, 30s
-      showToast(`Server waking up… retrying in ${delay/1000}s`, false, delay+2000);
-      setTimeout(() => loadAllData(attempt+1), delay);
-    } else {
-      showToast('Could not connect. Tap here to retry.', true);
-      document.getElementById('toast').onclick = () => loadAllData(1);
-    }
-  }
-}
-
-// Normalize API response fields to match what the app expects
-function normalizeLocation(l){
-  return { id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate) };
-}
-function normalizeShift(s){
-  return {
-    id:          s.id,
-    locationId:  s.location_id,
-    date:        s.date.slice(0,10),
-    start:       s.start_time.slice(0,5),
-    end:         s.end_time.slice(0,5),
-    notes:       s.notes||'',
-    isBase:      false,
-  };
-}
-function normalizeBase(b){
-  return {
-    id:         b.id,
-    locationId: b.location_id,
-    week:       b.week,
-    day:        b.day_of_week,
-    start:      b.start_time.slice(0,5),
-    end:        b.end_time.slice(0,5),
-  };
-}
-
-async function saveSettings(){
-  const otThreshold = parseFloat(document.getElementById('ot-threshold').value)||40;
-  const ppAnchor    = document.getElementById('pp-anchor').value||DEFAULT_ANCHOR;
-  const res = await apiFetch('/api/settings', {
-    method:'PUT', body:{ ot_threshold: otThreshold, pp_anchor: ppAnchor }
+function saveSettings(){
+  DB.set('settings',{
+    otThreshold: parseFloat(document.getElementById('ot-threshold').value)||40,
+    ppAnchor: document.getElementById('pp-anchor').value||DEFAULT_ANCHOR
   });
-  if(res?.ok){
-    cache.settings = res.settings;
-    renderDash();
-    showToast('Settings saved');
-  }
+  renderDash();
 }
 
 // ═══════════════════════════════════════
@@ -749,10 +608,7 @@ function shiftHours(start,end){
 }
 
 function formatPay(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
-function toYMD(d){
-  if(!d || typeof d.toISOString !== 'function') return null;
-  return d.toISOString().slice(0,10);
-}
+function toYMD(d){ return d.toISOString().slice(0,10); }
 function getLocById(id){ return getLocations().find(l=>l.id===id); }
 
 // ─── Pay period ───
@@ -778,6 +634,7 @@ function getWeekDates(offset=0){
   const s=getWeekStart(offset);
   return Array.from({length:7},(_,i)=>{ const d=new Date(s); d.setDate(s.getDate()+i); return d; });
 }
+// Get the Sunday-anchored week that contains a given YYYY-MM-DD string
 function weekDatesForDate(dateStr){
   const d=new Date(dateStr+'T12:00:00');
   const sun=new Date(d); sun.setDate(d.getDate()-d.getDay()); sun.setHours(0,0,0,0);
@@ -790,19 +647,16 @@ function payWeekOf(dateStr){
   const anchor=new Date(ppAnchor+'T00:00:00');
   const d=new Date(dateStr+'T00:00:00');
   const diff=Math.round((d-anchor)/86400000);
-  const inPeriod=((diff%14)+14)%14;
+  const inPeriod=((diff%14)+14)%14; // 0–13
   return inPeriod<7?1:2;
 }
 
 // ─── Resolve a base schedule entry to a concrete date within a given week ───
+// weekDates: array of 7 Date objects (Sun–Sat)
 function baseToDate(base, weekDates){
-  if(!weekDates || !weekDates[0]) return null;
   const sundayStr=toYMD(weekDates[0]);
-  if(!sundayStr) return null;
   if(payWeekOf(sundayStr)!==base.week) return null;
-  const dayDate = weekDates[base.day];
-  if(!dayDate) return null;
-  return toYMD(dayDate);
+  return toYMD(weekDates[base.day]);
 }
 
 // ═══════════════════════════════════════
@@ -890,7 +744,7 @@ function switchScreen(name,el){
   if(name==='log')      renderAllShifts();
   if(name==='calendar') renderCalendar();
   if(name==='history')  renderHistory();
-  if(name==='settings') renderSettings();
+  if(name==='settings') { renderSettings(); renderSwaps(); }
 }
 function openSheet(id){ document.getElementById(id).classList.add('open'); }
 function closeSheet(id){ document.getElementById(id).classList.remove('open'); }
@@ -924,28 +778,20 @@ function pickColor(el){
   document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
   el.classList.add('selected');
 }
-async function saveLocation(){
+function saveLocation(){
   const name=document.getElementById('loc-name').value.trim();
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.color-swatch.selected')?.dataset.c||'#5b8fff';
   if(!name){ showToast('Enter a location name',true); return; }
   if(isNaN(rate)||rate<0){ showToast('Enter a valid pay rate',true); return; }
-  const editId=document.getElementById('edit-loc-id').value;
-  const res = await apiFetch(
-    editId ? `/api/locations/${editId}` : '/api/locations',
-    { method: editId?'PUT':'POST', body:{name,rate,color} }
-  );
-  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
-  // Update cache
-  if(editId){ const i=cache.locations.findIndex(l=>l.id===editId); if(i>=0) cache.locations[i]=normalizeLocation(res.location); }
-  else cache.locations.push(normalizeLocation(res.location));
+  const locs=getLocations(), editId=document.getElementById('edit-loc-id').value;
+  if(editId){ const i=locs.findIndex(l=>l.id===editId); if(i>=0) locs[i]={...locs[i],name,rate,color}; }
+  else locs.push({id:uid(),name,rate,color});
+  DB.set('locations',locs);
   closeSheet('sheet-location'); renderSettings(); showToast('Location saved');
 }
-async function deleteLocation(){
-  const id=document.getElementById('edit-loc-id').value;
-  const res=await apiFetch(`/api/locations/${id}`,{method:'DELETE'});
-  if(!res?.ok){ showToast('Failed to delete',true); return; }
-  cache.locations=cache.locations.filter(l=>l.id!==id);
+function deleteLocation(){
+  DB.set('locations',getLocations().filter(l=>l.id!==document.getElementById('edit-loc-id').value));
   closeSheet('sheet-location'); renderSettings(); showToast('Location removed');
 }
 
@@ -1025,7 +871,7 @@ function updateCalc(){
   document.getElementById('calc-pay').textContent=formatPay(pay)+(otHrs>0?' (incl. OT)':'');
 }
 
-async function saveShift(){
+function saveShift(){
   const locationId=document.getElementById('shift-location').value;
   const date=document.getElementById('shift-date').value;
   const start=document.getElementById('shift-start').value;
@@ -1035,27 +881,16 @@ async function saveShift(){
   if(!locationId||!date||!start||!end){ showToast('Fill in all required fields',true); return; }
   const err=checkConflicts({date,start,end,locationId},editId||null);
   if(err){ showToast(err,true); return; }
-  const res=await apiFetch(
-    editId?`/api/shifts/${editId}`:'/api/shifts',
-    { method:editId?'PUT':'POST', body:{location_id:locationId,date,start_time:start,end_time:end,notes} }
-  );
-  if(!res?.ok){ showToast(res?.error||'Failed to save shift',true); return; }
-  const norm=normalizeShift(res.shift);
-  if(editId){ const i=cache.shifts.findIndex(s=>s.id===editId); if(i>=0) cache.shifts[i]=norm; }
-  else cache.shifts.push(norm);
-  closeSheet('sheet-shift'); renderDash(); renderAllShifts();
-  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
-  showToast('Shift saved ✓');
+  const shifts=getShifts();
+  if(editId){ const i=shifts.findIndex(s=>s.id===editId); if(i>=0) shifts[i]={...shifts[i],locationId,date,start,end,notes}; }
+  else shifts.push({id:uid(),locationId,date,start,end,notes,createdAt:Date.now()});
+  DB.set('shifts',shifts);
+  closeSheet('sheet-shift'); renderDash(); renderAllShifts(); showToast('Shift saved ✓');
 }
 
-async function deleteShift(){
-  const id=document.getElementById('edit-shift-id').value;
-  const res=await apiFetch(`/api/shifts/${id}`,{method:'DELETE'});
-  if(!res?.ok){ showToast('Failed to delete',true); return; }
-  cache.shifts=cache.shifts.filter(s=>s.id!==id);
-  closeSheet('sheet-shift'); renderDash(); renderAllShifts();
-  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
-  showToast('Shift deleted');
+function deleteShift(){
+  DB.set('shifts',getShifts().filter(s=>s.id!==document.getElementById('edit-shift-id').value));
+  closeSheet('sheet-shift'); renderDash(); renderAllShifts(); showToast('Shift deleted');
 }
 
 // ═══════════════════════════════════════
@@ -1083,30 +918,21 @@ function openAddBase(id=null){
   openSheet('sheet-base');
 }
 
-async function saveBase(){
+function saveBase(){
   const week=parseInt(document.getElementById('base-week').value);
   const day=parseInt(document.getElementById('base-day').value);
   const locationId=document.getElementById('base-location').value;
   const start=document.getElementById('base-start').value;
   const end=document.getElementById('base-end').value;
   if(!locationId||!start||!end){ showToast('Fill in all fields',true); return; }
-  const editId=document.getElementById('edit-base-id').value;
-  const res=await apiFetch(
-    editId?`/api/schedule/${editId}`:'/api/schedule',
-    { method:editId?'PUT':'POST', body:{week,day_of_week:day,location_id:locationId,start_time:start,end_time:end} }
-  );
-  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
-  const norm=normalizeBase(res.entry);
-  if(editId){ const i=cache.base.findIndex(b=>b.id===editId); if(i>=0) cache.base[i]=norm; }
-  else cache.base.push(norm);
-  closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift saved');
+  const base=getBase(), editId=document.getElementById('edit-base-id').value;
+  if(editId){ const i=base.findIndex(b=>b.id===editId); if(i>=0) base[i]={...base[i],week,day,locationId,start,end}; }
+  else base.push({id:uid(),week,day,locationId,start,end});
+  DB.set('base',base); closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift saved');
 }
 
-async function deleteBase(){
-  const id=document.getElementById('edit-base-id').value;
-  const res=await apiFetch(`/api/schedule/${id}`,{method:'DELETE'});
-  if(!res?.ok){ showToast('Failed to delete',true); return; }
-  cache.base=cache.base.filter(b=>b.id!==id);
+function deleteBase(){
+  DB.set('base',getBase().filter(b=>b.id!==document.getElementById('edit-base-id').value));
   closeSheet('sheet-base'); renderSchedule(); renderDash(); showToast('Base shift removed');
 }
 
@@ -1273,7 +1099,7 @@ function shiftItemHTML(s,bd){
 }
 
 // ═══════════════════════════════════════
-//  RENDER: SCHEDULE
+//  RENDER: SCHEDULE (read-only + swap button)
 // ═══════════════════════════════════════
 function renderSchedule(){
   [1,2].forEach(wk=>{
@@ -1282,11 +1108,12 @@ function renderSchedule(){
     if(!wkShifts.length){ el.innerHTML=`<div class="empty-state" style="padding:20px;font-size:12px">No shifts for week ${wk}</div>`; return; }
     el.innerHTML=wkShifts.map(b=>{
       const loc=getLocById(b.locationId);
-      return `<div class="shift-item base-item" onclick="openAddBase('${b.id}')">
+      return `<div class="shift-item base-item">
         <div class="shift-dot sq" style="background:${loc?.color||'#888'}"></div>
         <div class="shift-info">
           <div class="name">${DAYS[b.day]}</div>
           <div class="sub">${loc?.name||'—'} · ${fmtTime(b.start)}–${fmtTime(b.end)}</div>
+          <div class="swap-btn" onclick="openSwapSheet('${b.id}','${DAYS[b.day]}','${loc?.name||''}','${b.start}','${b.end}')">⇄ Request swap</div>
         </div>
         <div class="shift-right">
           <div class="hrs">${shiftHours(b.start,b.end).toFixed(1)} hrs</div>
@@ -1298,7 +1125,7 @@ function renderSchedule(){
 }
 
 // ═══════════════════════════════════════
-//  RENDER: SETTINGS
+//  RENDER: SETTINGS (locations view-only)
 // ═══════════════════════════════════════
 function renderSettings(){
   const settings=getSettings();
@@ -1308,27 +1135,26 @@ function renderSettings(){
   const el=document.getElementById('location-list');
   if(!locs.length){ el.innerHTML='<div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div>'; return; }
   el.innerHTML=locs.map(l=>`
-    <div class="shift-item" onclick="openAddLocation('${l.id}')">
+    <div class="shift-item">
       <div class="shift-dot" style="background:${l.color}"></div>
       <div class="shift-info"><div class="name">${l.name}</div><div class="sub">$${l.rate.toFixed(2)}/hr</div></div>
-      <div style="color:var(--muted);font-size:18px">›</div>
     </div>`).join('');
 }
 
 // ═══════════════════════════════════════
 //  UTILS
 // ═══════════════════════════════════════
-function showToast(msg,isErr=false,duration=2800){
+function showToast(msg,isErr=false){
   const t=document.getElementById('toast');
   t.textContent=msg; t.className=isErr?'err':'';
-  t.onclick=null;
   t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer=setTimeout(()=>t.classList.remove('show','err'),duration);
+  setTimeout(()=>t.classList.remove('show','err'),2800);
 }
 function confirmClearData(){
-  if(confirm('This will sign you out. Your data stays safe in the cloud.\n\nContinue?')){
-    doLogout();
+  if(confirm('Delete ALL shifts, locations, and settings? This cannot be undone.')){
+    ['locations','shifts','base','settings'].forEach(k=>localStorage.removeItem('st_'+k));
+    weekOffset=0; renderDash(); renderAllShifts(); renderSchedule(); renderSettings();
+    showToast('All data cleared');
   }
 }
 
@@ -1572,7 +1398,7 @@ function renderHistory(){
 // ═══════════════════════════════════════
 function toggleNotifications(){
   const on = document.getElementById('notif-toggle').checked;
-  if(!on){ localStorage.removeItem('st_notif'); updateNotifStatus(); return; }
+  if(!on){ DB.set('notif',{enabled:false}); updateNotifStatus(); return; }
 
   if(!('Notification' in window)){
     showToast('Notifications not supported on this browser',true);
@@ -1581,13 +1407,13 @@ function toggleNotifications(){
   }
   Notification.requestPermission().then(perm=>{
     if(perm==='granted'){
-      localStorage.setItem('st_notif', JSON.stringify({enabled:true}));
+      DB.set('notif',{enabled:true});
       scheduleNotifications();
       updateNotifStatus();
       showToast('Shift reminders enabled ✓');
     } else {
       document.getElementById('notif-toggle').checked=false;
-      localStorage.setItem('st_notif', JSON.stringify({enabled:false}));
+      DB.set('notif',{enabled:false});
       updateNotifStatus();
       showToast('Permission denied — enable in browser settings',true);
     }
@@ -1596,17 +1422,162 @@ function toggleNotifications(){
 
 function updateNotifStatus(){
   const s = document.getElementById('notif-status');
-  if(!s) return;
-  s.textContent='Notifications require backend push support (coming soon)';
-  s.style.color='var(--dim)';
-  document.getElementById('notif-toggle').checked=false;
+  const saved = DB.get('notif');
+  const enabled = saved?.enabled && Notification.permission==='granted';
+  document.getElementById('notif-toggle').checked = !!enabled;
+  if(enabled){
+    s.textContent='✓ Active — you\'ll be reminded 1 hour before each shift.';
+    s.style.color='var(--green)';
+  } else if(Notification.permission==='denied'){
+    s.textContent='Blocked by browser. Enable in your device settings.';
+    s.style.color='var(--red)';
+  } else {
+    s.textContent='Off';
+    s.style.color='var(--dim)';
+  }
 }
+
+function scheduleNotifications(){
+  if(!('Notification' in window)||Notification.permission!=='granted') return;
+  const saved=DB.get('notif'); if(!saved?.enabled) return;
+
+  const now=new Date();
+  const in7days=new Date(now); in7days.setDate(now.getDate()+7);
+
+  // Collect all upcoming shifts in next 7 days
+  const upcoming=[];
+  const wkD0=getWeekDates(0), wkD1=getWeekDates(1);
+
+  [wkD0,wkD1].forEach(wkDates=>{
+    getShifts().forEach(s=>{
+      if(wkDates.map(toYMD).includes(s.date)) upcoming.push(s);
+    });
+    getBase().forEach(b=>{
+      const d=baseToDate(b,wkDates);
+      if(d) upcoming.push({...b,date:d,isBase:true});
+    });
+  });
+
+  upcoming.forEach(s=>{
+    const [h,m]=s.start.split(':').map(Number);
+    const shiftTime=new Date(s.date+'T'+s.start+':00');
+    const notifTime=new Date(shiftTime.getTime()-60*60*1000); // 1hr before
+    if(notifTime>now && notifTime<in7days){
+      const delay=notifTime.getTime()-now.getTime();
+      const loc=getLocById(s.locationId);
+      setTimeout(()=>{
+        if(Notification.permission==='granted'){
+          new Notification('ShiftTrack — Shift in 1 hour',{
+            body:`${loc?.name||'Shift'} starts at ${fmtTime(s.start)}`,
+            icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="%230d0f14"/><text x="16" y="22" text-anchor="middle" font-size="18" fill="%235b8fff">S</text></svg>'
+          });
+        }
+      }, delay);
+    }
+  });
+}
+
+// ═══════════════════════════════════════
+//  UPDATED renderSettings (adds notif + base schedule)
+// ═══════════════════════════════════════
+const _origRenderSettings = renderSettings;
+renderSettings = function(){
+  _origRenderSettings();
+  updateNotifStatus();
+  renderSchedule();
+};
+
+// ═══════════════════════════════════════
+//  SWAP REQUESTS
+// ═══════════════════════════════════════
+let swapCache = [];
+
+function openSwapSheet(baseId, dayName, locName, start, end){
+  document.getElementById('swap-base-id').value = baseId;
+  document.getElementById('swap-from-label').textContent =
+    `${dayName} · ${locName} · ${fmtTime(start)}–${fmtTime(end)}`;
+  document.getElementById('swap-date').value = '';
+  document.getElementById('swap-note').value = '';
+  // Restrict date picker to current week only
+  const wkDates = getWeekDates(0);
+  document.getElementById('swap-date').min = toYMD(wkDates[0]);
+  document.getElementById('swap-date').max = toYMD(wkDates[6]);
+  openSheet('sheet-swap');
+}
+
+async function submitSwap(){
+  const baseId   = document.getElementById('swap-base-id').value;
+  const swapDate = document.getElementById('swap-date').value;
+  const note     = document.getElementById('swap-note').value.trim();
+  if(!swapDate){ showToast('Pick a date to swap to',true); return; }
+  if(!note){ showToast('Please add a note explaining the swap',true); return; }
+  const res = await apiFetch('/api/swaps',{method:'POST',body:{base_id:baseId,swap_date:swapDate,note}});
+  if(!res?.ok){ showToast(res?.error||'Failed to submit',true); return; }
+  swapCache.push(res.swap);
+  closeSheet('sheet-swap');
+  renderSwaps();
+  showToast('Swap request submitted ✓');
+}
+
+async function loadSwaps(){
+  const res = await apiFetch('/api/swaps');
+  if(res?.ok){ swapCache = res.swaps; renderSwaps(); }
+}
+
+async function cancelSwap(id){
+  if(!confirm('Cancel this swap request?')) return;
+  const res = await apiFetch(`/api/swaps/${id}`,{method:'DELETE'});
+  if(res?.ok){
+    swapCache = swapCache.filter(s=>s.id!==id);
+    renderSwaps();
+    showToast('Request cancelled');
+  } else showToast('Failed to cancel',true);
+}
+
+function renderSwaps(){
+  const el = document.getElementById('swap-list');
+  if(!el) return;
+  if(!swapCache.length){
+    el.innerHTML='<div class="empty-state" style="padding:16px;font-size:12px">No swap requests</div>';
+    return;
+  }
+  const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  el.innerHTML = swapCache.map(s=>{
+    const statusBadge =
+      s.status==='approved' ? '<span class="badge swap">APPROVED</span>' :
+      s.status==='denied'   ? '<span class="badge denied">DENIED</span>' :
+                              '<span class="badge pending">PENDING</span>';
+    const swapD = new Date(s.swap_date+'T12:00:00');
+    const swapFmt = swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const adminNote = s.admin_note ? `<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px">Admin: ${s.admin_note}</div>` : '';
+    const cancelBtn = s.status==='pending'
+      ? `<div onclick="cancelSwap('${s.id}')" style="font-size:11px;color:var(--red);font-family:var(--mono);cursor:pointer;margin-top:4px">Cancel request</div>` : '';
+    return `<div class="shift-item base-item">
+      <div class="shift-dot sq" style="background:${s.color||'#888'}"></div>
+      <div class="shift-info">
+        <div class="name">${s.location_name||'—'}</div>
+        <div class="sub">${DAYS_SHORT[s.day_of_week]} → ${swapFmt}</div>
+        ${s.note?`<div class="notes-chip">${s.note.slice(0,50)}${s.note.length>50?'…':''}</div>`:''}
+        ${adminNote}${cancelBtn}
+      </div>
+      <div class="shift-right" style="padding-top:2px">${statusBadge}</div>
+    </div>`;
+  }).join('');
+}
+
+// Also render approved swaps on calendar as one-time overrides
+function getApprovedSwaps(){ return swapCache.filter(s=>s.status==='approved'); }
 
 // ═══════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════
-// Data is loaded in enterApp() → loadAllData() after login.
-// Nothing to init here — the login screen handles the boot sequence.
+// Data loaded via enterApp → loadAllData
+// Swaps loaded separately after login
+const _origEnterApp = enterApp;
+enterApp = function(user){
+  _origEnterApp(user);
+  loadSwaps();
+};
 </script>
 </body>
 </html>

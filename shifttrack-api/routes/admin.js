@@ -108,4 +108,31 @@ router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
   }
 });
 
+// POST /api/admin/schedule — add base shift for any user
+router.post('/schedule', auth, adminOnly, async (req, res) => {
+  const { user_id, week, day_of_week, location_id, start_time, end_time } = req.body;
+  if(!user_id||!week||day_of_week===undefined||!location_id||!start_time||!end_time)
+    return res.status(400).json({ ok:false, error:'All fields required' });
+  try {
+    const result = await db.query(
+      `INSERT INTO base_schedule (user_id,week,day_of_week,location_id,start_time,end_time)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [user_id,week,day_of_week,location_id,start_time,end_time]
+    );
+    res.status(201).json({ ok:true, entry:result.rows[0] });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
+// DELETE /api/admin/schedule/:id — remove base shift
+router.delete('/schedule/:id', auth, adminOnly, async (req, res) => {
+  try {
+    await db.query('DELETE FROM base_schedule WHERE id=$1',[req.params.id]);
+    res.json({ ok:true });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
 module.exports = router;
