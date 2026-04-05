@@ -526,35 +526,38 @@ function computePayForShifts(shifts,schedules,ymds){
 // ══════════════════════════════
 //  OVERVIEW
 // ══════════════════════════════
-let overviewPPOffset = 0;
+let overviewPPOffset=0;
 
 function changeOverviewPP(dir){
-  const periods = getPayPeriods();
-  // Allow going back through all periods, but not into the future
-  const next = overviewPPOffset + dir;
-  if(next > 0) return; // can't go future
-  if(Math.abs(next) >= periods.length) return; // can't go further than earliest
-  overviewPPOffset = next;
+  const next=overviewPPOffset+dir;
+  if(next>0) return; // no future periods
+  overviewPPOffset=next;
   renderOverview();
 }
 
 function renderOverview(){
   const periods=getPayPeriods();
-  // offset 0 = current (periods[0]), offset -1 = one back (periods[1]), etc.
-  const idx = Math.abs(overviewPPOffset);
-  const current=periods[idx] || periods[0];
+  // Build the period for this offset dynamically (not limited to loaded periods array)
+  const anchor=new Date(PP_ANCHOR+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const diffDays=Math.round((today-anchor)/86400000);
+  const currentN=diffDays<0?Math.ceil(diffDays/14):Math.floor(diffDays/14);
+  const n=currentN+overviewPPOffset;
+  const start=new Date(anchor); start.setDate(anchor.getDate()+n*14);
+  const end=new Date(start); end.setDate(start.getDate()+13);
+  const ymds=[];
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ymds.push(toYMD(new Date(d)));
 
-  const isCurrent = overviewPPOffset === 0;
-  document.getElementById('pp-label').textContent=`${fmtShort(current.start)} – ${fmtShort(current.end)}`;
-  document.getElementById('ov-period-desc').textContent = isCurrent
-    ? 'Current pay period summary across all employees'
-    : `Pay period ${Math.abs(overviewPPOffset)} ago — all employees`;
+  document.getElementById('pp-label').textContent=`${fmtShort(start)} – ${fmtShort(end)}`;
+  document.getElementById('ov-period-desc').textContent=overviewPPOffset===0
+    ?'Current pay period summary across all employees'
+    :`${Math.abs(overviewPPOffset)} period${Math.abs(overviewPPOffset)>1?'s':''} ago — all employees`;
 
   let totPay=0,totHrs=0,totOt=0;
   const rows=allUsers.map(u=>{
     const shifts=allShifts[u.id]||[];
     const sched=allSchedules[u.id]||[];
-    const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,current.ymds);
+    const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,ymds);
     totPay+=pay; totHrs+=hrs; totOt+=ot;
     return `<tr>
       <td><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></td>
