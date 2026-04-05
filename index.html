@@ -287,12 +287,19 @@ select option{background:var(--bg3);}
 <div id="screen-log" class="screen">
   <div class="top-bar">
     <h1>All Shifts</h1>
-    <div class="icon-btn" onclick="openAddShift()">＋</div>
+    <div style="display:flex;gap:8px">
+      <div class="icon-btn" onclick="openSwapFlow()" title="Request shift swap" style="font-size:16px">⇄</div>
+      <div class="icon-btn" onclick="openAddShift()">＋</div>
+    </div>
   </div>
   <div class="card" style="padding:0">
     <div id="shift-list-all">
       <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
     </div>
+  </div>
+  <div class="section-hd" style="margin-top:4px"><h2>Swap requests</h2></div>
+  <div class="card" style="padding:0">
+    <div id="swap-list"><div class="empty-state" style="padding:16px;font-size:12px">No swap requests yet</div></div>
   </div>
 </div>
 
@@ -345,9 +352,6 @@ select option{background:var(--bg3);}
   <div class="card" style="padding:0"><div id="base-week1"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 1</div></div></div>
   <div class="section-hd"><h2 style="font-size:13px;color:var(--muted)">Week 2</h2></div>
   <div class="card" style="padding:0"><div id="base-week2"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 2</div></div></div>
-
-  <div class="section-hd" style="margin-top:20px"><h2>Swap requests</h2></div>
-  <div class="card" style="padding:0"><div id="swap-list"><div class="empty-state" style="padding:16px;font-size:12px">No swap requests</div></div></div>
 
   <div style="text-align:center;padding:24px 0 8px;font-size:11px;color:var(--dim);font-family:var(--mono)">
     ShiftTrack v3.0 · Passavant Memorial Homes<br>All data stored locally on this device
@@ -540,29 +544,34 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
-<!-- SHEET: SWAP REQUEST -->
+<!-- SHEET: SWAP FLOW (2 steps) -->
 <div class="sheet-overlay" id="sheet-swap">
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-header">
-      <h2>Request Shift Swap</h2>
+      <h2 id="swap-sheet-title">Request Shift Swap</h2>
       <button class="close-btn" onclick="closeSheet('sheet-swap')">✕</button>
     </div>
-    <div class="sheet-body">
-      <input type="hidden" id="swap-base-id"/>
-      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:13px;">
-        <div style="color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Swapping from</div>
-        <div id="swap-from-label" style="font-weight:600;color:var(--accent)">—</div>
+    <div class="sheet-body" id="swap-step1">
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:14px;">Pick the base shift you want to move:</div>
+      <div id="swap-shift-list"></div>
+    </div>
+    <div class="sheet-body" id="swap-step2" style="display:none">
+      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;">
+        <div style="font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Moving shift</div>
+        <div id="swap-from-label" style="font-weight:700;color:var(--accent);font-size:14px">—</div>
       </div>
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:12px;">Pick a free day in the same week:</div>
+      <div id="swap-week-cal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px;"></div>
+      <div id="swap-selected-info" style="display:none;background:var(--green-bg);border:1px solid rgba(46,204,138,.25);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-family:var(--mono);font-size:13px;color:var(--green)"></div>
       <div class="form-group">
-        <label>Swap to date (same week only)</label>
-        <input type="date" id="swap-date"/>
+        <label>Note (optional)</label>
+        <textarea id="swap-note" placeholder="e.g. Me and Alex agreed on this switch"></textarea>
       </div>
-      <div class="form-group">
-        <label>Note (e.g. "Alex already agreed")</label>
-        <textarea id="swap-note" placeholder="Explain the swap and confirm the other person agreed…"></textarea>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost" onclick="swapGoStep1()" style="flex:0 0 auto;width:auto;padding:14px 18px">← Back</button>
+        <button class="btn btn-primary" id="swap-submit-btn" onclick="submitSwap()" disabled style="opacity:.45">Submit Request</button>
       </div>
-      <button class="btn btn-primary" onclick="submitSwap()">Submit Request</button>
     </div>
   </div>
 </div>
@@ -919,7 +928,7 @@ function switchScreen(name,el){
   document.getElementById('screen-'+name).classList.add('active');
   el.classList.add('active');
   if(name==='dash')     renderDash();
-  if(name==='log')      renderAllShifts();
+  if(name==='log')      { renderAllShifts(); renderSwaps(); }
   if(name==='calendar') renderCalendar();
   if(name==='history')  renderHistory();
   if(name==='settings') renderSettings();
@@ -1158,13 +1167,28 @@ function renderDash(){
   // Logged shifts this week
   const logged=getShifts().filter(s=>wkYMDs.includes(s.date));
 
-  // Base shifts that fall in this week
+  // Base shifts that fall in this week — but hide ones that have an approved/pending swap
+  const hiddenBySwap=getOriginalDatesHiddenBySwap(wkYMDs);
   const baseThisWeek=getBase()
     .map(b=>({...b,date:baseToDate(b,wkDates),isBase:true}))
-    .filter(b=>b.date!==null);
+    .filter(b=>b.date!==null && !hiddenBySwap.has(b.date));
 
-  // All shifts combined (base + logged). OT engine sorts by date+time.
-  const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false}))];
+  // Add approved/pending swaps as virtual shifts on the new date
+  const swapShifts=getSwapsForWeek(wkYMDs).map(s=>{
+    const ymd=(s.swap_date||'').slice(0,10);
+    // Find the original base shift to get times
+    const origBase=getBase().find(b=>b.id===s.base_id);
+    const loc=origBase?getLocById(origBase.locationId):null;
+    return {
+      id:s.id, locationId:origBase?.locationId||'', date:ymd,
+      start:origBase?.start||'00:00', end:origBase?.end||'00:00',
+      isBase:false, isSwap:true, swapStatus:s.status,
+      _loc:loc
+    };
+  }).filter(s=>s.date&&wkYMDs.includes(s.date));
+
+  // All shifts combined (base + logged + swaps)
+  const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false})),...swapShifts];
   const {totalHrs,totalPay,totalOt,breakdown}=computeWeekPay(allShifts);
 
   document.getElementById('stat-hours').textContent=totalHrs.toFixed(1);
@@ -1265,6 +1289,31 @@ function renderAllShifts(){
 //  SHIFT ITEM HTML
 // ═══════════════════════════════════════
 function shiftItemHTML(s,bd){
+  // Handle swap virtual shifts
+  if(s.isSwap){
+    const loc=s._loc||getLocById(s.locationId);
+    const color=loc?.color||'#888';
+    const name=loc?.name||'Unknown';
+    const hrs=shiftHours(s.start,s.end);
+    const d=new Date(s.date+'T12:00:00');
+    const ds=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const badge=s.swapStatus==='approved'
+      ?'<span class="badge swap">SWAP</span>'
+      :'<span class="badge pending">PENDING</span>';
+    return `<div class="shift-item base-item" style="opacity:${s.swapStatus==='pending'?.7:1}">
+      <div class="shift-dot sq" style="background:${color};outline:2px solid ${s.swapStatus==='approved'?'var(--green)':'var(--orange)'};outline-offset:2px"></div>
+      <div class="shift-info">
+        <div class="name">${name} <span style="font-size:10px;opacity:.6">(swap)</span></div>
+        <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
+      </div>
+      <div class="shift-right">
+        <div class="pay">—</div>
+        <div class="hrs">${hrs.toFixed(1)} hrs</div>
+        ${badge}
+      </div>
+    </div>`;
+  }
+
   const loc  =getLocById(s.locationId);
   const color=loc?.color||'#888';
   const name =loc?.name||'Unknown';
@@ -1347,7 +1396,6 @@ function renderSettings(){
       <div class="shift-dot" style="background:${l.color}"></div>
       <div class="shift-info"><div class="name">${l.name}</div><div class="sub">$${l.rate.toFixed(2)}/hr</div></div>
     </div>`).join('');
-  renderSwaps();
 }
 
 // ═══════════════════════════════════════
@@ -1640,30 +1688,137 @@ function updateNotifStatus(){
 // ═══════════════════════════════════════
 //  SWAP REQUESTS
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+//  SWAP REQUESTS — 2-step flow
+// ═══════════════════════════════════════
 let swapCache=[];
+let swapState={ baseId:null, baseDay:null, baseWeek:null, baseStart:null, baseEnd:null, locName:null, locColor:null, weekDates:[], selectedDate:null };
 
-function openSwapSheet(baseId,dayName,locName,start,end){
-  document.getElementById('swap-base-id').value=baseId;
-  document.getElementById('swap-from-label').textContent=`${dayName} · ${locName} · ${fmtTime(start)}–${fmtTime(end)}`;
-  document.getElementById('swap-date').value='';
-  document.getElementById('swap-note').value='';
-  const wkDates=getWeekDates(0);
-  document.getElementById('swap-date').min=toYMD(wkDates[0]);
-  document.getElementById('swap-date').max=toYMD(wkDates[6]);
+// Step 1: open sheet showing all base shifts
+function openSwapFlow(){
+  const base=getBase();
+  if(!base.length){ showToast('No base schedule set yet. Contact your admin.',true); return; }
+  swapGoStep1();
   openSheet('sheet-swap');
 }
 
+function swapGoStep1(){
+  document.getElementById('swap-step1').style.display='block';
+  document.getElementById('swap-step2').style.display='none';
+  document.getElementById('swap-sheet-title').textContent='Request Shift Swap';
+  const base=getBase();
+  const list=document.getElementById('swap-shift-list');
+  list.innerHTML=base.sort((a,b)=>a.week-b.week||a.day-b.day).map(b=>{
+    const loc=getLocById(b.locationId);
+    return `<div class="shift-item base-item" style="cursor:pointer" onclick="swapSelectShift('${b.id}','${b.week}','${b.day}','${b.start}','${b.end}','${loc?.name||''}','${loc?.color||'#888'}')">
+      <div class="shift-dot sq" style="background:${loc?.color||'#888'}"></div>
+      <div class="shift-info">
+        <div class="name">Week ${b.week} · ${DAYS[b.day]}</div>
+        <div class="sub">${loc?.name||'—'} · ${fmtTime(b.start)}–${fmtTime(b.end)}</div>
+      </div>
+      <div style="color:var(--muted);font-size:18px">›</div>
+    </div>`;
+  }).join('');
+}
+
+// Step 2: pick a free day in that shift's week
+function swapSelectShift(baseId,week,day,start,end,locName,locColor){
+  swapState={baseId,baseDay:parseInt(day),baseWeek:parseInt(week),baseStart:start,baseEnd:end,locName,locColor,weekDates:[],selectedDate:null};
+  document.getElementById('swap-step1').style.display='none';
+  document.getElementById('swap-step2').style.display='block';
+  document.getElementById('swap-sheet-title').textContent='Pick New Day';
+  document.getElementById('swap-from-label').textContent=`Week ${week} · ${DAYS[day]} · ${locName} · ${fmtTime(start)}–${fmtTime(end)}`;
+  document.getElementById('swap-note').value='';
+  document.getElementById('swap-selected-info').style.display='none';
+  document.getElementById('swap-submit-btn').disabled=true;
+  document.getElementById('swap-submit-btn').style.opacity='.45';
+  renderSwapWeekCal();
+}
+
+function renderSwapWeekCal(){
+  // Figure out which calendar week this base shift falls in
+  // Use current week first, then next week — pick the one that matches the pay week
+  const settings=getSettings();
+  let wkDates=null;
+  for(let off=0;off<52;off++){
+    const wd=getWeekDates(off);
+    const sundayStr=toYMD(wd[0]);
+    if(!sundayStr) continue;
+    const pw=payWeekOf(sundayStr);
+    if(pw===swapState.baseWeek){ wkDates=wd; break; }
+  }
+  if(!wkDates){ showToast('Could not find week',true); return; }
+  swapState.weekDates=wkDates;
+
+  const today=new Date(); today.setHours(0,0,0,0);
+  const DAY_SHORT=['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  // Collect busy dates this week (logged shifts + other base shifts)
+  const wkYMDs=wkDates.map(toYMD);
+  const busyDates=new Set();
+  // Other base shifts this week (not the one being swapped)
+  getBase().filter(b=>b.id!==swapState.baseId).forEach(b=>{
+    const d=baseToDate(b,wkDates); if(d) busyDates.add(d);
+  });
+  // Logged shifts this week
+  getShifts().filter(s=>wkYMDs.includes(s.date)).forEach(s=>busyDates.add(s.date));
+  // The original shift's day is also "busy" (that's the one being moved away from)
+  busyDates.add(toYMD(wkDates[swapState.baseDay]));
+
+  // Also check 18hr daily limit — if adding this shift would exceed it
+  const shiftHrs=shiftHours(swapState.baseStart,swapState.baseEnd);
+
+  const cal=document.getElementById('swap-week-cal');
+  cal.innerHTML=wkDates.map((d,i)=>{
+    const ymd=toYMD(d);
+    const isPast=d<today;
+    const isBusy=busyDates.has(ymd);
+    // Check existing hours on this day
+    const dayHrs=getShifts().filter(s=>s.date===ymd).reduce((a,s)=>a+shiftHours(s.start,s.end),0);
+    const wouldExceed=dayHrs+shiftHrs>MAX_DAY_HOURS;
+    const isOriginal=i===swapState.baseDay;
+    const isFree=!isPast&&!isBusy&&!wouldExceed;
+    const isSelected=swapState.selectedDate===ymd;
+
+    let bg='var(--bg3)'; let textColor='var(--muted)'; let cursor='default'; let border='1px solid var(--border)';
+    if(isOriginal){ bg='rgba(91,143,255,.08)'; textColor='var(--accent)'; border='1px solid rgba(91,143,255,.3)'; }
+    else if(isFree){ bg='rgba(46,204,138,.08)'; textColor='var(--green)'; cursor='pointer'; border='1px solid rgba(46,204,138,.3)'; }
+    if(isSelected){ bg='var(--green)'; textColor='#000'; border='1px solid var(--green)'; }
+
+    const label=isOriginal?'current':isBusy?'busy':isPast?'past':wouldExceed?'>18h':'free';
+    return `<div onclick="${isFree?`swapPickDay('${ymd}',${i})`:''}" style="border-radius:10px;padding:10px 4px;text-align:center;background:${bg};border:${border};cursor:${cursor};">
+      <div style="font-size:10px;font-family:var(--mono);color:${isSelected?'#000':textColor};letter-spacing:.3px">${DAY_SHORT[i]}</div>
+      <div style="font-size:18px;font-weight:800;color:${isSelected?'#000':textColor};line-height:1.2;margin:2px 0">${d.getDate()}</div>
+      <div style="font-size:9px;font-family:var(--mono);color:${isSelected?'rgba(0,0,0,.6)':textColor};opacity:.8">${label}</div>
+    </div>`;
+  }).join('');
+}
+
+function swapPickDay(ymd,dayIndex){
+  swapState.selectedDate=ymd;
+  renderSwapWeekCal();
+  const d=new Date(ymd+'T12:00:00');
+  const dateStr=d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+  const info=document.getElementById('swap-selected-info');
+  info.textContent=`✓ Moving to ${dateStr}`;
+  info.style.display='block';
+  document.getElementById('swap-submit-btn').disabled=false;
+  document.getElementById('swap-submit-btn').style.opacity='1';
+}
+
 async function submitSwap(){
-  const baseId  =document.getElementById('swap-base-id').value;
-  const swapDate=document.getElementById('swap-date').value;
-  const note    =document.getElementById('swap-note').value.trim();
-  if(!swapDate){ showToast('Pick a date to swap to',true); return; }
-  if(!note){ showToast('Please add a note explaining the swap',true); return; }
-  const res=await apiFetch('/api/swaps',{method:'POST',body:{base_id:baseId,swap_date:swapDate,note}});
+  if(!swapState.selectedDate){ showToast('Pick a day first',true); return; }
+  const note=document.getElementById('swap-note').value.trim();
+  const res=await apiFetch('/api/swaps',{method:'POST',body:{
+    base_id:swapState.baseId,
+    swap_date:swapState.selectedDate,
+    note
+  }});
   if(!res?.ok){ showToast(res?.error||'Failed to submit',true); return; }
   swapCache.unshift(res.swap);
   closeSheet('sheet-swap');
   renderSwaps();
+  renderDash(); // refresh dashboard to show pending swap
   showToast('Swap request submitted ✓');
 }
 
@@ -1675,7 +1830,7 @@ async function loadSwaps(){
 async function cancelSwap(id){
   if(!confirm('Cancel this swap request?')) return;
   const res=await apiFetch(`/api/swaps/${id}`,{method:'DELETE'});
-  if(res?.ok){ swapCache=swapCache.filter(s=>s.id!==id); renderSwaps(); showToast('Request cancelled'); }
+  if(res?.ok){ swapCache=swapCache.filter(s=>s.id!==id); renderSwaps(); renderDash(); showToast('Request cancelled'); }
   else showToast('Failed to cancel',true);
 }
 
@@ -1685,16 +1840,19 @@ function renderSwaps(){
   if(!swapCache.length){ el.innerHTML='<div class="empty-state" style="padding:16px;font-size:12px">No swap requests yet</div>'; return; }
   const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   el.innerHTML=swapCache.map(s=>{
-    const swapD=new Date(s.swap_date+'T12:00:00');
-    const swapFmt=swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const raw=s.swap_date||'';
+    const ymd=raw.slice(0,10);
+    const swapD=ymd?new Date(ymd+'T12:00:00'):null;
+    const swapFmt=swapD?swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'—';
     const badge=s.status==='approved'?'<span class="badge swap">APPROVED</span>':s.status==='denied'?'<span class="badge denied">DENIED</span>':'<span class="badge pending">PENDING</span>';
     const adminNote=s.admin_note?`<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px">Admin: ${s.admin_note}</div>`:'';
     const cancelBtn=s.status==='pending'?`<div onclick="cancelSwap('${s.id}')" style="font-size:11px;color:var(--red);font-family:var(--mono);cursor:pointer;margin-top:4px">Cancel request</div>`:'';
+    const dayName=s.day_of_week!==undefined?DS[s.day_of_week]:'—';
     return `<div class="shift-item base-item">
       <div class="shift-dot sq" style="background:${s.color||'#888'}"></div>
       <div class="shift-info">
         <div class="name">${s.location_name||'—'}</div>
-        <div class="sub">${DS[s.day_of_week]} → ${swapFmt}</div>
+        <div class="sub">${dayName} → ${swapFmt}</div>
         ${s.note?`<div class="notes-chip">${s.note.slice(0,60)}${s.note.length>60?'…':''}</div>`:''}
         ${adminNote}${cancelBtn}
       </div>
@@ -1703,7 +1861,28 @@ function renderSwaps(){
   }).join('');
 }
 
-// Load swaps after login
+// Show approved/pending swaps on dashboard
+function getSwapsForWeek(wkYMDs){
+  return swapCache.filter(s=>{
+    const ymd=(s.swap_date||'').slice(0,10);
+    return wkYMDs.includes(ymd) && (s.status==='approved'||s.status==='pending');
+  });
+}
+function getOriginalDatesHiddenBySwap(wkYMDs){
+  // Returns set of YMDs where original base shift should be hidden
+  const hidden=new Set();
+  swapCache.forEach(s=>{
+    if(s.status!=='approved'&&s.status!=='pending') return;
+    // The base shift's original day in this week
+    const wkDates=wkYMDs.map(y=>new Date(y+'T12:00:00'));
+    if(s.day_of_week===undefined) return;
+    const origDate=wkDates[s.day_of_week];
+    if(origDate) hidden.add(toYMD(origDate));
+  });
+  return hidden;
+}
+
+// Load swaps after all data loads
 const _origLoadAllData=loadAllData;
 loadAllData=async function(){
   await _origLoadAllData();

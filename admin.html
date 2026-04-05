@@ -736,8 +736,8 @@ function renderSwaps(){
   const tbody = document.getElementById('swaps-tbody');
   if(!allSwaps.length){ tbody.innerHTML='<tr><td colspan="6" class="empty">No swap requests yet</td></tr>'; return; }
   tbody.innerHTML = allSwaps.map(s=>{
-    const swapD = new Date(s.swap_date+'T12:00:00');
-    const swapFmt = swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const swapD = new Date((s.swap_date||'').slice(0,10)+'T12:00:00');
+    const swapFmt = swapD&&!isNaN(swapD)?swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'—';
     const statusBadge =
       s.status==='approved' ? '<span class="badge" style="background:rgba(46,204,138,.15);color:#2ecc8a">APPROVED</span>' :
       s.status==='denied'   ? '<span class="badge" style="background:rgba(255,95,109,.12);color:#ff5f6d">DENIED</span>' :
