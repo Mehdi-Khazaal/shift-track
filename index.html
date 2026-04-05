@@ -1167,27 +1167,29 @@ function renderDash(){
   // Logged shifts this week
   const logged=getShifts().filter(s=>wkYMDs.includes(s.date));
 
-  // Base shifts that fall in this week — but hide ones that have an approved/pending swap
-  const hiddenBySwap=getOriginalDatesHiddenBySwap(wkYMDs);
+  // Use week_start_date (Sunday) to match swaps to THIS specific week only
+  const weekStartYMD=toYMD(wkDates[0]);
+  const thisWeekSwaps=getSwapsForWeekStart(weekStartYMD);
+  const hiddenDates=getHiddenDatesForWeek(wkDates, weekStartYMD);
+
+  // Base shifts — hide original days that have a swap THIS specific week only
   const baseThisWeek=getBase()
     .map(b=>({...b,date:baseToDate(b,wkDates),isBase:true}))
-    .filter(b=>b.date!==null && !hiddenBySwap.has(b.date));
+    .filter(b=>b.date!==null && !hiddenDates.has(b.date));
 
-  // Add approved/pending swaps as virtual shifts on the new date
-  const swapShifts=getSwapsForWeek(wkYMDs).map(s=>{
+  // Add swap shifts on their NEW date
+  const swapShifts=thisWeekSwaps.map(s=>{
     const ymd=(s.swap_date||'').slice(0,10);
-    // Find the original base shift to get times
     const origBase=getBase().find(b=>b.id===s.base_id);
     const loc=origBase?getLocById(origBase.locationId):null;
     return {
       id:s.id, locationId:origBase?.locationId||'', date:ymd,
       start:origBase?.start||'00:00', end:origBase?.end||'00:00',
-      isBase:false, isSwap:true, swapStatus:s.status,
-      _loc:loc
+      isBase:false, isSwap:true, swapStatus:s.status, _loc:loc, notes:''
     };
   }).filter(s=>s.date&&wkYMDs.includes(s.date));
 
-  // All shifts combined (base + logged + swaps)
+  // All shifts combined
   const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false})),...swapShifts];
   const {totalHrs,totalPay,totalOt,breakdown}=computeWeekPay(allShifts);
 
@@ -1431,14 +1433,32 @@ function setCalView(v){
 }
 function calNav(dir){ calOffset += dir; renderCalendar(); }
 
-// Get all shifts (logged + base) for a given YYYY-MM-DD
+// Get all shifts (logged + base + swaps) for a given YYYY-MM-DD
 function getShiftsForDate(dateStr){
-  const logged = getShifts().filter(s=>s.date===dateStr).map(s=>({...s,isBase:false}));
-  const wkD = weekDatesForDate(dateStr);
-  const base = getBase()
-    .filter(b=>baseToDate(b,wkD)===dateStr)
+  const logged=getShifts().filter(s=>s.date===dateStr).map(s=>({...s,isBase:false}));
+  const wkD=weekDatesForDate(dateStr);
+  const weekStartYMD=toYMD(wkD[0]);
+
+  // Base shifts — hide ones swapped away this specific week
+  const hiddenDates=getHiddenDatesForWeek(wkD, weekStartYMD);
+  const base=getBase()
+    .filter(b=>baseToDate(b,wkD)===dateStr && !hiddenDates.has(dateStr))
     .map(b=>({...b,date:dateStr,isBase:true}));
-  return [...base,...logged].sort((a,b)=>a.start.localeCompare(b.start));
+
+  // Swap shifts landing on this date this specific week
+  const swapShifts=getSwapsForWeekStart(weekStartYMD)
+    .filter(s=>(s.swap_date||'').slice(0,10)===dateStr)
+    .map(s=>{
+      const origBase=getBase().find(b=>b.id===s.base_id);
+      const loc=origBase?getLocById(origBase.locationId):null;
+      return {
+        id:s.id, locationId:origBase?.locationId||'', date:dateStr,
+        start:origBase?.start||'00:00', end:origBase?.end||'00:00',
+        isBase:false, isSwap:true, swapStatus:s.status, _loc:loc, notes:''
+      };
+    });
+
+  return [...base,...logged,...swapShifts].sort((a,b)=>a.start.localeCompare(b.start));
 }
 
 function renderCalendar(){
@@ -1692,7 +1712,7 @@ function updateNotifStatus(){
 //  SWAP REQUESTS — 2-step flow
 // ═══════════════════════════════════════
 let swapCache=[];
-let swapState={ baseId:null, baseDay:null, baseWeek:null, baseStart:null, baseEnd:null, locName:null, locColor:null, weekDates:[], selectedDate:null };
+let swapState={ baseId:null, baseDay:null, baseWeek:null, baseStart:null, baseEnd:null, locName:null, locColor:null, weekOffset:0, weekStartDate:null, weekDates:[], selectedDate:null };
 
 // Step 1: open sheet showing all base shifts
 function openSwapFlow(){
@@ -1723,7 +1743,7 @@ function swapGoStep1(){
 
 // Step 2: pick a free day in that shift's week
 function swapSelectShift(baseId,week,day,start,end,locName,locColor){
-  swapState={baseId,baseDay:parseInt(day),baseWeek:parseInt(week),baseStart:start,baseEnd:end,locName,locColor,weekDates:[],selectedDate:null};
+  swapState={baseId,baseDay:parseInt(day),baseWeek:parseInt(week),baseStart:start,baseEnd:end,locName,locColor,weekOffset:0,weekStartDate:null,weekDates:[],selectedDate:null};
   document.getElementById('swap-step1').style.display='none';
   document.getElementById('swap-step2').style.display='block';
   document.getElementById('swap-sheet-title').textContent='Pick New Day';
@@ -1732,75 +1752,87 @@ function swapSelectShift(baseId,week,day,start,end,locName,locColor){
   document.getElementById('swap-selected-info').style.display='none';
   document.getElementById('swap-submit-btn').disabled=true;
   document.getElementById('swap-submit-btn').style.opacity='.45';
+  swapState.weekOffset=findNextMatchingWeek(0);
+  renderSwapWeekCal();
+}
+
+// Find next week offset matching the base pay week (1 or 2)
+function findNextMatchingWeek(startOffset){
+  for(let off=startOffset;off<104;off++){
+    const wd=getWeekDates(off);
+    const s=toYMD(wd[0]); if(!s) continue;
+    if(payWeekOf(s)===swapState.baseWeek) return off;
+  }
+  return startOffset;
+}
+
+// Navigate ±2 weeks (each pay week repeats every 2 calendar weeks)
+function swapWeekNav(dir){
+  const next=swapState.weekOffset+(dir>0?2:-2);
+  if(next<0) return;
+  swapState.weekOffset=next;
+  swapState.selectedDate=null;
+  document.getElementById('swap-selected-info').style.display='none';
+  document.getElementById('swap-submit-btn').disabled=true;
+  document.getElementById('swap-submit-btn').style.opacity='.45';
   renderSwapWeekCal();
 }
 
 function renderSwapWeekCal(){
-  // Figure out which calendar week this base shift falls in
-  // Use current week first, then next week — pick the one that matches the pay week
-  const settings=getSettings();
-  let wkDates=null;
-  for(let off=0;off<52;off++){
-    const wd=getWeekDates(off);
-    const sundayStr=toYMD(wd[0]);
-    if(!sundayStr) continue;
-    const pw=payWeekOf(sundayStr);
-    if(pw===swapState.baseWeek){ wkDates=wd; break; }
-  }
-  if(!wkDates){ showToast('Could not find week',true); return; }
+  const wkDates=getWeekDates(swapState.weekOffset);
   swapState.weekDates=wkDates;
+  swapState.weekStartDate=toYMD(wkDates[0]); // THE KEY — Sunday of the specific week
+  const wkYMDs=wkDates.map(toYMD);
+
+  const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  document.getElementById('swap-week-label').textContent=`${fmt(wkDates[0])} – ${fmt(wkDates[6])}`;
 
   const today=new Date(); today.setHours(0,0,0,0);
   const DAY_SHORT=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const shiftHrs=shiftHours(swapState.baseStart,swapState.baseEnd);
 
-  // Collect busy dates this week (logged shifts + other base shifts)
-  const wkYMDs=wkDates.map(toYMD);
+  // Busy dates: other base shifts + logged shifts + existing swaps for this week
   const busyDates=new Set();
-  // Other base shifts this week (not the one being swapped)
   getBase().filter(b=>b.id!==swapState.baseId).forEach(b=>{
     const d=baseToDate(b,wkDates); if(d) busyDates.add(d);
   });
-  // Logged shifts this week
   getShifts().filter(s=>wkYMDs.includes(s.date)).forEach(s=>busyDates.add(s.date));
-  // The original shift's day is also "busy" (that's the one being moved away from)
-  busyDates.add(toYMD(wkDates[swapState.baseDay]));
-
-  // Also check 18hr daily limit — if adding this shift would exceed it
-  const shiftHrs=shiftHours(swapState.baseStart,swapState.baseEnd);
+  swapCache.filter(s=>(s.status==='approved'||s.status==='pending')&&(s.week_start_date||'').slice(0,10)===swapState.weekStartDate)
+    .forEach(s=>{ const d=(s.swap_date||'').slice(0,10); if(d) busyDates.add(d); });
+  const origDate=toYMD(wkDates[swapState.baseDay]);
+  if(origDate) busyDates.add(origDate);
 
   const cal=document.getElementById('swap-week-cal');
   cal.innerHTML=wkDates.map((d,i)=>{
-    const ymd=toYMD(d);
+    const ymd=toYMD(d); if(!ymd) return '';
     const isPast=d<today;
     const isBusy=busyDates.has(ymd);
-    // Check existing hours on this day
+    const isOriginal=i===swapState.baseDay;
     const dayHrs=getShifts().filter(s=>s.date===ymd).reduce((a,s)=>a+shiftHours(s.start,s.end),0);
     const wouldExceed=dayHrs+shiftHrs>MAX_DAY_HOURS;
-    const isOriginal=i===swapState.baseDay;
     const isFree=!isPast&&!isBusy&&!wouldExceed;
     const isSelected=swapState.selectedDate===ymd;
 
-    let bg='var(--bg3)'; let textColor='var(--muted)'; let cursor='default'; let border='1px solid var(--border)';
-    if(isOriginal){ bg='rgba(91,143,255,.08)'; textColor='var(--accent)'; border='1px solid rgba(91,143,255,.3)'; }
-    else if(isFree){ bg='rgba(46,204,138,.08)'; textColor='var(--green)'; cursor='pointer'; border='1px solid rgba(46,204,138,.3)'; }
-    if(isSelected){ bg='var(--green)'; textColor='#000'; border='1px solid var(--green)'; }
+    let bg='var(--bg3)',textColor='var(--muted)',cursor='default',border='1px solid var(--border)';
+    if(isOriginal){bg='rgba(91,143,255,.08)';textColor='var(--accent)';border='1px solid rgba(91,143,255,.3)';}
+    else if(isFree){bg='rgba(46,204,138,.08)';textColor='var(--green)';cursor='pointer';border='1px solid rgba(46,204,138,.3)';}
+    if(isSelected){bg='var(--green)';textColor='#000';border='1px solid var(--green)';}
 
-    const label=isOriginal?'current':isBusy?'busy':isPast?'past':wouldExceed?'>18h':'free';
-    return `<div onclick="${isFree?`swapPickDay('${ymd}',${i})`:''}" style="border-radius:10px;padding:10px 4px;text-align:center;background:${bg};border:${border};cursor:${cursor};">
-      <div style="font-size:10px;font-family:var(--mono);color:${isSelected?'#000':textColor};letter-spacing:.3px">${DAY_SHORT[i]}</div>
-      <div style="font-size:18px;font-weight:800;color:${isSelected?'#000':textColor};line-height:1.2;margin:2px 0">${d.getDate()}</div>
-      <div style="font-size:9px;font-family:var(--mono);color:${isSelected?'rgba(0,0,0,.6)':textColor};opacity:.8">${label}</div>
+    const sublabel=isOriginal?'from':isPast?'past':isBusy?'busy':wouldExceed?'>18h':'free';
+    return `<div onclick="${isFree?`swapPickDay('${ymd}')`:''}" style="border-radius:10px;padding:8px 3px;text-align:center;background:${bg};border:${border};cursor:${cursor};">
+      <div style="font-size:9px;font-family:var(--mono);color:${isSelected?'rgba(0,0,0,.7)':textColor};letter-spacing:.3px">${DAY_SHORT[i]}</div>
+      <div style="font-size:17px;font-weight:800;color:${isSelected?'#000':textColor};line-height:1.3">${d.getDate()}</div>
+      <div style="font-size:8px;font-family:var(--mono);color:${isSelected?'rgba(0,0,0,.6)':textColor}">${sublabel}</div>
     </div>`;
   }).join('');
 }
 
-function swapPickDay(ymd,dayIndex){
+function swapPickDay(ymd){
   swapState.selectedDate=ymd;
   renderSwapWeekCal();
   const d=new Date(ymd+'T12:00:00');
-  const dateStr=d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
   const info=document.getElementById('swap-selected-info');
-  info.textContent=`✓ Moving to ${dateStr}`;
+  info.textContent=`✓ Moving to ${d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}`;
   info.style.display='block';
   document.getElementById('swap-submit-btn').disabled=false;
   document.getElementById('swap-submit-btn').style.opacity='1';
@@ -1810,15 +1842,18 @@ async function submitSwap(){
   if(!swapState.selectedDate){ showToast('Pick a day first',true); return; }
   const note=document.getElementById('swap-note').value.trim();
   const res=await apiFetch('/api/swaps',{method:'POST',body:{
-    base_id:swapState.baseId,
-    swap_date:swapState.selectedDate,
+    base_id:         swapState.baseId,
+    swap_date:       swapState.selectedDate,
+    week_start_date: swapState.weekStartDate, // ties swap to ONE specific week
+    base_week:       swapState.baseWeek,
     note
   }});
   if(!res?.ok){ showToast(res?.error||'Failed to submit',true); return; }
   swapCache.unshift(res.swap);
   closeSheet('sheet-swap');
   renderSwaps();
-  renderDash(); // refresh dashboard to show pending swap
+  renderDash();
+  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
   showToast('Swap request submitted ✓');
 }
 
@@ -1830,8 +1865,12 @@ async function loadSwaps(){
 async function cancelSwap(id){
   if(!confirm('Cancel this swap request?')) return;
   const res=await apiFetch(`/api/swaps/${id}`,{method:'DELETE'});
-  if(res?.ok){ swapCache=swapCache.filter(s=>s.id!==id); renderSwaps(); renderDash(); showToast('Request cancelled'); }
-  else showToast('Failed to cancel',true);
+  if(res?.ok){
+    swapCache=swapCache.filter(s=>s.id!==id);
+    renderSwaps(); renderDash();
+    if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
+    showToast('Request cancelled');
+  } else showToast('Failed to cancel',true);
 }
 
 function renderSwaps(){
@@ -1840,10 +1879,12 @@ function renderSwaps(){
   if(!swapCache.length){ el.innerHTML='<div class="empty-state" style="padding:16px;font-size:12px">No swap requests yet</div>'; return; }
   const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   el.innerHTML=swapCache.map(s=>{
-    const raw=s.swap_date||'';
-    const ymd=raw.slice(0,10);
+    const ymd=(s.swap_date||'').slice(0,10);
     const swapD=ymd?new Date(ymd+'T12:00:00'):null;
-    const swapFmt=swapD?swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'—';
+    const swapFmt=swapD&&!isNaN(swapD)?swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'—';
+    const wsd=(s.week_start_date||'').slice(0,10);
+    const wsdD=wsd?new Date(wsd+'T12:00:00'):null;
+    const wsdFmt=wsdD&&!isNaN(wsdD)?'wk of '+wsdD.toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
     const badge=s.status==='approved'?'<span class="badge swap">APPROVED</span>':s.status==='denied'?'<span class="badge denied">DENIED</span>':'<span class="badge pending">PENDING</span>';
     const adminNote=s.admin_note?`<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px">Admin: ${s.admin_note}</div>`:'';
     const cancelBtn=s.status==='pending'?`<div onclick="cancelSwap('${s.id}')" style="font-size:11px;color:var(--red);font-family:var(--mono);cursor:pointer;margin-top:4px">Cancel request</div>`:'';
@@ -1852,7 +1893,7 @@ function renderSwaps(){
       <div class="shift-dot sq" style="background:${s.color||'#888'}"></div>
       <div class="shift-info">
         <div class="name">${s.location_name||'—'}</div>
-        <div class="sub">${dayName} → ${swapFmt}</div>
+        <div class="sub">${dayName} → ${swapFmt}${wsdFmt?' ('+wsdFmt+')':''}</div>
         ${s.note?`<div class="notes-chip">${s.note.slice(0,60)}${s.note.length>60?'…':''}</div>`:''}
         ${adminNote}${cancelBtn}
       </div>
@@ -1861,23 +1902,21 @@ function renderSwaps(){
   }).join('');
 }
 
-// Show approved/pending swaps on dashboard
-function getSwapsForWeek(wkYMDs){
+// ── Swap helpers — week_start_date based (THE FIX) ──
+// Only returns swaps for the exact calendar week (matched by Sunday date)
+function getSwapsForWeekStart(weekStartYMD){
   return swapCache.filter(s=>{
-    const ymd=(s.swap_date||'').slice(0,10);
-    return wkYMDs.includes(ymd) && (s.status==='approved'||s.status==='pending');
+    const wsd=(s.week_start_date||'').slice(0,10);
+    return wsd===weekStartYMD && (s.status==='approved'||s.status==='pending');
   });
 }
-function getOriginalDatesHiddenBySwap(wkYMDs){
-  // Returns set of YMDs where original base shift should be hidden
+// Returns set of original base-shift dates to hide for a specific week
+function getHiddenDatesForWeek(wkDates, weekStartYMD){
   const hidden=new Set();
-  swapCache.forEach(s=>{
-    if(s.status!=='approved'&&s.status!=='pending') return;
-    // The base shift's original day in this week
-    const wkDates=wkYMDs.map(y=>new Date(y+'T12:00:00'));
-    if(s.day_of_week===undefined) return;
-    const origDate=wkDates[s.day_of_week];
-    if(origDate) hidden.add(toYMD(origDate));
+  getSwapsForWeekStart(weekStartYMD).forEach(s=>{
+    if(s.day_of_week==null) return;
+    const d=toYMD(wkDates[s.day_of_week]);
+    if(d) hidden.add(d);
   });
   return hidden;
 }

@@ -5,7 +5,7 @@ const auth    = require('../middleware/auth');
 
 // POST /api/swaps — employee requests a swap
 router.post('/', auth, async (req, res) => {
-  const { base_id, swap_date, note } = req.body;
+  const { base_id, swap_date, week_start_date, base_week, note } = req.body;
   if(!base_id || !swap_date)
     return res.status(400).json({ ok:false, error:'base_id and swap_date required' });
   try {
@@ -27,9 +27,9 @@ router.post('/', auth, async (req, res) => {
       return res.status(409).json({ ok:false, error:'You already have a pending swap request for this shift' });
 
     const result = await db.query(
-      `INSERT INTO swap_requests (requester_id, base_id, swap_date, note)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.userId, base_id, swap_date, note||'']
+      `INSERT INTO swap_requests (requester_id, base_id, swap_date, week_start_date, base_week, note)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [req.userId, base_id, swap_date, week_start_date||null, base_week||null, note||'']
     );
     res.status(201).json({ ok:true, swap: result.rows[0] });
   } catch(err) {
