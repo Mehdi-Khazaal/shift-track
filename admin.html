@@ -160,6 +160,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
     <div class="tab" onclick="switchTab('users',this)">Users</div>
     <div class="tab" onclick="switchTab('locations',this)">Locations</div>
+    <div class="tab" onclick="switchTab('swaps',this)">Swap Requests <span id="swap-badge" style="display:none;background:var(--orange);color:#000;border-radius:99px;font-size:9px;padding:1px 6px;margin-left:4px;font-family:var(--mono)"></span></div>
     <div class="tab" onclick="switchTab('create',this)">Create Account</div>
   </div>
 
@@ -168,8 +169,12 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <!-- OVERVIEW -->
     <div class="panel active" id="panel-overview">
       <div class="sec-hd">
-        <div><h2>Overview</h2><p>Current pay period summary across all employees</p></div>
-        <div id="pp-label" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></div>
+        <div><h2>Overview</h2><p id="ov-period-desc">Current pay period summary across all employees</p></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="arr-btn" onclick="changeOverviewPP(-1)">‹</div>
+          <div id="pp-label" style="font-family:var(--mono);font-size:12px;color:var(--muted);min-width:110px;text-align:center"></div>
+          <div class="arr-btn" onclick="changeOverviewPP(1)">›</div>
+        </div>
       </div>
       <div class="stat-row" id="overview-stats">
         <div class="stat-box accent"><div class="val" id="ov-users">—</div><div class="lbl">employees</div></div>
@@ -208,6 +213,20 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
         <table>
           <thead><tr><th>Color</th><th>Name</th><th>Pay rate</th><th>Created</th><th>Actions</th></tr></thead>
           <tbody id="locs-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SWAP REQUESTS -->
+    <div class="panel" id="panel-swaps">
+      <div class="sec-hd">
+        <div><h2>Swap Requests</h2><p>Employee shift swap requests — approve or deny</p></div>
+        <button class="btn btn-ghost" onclick="loadSwaps()">↻ Refresh</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>From shift</th><th>Swap to date</th><th>Note</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="swaps-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -414,6 +433,7 @@ async function loadAll(){
     renderOverview();
     renderUsers();
     renderLocs();
+    await loadSwaps();
     showToast('Ready ✓');
   }catch(e){
     showToast('Failed to load data',true);
@@ -506,10 +526,29 @@ function computePayForShifts(shifts,schedules,ymds){
 // ══════════════════════════════
 //  OVERVIEW
 // ══════════════════════════════
+let overviewPPOffset = 0;
+
+function changeOverviewPP(dir){
+  const periods = getPayPeriods();
+  // Allow going back through all periods, but not into the future
+  const next = overviewPPOffset + dir;
+  if(next > 0) return; // can't go future
+  if(Math.abs(next) >= periods.length) return; // can't go further than earliest
+  overviewPPOffset = next;
+  renderOverview();
+}
+
 function renderOverview(){
   const periods=getPayPeriods();
-  const current=periods[0];
+  // offset 0 = current (periods[0]), offset -1 = one back (periods[1]), etc.
+  const idx = Math.abs(overviewPPOffset);
+  const current=periods[idx] || periods[0];
+
+  const isCurrent = overviewPPOffset === 0;
   document.getElementById('pp-label').textContent=`${fmtShort(current.start)} – ${fmtShort(current.end)}`;
+  document.getElementById('ov-period-desc').textContent = isCurrent
+    ? 'Current pay period summary across all employees'
+    : `Pay period ${Math.abs(overviewPPOffset)} ago — all employees`;
 
   let totPay=0,totHrs=0,totOt=0;
   const rows=allUsers.map(u=>{
@@ -697,7 +736,58 @@ function clearCreateForm(){
   r.style.display='none'; r.textContent='';
 }
 
+// ══════════════════════════════
+//  SWAP REQUESTS (ADMIN)
+// ══════════════════════════════
+let allSwaps = [];
+
+async function loadSwaps(){
+  const res = await apiFetch('/api/swaps/admin/all');
+  if(!res?.ok) return;
+  allSwaps = res.swaps;
+  renderSwaps();
+  // Update badge
+  const pending = allSwaps.filter(s=>s.status==='pending').length;
+  const badge = document.getElementById('swap-badge');
+  if(pending>0){ badge.textContent=pending; badge.style.display='inline'; }
+  else badge.style.display='none';
+}
+
 const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function renderSwaps(){
+  const tbody = document.getElementById('swaps-tbody');
+  if(!allSwaps.length){ tbody.innerHTML='<tr><td colspan="6" class="empty">No swap requests yet</td></tr>'; return; }
+  tbody.innerHTML = allSwaps.map(s=>{
+    const swapD = new Date((s.swap_date||'').slice(0,10)+'T12:00:00');
+    const swapFmt = swapD&&!isNaN(swapD)?swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'—';
+    const statusBadge =
+      s.status==='approved' ? '<span class="badge" style="background:rgba(46,204,138,.15);color:#2ecc8a">APPROVED</span>' :
+      s.status==='denied'   ? '<span class="badge" style="background:rgba(255,95,109,.12);color:#ff5f6d">DENIED</span>' :
+                              '<span class="badge" style="background:rgba(245,166,35,.12);color:#f5a623">PENDING</span>';
+    const actions = s.status==='pending'
+      ? `<div style="display:flex;gap:6px">
+           <button class="btn btn-primary btn-sm" onclick="processSwap('${s.id}','approved')">Approve</button>
+           <button class="btn btn-danger btn-sm" onclick="processSwap('${s.id}','denied')">Deny</button>
+         </div>`
+      : `<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">${s.admin_note||'—'}</span>`;
+    return `<tr>
+      <td><div style="font-weight:600">${s.requester_name||'—'}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${s.requester_email}</div></td>
+      <td class="mono">${DAYS_FULL[s.day_of_week]} · ${s.location_name}<br><span style="color:var(--muted);font-size:11px">${s.start_time?.slice(0,5)}–${s.end_time?.slice(0,5)}</span></td>
+      <td class="mono">${swapFmt}</td>
+      <td style="max-width:200px;font-size:12px">${s.note||'—'}</td>
+      <td>${statusBadge}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function processSwap(id, status){
+  const adminNote = status==='denied' ? (prompt('Reason for denial (optional):')||'') : '';
+  const res = await apiFetch(`/api/swaps/admin/${id}`,{method:'PATCH',body:{status,admin_note:adminNote}});
+  if(res?.ok){ await loadSwaps(); showToast(`Request ${status}`); }
+  else showToast('Failed to process request',true);
+}
 
 // ══════════════════════════════
 //  BASE SCHEDULE MANAGEMENT (ADMIN)
