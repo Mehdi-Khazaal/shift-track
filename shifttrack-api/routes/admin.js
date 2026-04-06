@@ -108,6 +108,25 @@ router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
   }
 });
 
+// PATCH /api/admin/users/:id/password — reset a user's password
+router.patch('/users/:id/password', auth, adminOnly, async (req, res) => {
+  const { password } = req.body;
+  if(!password || password.length < 4)
+    return res.status(400).json({ ok:false, error:'Password must be at least 4 characters' });
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const result = await db.query(
+      'UPDATE users SET password_hash=$1 WHERE id=$2 RETURNING id',
+      [hash, req.params.id]
+    );
+    if(!result.rows.length)
+      return res.status(404).json({ ok:false, error:'User not found' });
+    res.json({ ok:true });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
 // POST /api/admin/schedule — add base shift for any user
 router.post('/schedule', auth, adminOnly, async (req, res) => {
   const { user_id, week, day_of_week, location_id, start_time, end_time } = req.body;

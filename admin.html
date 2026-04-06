@@ -127,6 +127,18 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 /* ── Empty ── */
 .empty{text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:13px;}
 
+/* ── User cards (mobile) ── */
+.user-cards{display:none;flex-direction:column;gap:10px;}
+.user-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
+.user-card-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
+.user-card-name{font-weight:700;font-size:14px;}
+.user-card-email{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px;}
+.user-card-stats{display:flex;gap:16px;margin-bottom:12px;font-family:var(--mono);font-size:12px;color:var(--muted);}
+.user-card-actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+/* ── Section divider label ── */
+.section-label{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+
 /* ── Arrow buttons (pay period nav) ── */
 .arr-btn{width:28px;height:28px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--muted);user-select:none;transition:all .15s;}
 .arr-btn:hover{color:var(--text);border-color:var(--border2);}
@@ -161,6 +173,9 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   .btn-sm{padding:5px 10px;font-size:11px;}
   /* Pay period cards */
   .pay-period-list{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
+  /* Users: swap table for cards */
+  #users-table{display:none;}
+  .user-cards{display:flex;}
 }
 </style>
 </head>
@@ -196,7 +211,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
     <div class="tab" onclick="switchTab('users',this)">Users</div>
     <div class="tab" onclick="switchTab('locations',this)">Locations</div>
-    <div class="tab" onclick="switchTab('create',this)">Create Account</div>
+    <div class="tab" onclick="switchTab('accounts',this)">Accounts</div>
   </div>
 
   <div class="content">
@@ -230,12 +245,13 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       <div class="sec-hd">
         <div><h2>Users</h2><p>All employee accounts and their full history</p></div>
       </div>
-      <div class="tbl-wrap">
+      <div class="tbl-wrap" id="users-table">
         <table>
           <thead><tr><th>Name / Email</th><th>Role</th><th>Joined</th><th>All-time hrs</th><th>All-time pay</th><th>Actions</th></tr></thead>
           <tbody id="users-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
+      <div class="user-cards" id="users-cards"></div>
     </div>
 
     <!-- LOCATIONS -->
@@ -252,10 +268,12 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
     </div>
 
-    <!-- CREATE ACCOUNT -->
-    <div class="panel" id="panel-create">
-      <div class="sec-hd"><div><h2>Create Account</h2><p>Add a new employee to ShiftTrack</p></div></div>
-      <div class="card" style="max-width:480px">
+    <!-- ACCOUNTS -->
+    <div class="panel" id="panel-accounts">
+      <div class="sec-hd"><div><h2>Accounts</h2><p>Create new accounts and manage existing ones</p></div></div>
+
+      <div class="section-label">Create Account</div>
+      <div class="card" style="max-width:480px;margin-bottom:32px">
         <div class="form-group"><label>Full name</label><input type="text" id="new-name" placeholder="John Smith"/></div>
         <div class="form-group"><label>Email</label><input type="email" id="new-email" placeholder="john@email.com"/></div>
         <div class="form-group"><label>Password</label><input type="password" id="new-pass" placeholder="Temporary password"/></div>
@@ -268,6 +286,11 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
           <button class="btn btn-ghost" onclick="clearCreateForm()">Clear</button>
         </div>
         <div id="create-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none"></div>
+      </div>
+
+      <div class="section-label">Set Password</div>
+      <div id="pwd-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+        <div class="empty">Loading…</div>
       </div>
     </div>
 
@@ -308,6 +331,22 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div id="sched-list" style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:16px"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeSchedModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- PASSWORD MODAL -->
+<div class="modal-overlay" id="pwd-modal">
+  <div class="modal">
+    <h3 id="pwd-modal-title">Set Password</h3>
+    <input type="hidden" id="pwd-user-id"/>
+    <div class="form-group" style="margin-bottom:0">
+      <label>New Password <span style="color:var(--dim);font-size:9px">(visible so you can read it to them)</span></label>
+      <input type="text" id="pwd-input" placeholder="Enter new password" autocomplete="off"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePwdModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePassword()">Set Password</button>
     </div>
   </div>
 </div>
@@ -455,6 +494,7 @@ async function loadAll(){
     renderOverview();
     renderUsers();
     renderLocs();
+    renderPasswordList();
     showToast('Ready ✓');
   }catch(e){
     showToast('Failed to load data',true);
@@ -601,50 +641,101 @@ function renderOverview(){
 // ══════════════════════════════
 function renderUsers(){
   const periods=getPayPeriods();
-  const rows=allUsers.map(u=>{
+  const tableRows=[], cardItems=[];
+
+  allUsers.forEach(u=>{
     const shifts=allShifts[u.id]||[];
     const sched=allSchedules[u.id]||[];
-    // All-time totals
     let totPay=0,totHrs=0;
-    for(const p of periods){
-      const r=computePayForShifts(shifts,sched,p.ymds);
-      totPay+=r.pay; totHrs+=r.hrs;
-    }
+    for(const p of periods){ const r=computePayForShifts(shifts,sched,p.ymds); totPay+=r.pay; totHrs+=r.hrs; }
     const joined=new Date(u.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    return `<tr>
+    const actions=`
+      <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${u.name||u.email.split('@')[0]}')">Schedule</button>
+      ${u.role==='user'?`<button class="btn btn-ghost btn-sm" onclick="promoteUser('${u.id}')">Make Admin</button>`:''}
+      <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>`;
+
+    // Table row (desktop)
+    tableRows.push(`<tr>
       <td><div style="font-weight:600">${u.name||'—'}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${u.email}</div></td>
       <td><span class="badge ${u.role}">${u.role}</span></td>
       <td class="muted">${joined}</td>
       <td class="mono">${totHrs.toFixed(1)} hrs</td>
       <td class="mono" style="color:var(--green)">${formatPay(totPay)}</td>
-      <td>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${u.name||u.email.split('@')[0]}')">Schedule</button>
-          ${u.role==='user'?`<button class="btn btn-ghost btn-sm" onclick="promoteUser('${u.id}')">Make Admin</button>`:''}
-          <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>
-        </div>
-      </td>
+      <td><div style="display:flex;gap:6px">${actions}</div></td>
     </tr>
     <tr class="user-row-detail" id="detail-${u.id}">
-      <td colspan="6">
-        <div class="user-detail-inner">
-          <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:10px">Pay period history</div>
-          <div class="pay-period-list">
-            ${periods.map(p=>{
-              const r=computePayForShifts(shifts,sched,p.ymds);
-              return `<div class="pp-card">
-                <div class="period">${fmtShort(p.start)} – ${fmtShort(p.end)}</div>
-                <div class="amount" style="color:${r.pay>0?'var(--green)':'var(--muted)'}">${formatPay(r.pay)}</div>
-                <div class="meta">${r.hrs.toFixed(1)}h total${r.ot>0?' · '+r.ot.toFixed(1)+'h OT':''}</div>
-              </div>`;
-            }).join('')}
-          </div>
+      <td colspan="6"><div class="user-detail-inner">
+        <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:10px">Pay period history</div>
+        <div class="pay-period-list">
+          ${periods.map(p=>{ const r=computePayForShifts(shifts,sched,p.ymds);
+            return `<div class="pp-card"><div class="period">${fmtShort(p.start)} – ${fmtShort(p.end)}</div>
+              <div class="amount" style="color:${r.pay>0?'var(--green)':'var(--muted)'}">${formatPay(r.pay)}</div>
+              <div class="meta">${r.hrs.toFixed(1)}h total${r.ot>0?' · '+r.ot.toFixed(1)+'h OT':''}</div></div>`;
+          }).join('')}
         </div>
-      </td>
-    </tr>`;
+      </div></td>
+    </tr>`);
+
+    // Card (mobile)
+    cardItems.push(`<div class="user-card">
+      <div class="user-card-head">
+        <div>
+          <div class="user-card-name">${u.name||'—'}</div>
+          <div class="user-card-email">${u.email}</div>
+        </div>
+        <span class="badge ${u.role}">${u.role}</span>
+      </div>
+      <div class="user-card-stats">
+        <span>${totHrs.toFixed(1)} hrs</span>
+        <span style="color:var(--green);font-weight:700">${formatPay(totPay)}</span>
+        <span>joined ${joined}</span>
+      </div>
+      <div class="user-card-actions">${actions}</div>
+    </div>`);
   });
-  document.getElementById('users-tbody').innerHTML=rows.join('')||'<tr><td colspan="6" class="empty">No users yet</td></tr>';
+
+  document.getElementById('users-tbody').innerHTML=tableRows.join('')||'<tr><td colspan="6" class="empty">No users yet</td></tr>';
+  document.getElementById('users-cards').innerHTML=cardItems.join('')||'<div class="empty">No users yet</div>';
 }
+
+// ══════════════════════════════
+//  PASSWORD MANAGEMENT
+// ══════════════════════════════
+function renderPasswordList(){
+  const el=document.getElementById('pwd-list');
+  if(!el) return;
+  if(!allUsers.length){ el.innerHTML='<div class="empty">No users yet</div>'; return; }
+  el.innerHTML=allUsers.map((u,i)=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;${i<allUsers.length-1?'border-bottom:1px solid var(--border)':''}">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px">${u.name||'—'}</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openPwdModal('${u.id}','${(u.name||u.email).replace(/'/g,"\\'")}')">Set Password</button>
+    </div>`).join('');
+}
+
+function openPwdModal(id, name){
+  document.getElementById('pwd-user-id').value=id;
+  document.getElementById('pwd-modal-title').textContent=`Set Password — ${name}`;
+  document.getElementById('pwd-input').value='';
+  document.getElementById('pwd-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('pwd-input').focus(),100);
+}
+function closePwdModal(){ document.getElementById('pwd-modal').classList.remove('open'); }
+
+async function savePassword(){
+  const id=document.getElementById('pwd-user-id').value;
+  const password=document.getElementById('pwd-input').value.trim();
+  if(!password){ showToast('Enter a password',true); return; }
+  if(password.length<4){ showToast('Password must be at least 4 characters',true); return; }
+  const res=await apiFetch(`/api/admin/users/${id}/password`,{method:'PATCH',body:{password}});
+  if(!res?.ok){ showToast(res?.error||'Failed to set password',true); return; }
+  closePwdModal();
+  showToast('Password updated ✓');
+}
+
+document.getElementById('pwd-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('pwd-modal')) closePwdModal(); });
 
 function toggleUserDetail(id){
   const el=document.getElementById('detail-'+id);
