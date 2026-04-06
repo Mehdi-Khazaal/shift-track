@@ -113,10 +113,7 @@ select option{background:var(--bg3);}
 .calc-box{background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:13px;display:none;}
 .calc-row{display:flex;justify-content:space-between;margin-bottom:3px;}
 .calc-row.total{border-top:1px solid var(--border);padding-top:7px;margin-top:4px;margin-bottom:0;}
-.badge.swap{background:rgba(46,204,138,.12);color:var(--green);border:1px solid rgba(46,204,138,.25);}
-.badge.pending{background:rgba(245,166,35,.12);color:var(--orange);border:1px solid rgba(245,166,35,.25);}
 .badge.denied{background:var(--red-bg);color:var(--red);}
-.swap-btn{font-size:10px;font-family:var(--mono);color:var(--accent);background:rgba(91,143,255,.1);border:1px solid rgba(91,143,255,.25);border-radius:6px;padding:3px 8px;cursor:pointer;margin-top:4px;display:inline-block;}
 .ot-note{font-size:11px;color:var(--orange);font-family:var(--mono);margin-top:2px;}
 /* ── Phase 2: Calendar ── */
 .view-tog{padding:5px 12px;font-size:11px;font-family:var(--mono);font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;letter-spacing:.5px;}
@@ -287,19 +284,12 @@ select option{background:var(--bg3);}
 <div id="screen-log" class="screen">
   <div class="top-bar">
     <h1>All Shifts</h1>
-    <div style="display:flex;gap:8px">
-      <div class="icon-btn" onclick="openSwapFlow()" title="Request shift swap" style="font-size:16px">⇄</div>
-      <div class="icon-btn" onclick="openAddShift()">＋</div>
-    </div>
+    <div class="icon-btn" onclick="openAddShift()">＋</div>
   </div>
   <div class="card" style="padding:0">
     <div id="shift-list-all">
       <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
     </div>
-  </div>
-  <div class="section-hd" style="margin-top:4px"><h2>Swap requests</h2></div>
-  <div class="card" style="padding:0">
-    <div id="swap-list"><div class="empty-state" style="padding:16px;font-size:12px">No swap requests yet</div></div>
   </div>
 </div>
 
@@ -314,22 +304,31 @@ select option{background:var(--bg3);}
 
   <div class="section-hd" style="margin-top:8px"><h2>Notifications</h2></div>
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div>
         <div style="font-weight:600;font-size:14px">Shift reminders</div>
-        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px">1 hour before each shift</div>
+        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px">Get notified before each shift</div>
       </div>
       <label class="toggle-wrap">
         <input type="checkbox" id="notif-toggle" onchange="toggleNotifications()"/>
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
       </label>
     </div>
-    <div id="notif-status" style="font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:6px"></div>
+    <div id="notif-timing-row" style="display:none;margin-bottom:8px">
+      <label style="font-size:11px;font-family:var(--mono);color:var(--muted);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">Notify me</label>
+      <select id="notif-minutes" onchange="saveNotifMinutes()" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;appearance:none;outline:none;">
+        <option value="30">30 minutes before</option>
+        <option value="60" selected>1 hour before</option>
+        <option value="120">2 hours before</option>
+        <option value="180">3 hours before</option>
+      </select>
+    </div>
+    <div id="notif-status" style="font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:4px"></div>
   </div>
 
   <div class="section-hd" style="margin-top:20px"><h2>Base schedule</h2></div>
   <div style="padding:0 16px 12px;font-size:12px;color:var(--muted);font-family:var(--mono);line-height:1.5">
-    Set by your administrator. Tap a shift to request a swap.
+    Set by your administrator.
   </div>
   <div class="section-hd" style="margin-top:0;padding-top:0"><h2 style="font-size:13px;color:var(--muted)">Week 1</h2></div>
   <div class="card" style="padding:0"><div id="base-week1"><div class="empty-state" style="padding:16px;font-size:12px">No shifts for week 1</div></div></div>
@@ -527,38 +526,6 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
-<!-- SHEET: SWAP FLOW (2 steps) -->
-<div class="sheet-overlay" id="sheet-swap">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <div class="sheet-header">
-      <h2 id="swap-sheet-title">Request Shift Swap</h2>
-      <button class="close-btn" onclick="closeSheet('sheet-swap')">✕</button>
-    </div>
-    <div class="sheet-body" id="swap-step1">
-      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:14px;">Pick the base shift you want to move:</div>
-      <div id="swap-shift-list"></div>
-    </div>
-    <div class="sheet-body" id="swap-step2" style="display:none">
-      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;">
-        <div style="font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Moving shift</div>
-        <div id="swap-from-label" style="font-weight:700;color:var(--accent);font-size:14px">—</div>
-      </div>
-      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:12px;">Pick a free day in the same week:</div>
-      <div id="swap-week-cal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px;"></div>
-      <div id="swap-selected-info" style="display:none;background:var(--green-bg);border:1px solid rgba(46,204,138,.25);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-family:var(--mono);font-size:13px;color:var(--green)"></div>
-      <div class="form-group">
-        <label>Note (optional)</label>
-        <textarea id="swap-note" placeholder="e.g. Me and Alex agreed on this switch"></textarea>
-      </div>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-ghost" onclick="swapGoStep1()" style="flex:0 0 auto;width:auto;padding:14px 18px">← Back</button>
-        <button class="btn btn-primary" id="swap-submit-btn" onclick="submitSwap()" disabled style="opacity:.45">Submit Request</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div id="toast"></div>
 
 <script>
@@ -717,8 +684,7 @@ function normalizeBase(b){
 }
 
 async function saveSettings(){
-  // Settings are company-fixed — OT threshold 40hrs, anchor 2026-03-22
-  // Nothing to save from the employee side
+  // Company-fixed settings — nothing to save
 }
 
 // ═══════════════════════════════════════
@@ -903,10 +869,10 @@ function switchScreen(name,el){
   document.getElementById('screen-'+name).classList.add('active');
   el.classList.add('active');
   if(name==='dash')     renderDash();
-  if(name==='log')      { renderAllShifts(); renderSwaps(); }
+  if(name==='log')      renderAllShifts();
   if(name==='calendar') renderCalendar();
   if(name==='history')  renderHistory();
-  if(name==='settings') renderSettings();
+  if(name==='settings'){ renderSettings(); loadNotifStatus(); }
 }
 function openSheet(id){ document.getElementById(id).classList.add('open'); }
 function closeSheet(id){ document.getElementById(id).classList.remove('open'); }
@@ -1142,28 +1108,12 @@ function renderDash(){
   // Logged shifts this week
   const logged=getShifts().filter(s=>wkYMDs.includes(s.date));
 
-  // Base shifts that fall in this week — but hide ones that have an approved/pending swap
-  const hiddenBySwap=getOriginalDatesHiddenBySwap(wkYMDs);
+  // Base shifts this week
   const baseThisWeek=getBase()
     .map(b=>({...b,date:baseToDate(b,wkDates),isBase:true}))
-    .filter(b=>b.date!==null && !hiddenBySwap.has(b.date));
+    .filter(b=>b.date!==null);
 
-  // Add approved/pending swaps as virtual shifts on the new date
-  const swapShifts=getSwapsForWeek(wkYMDs).map(s=>{
-    const ymd=(s.swap_date||'').slice(0,10);
-    // Find the original base shift to get times
-    const origBase=getBase().find(b=>b.id===s.base_id);
-    const loc=origBase?getLocById(origBase.locationId):null;
-    return {
-      id:s.id, locationId:origBase?.locationId||'', date:ymd,
-      start:origBase?.start||'00:00', end:origBase?.end||'00:00',
-      isBase:false, isSwap:true, swapStatus:s.status,
-      _loc:loc
-    };
-  }).filter(s=>s.date&&wkYMDs.includes(s.date));
-
-  // All shifts combined (base + logged + swaps)
-  const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false})),...swapShifts];
+  const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false}))];
   const {totalHrs,totalPay,totalOt,breakdown}=computeWeekPay(allShifts);
 
   document.getElementById('stat-hours').textContent=totalHrs.toFixed(1);
@@ -1264,31 +1214,6 @@ function renderAllShifts(){
 //  SHIFT ITEM HTML
 // ═══════════════════════════════════════
 function shiftItemHTML(s,bd){
-  // Handle swap virtual shifts
-  if(s.isSwap){
-    const loc=s._loc||getLocById(s.locationId);
-    const color=loc?.color||'#888';
-    const name=loc?.name||'Unknown';
-    const hrs=shiftHours(s.start,s.end);
-    const d=new Date(s.date+'T12:00:00');
-    const ds=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const badge=s.swapStatus==='approved'
-      ?'<span class="badge swap">SWAP</span>'
-      :'<span class="badge pending">PENDING</span>';
-    return `<div class="shift-item base-item" style="opacity:${s.swapStatus==='pending'?.7:1}">
-      <div class="shift-dot sq" style="background:${color};outline:2px solid ${s.swapStatus==='approved'?'var(--green)':'var(--orange)'};outline-offset:2px"></div>
-      <div class="shift-info">
-        <div class="name">${name} <span style="font-size:10px;opacity:.6">(swap)</span></div>
-        <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
-      </div>
-      <div class="shift-right">
-        <div class="pay">—</div>
-        <div class="hrs">${hrs.toFixed(1)} hrs</div>
-        ${badge}
-      </div>
-    </div>`;
-  }
-
   const loc  =getLocById(s.locationId);
   const color=loc?.color||'#888';
   const name =loc?.name||'Unknown';
@@ -1344,7 +1269,6 @@ function renderSchedule(){
         <div class="shift-info">
           <div class="name">${DAYS[b.day]}</div>
           <div class="sub">${locName} · ${fmtTime(b.start)}–${fmtTime(b.end)}</div>
-          <div class="swap-btn" onclick="openSwapSheet('${b.id}','${DAYS[b.day]}','${locName}','${b.start}','${b.end}')">⇄ Request swap</div>
         </div>
         <div class="shift-right">
           <div class="hrs">${shiftHours(b.start,b.end).toFixed(1)} hrs</div>
@@ -1622,242 +1546,119 @@ function renderHistory(){
 }
 
 // ═══════════════════════════════════════
-//  PHASE 2: NOTIFICATIONS
+//  NOTIFICATIONS — Web Push
 // ═══════════════════════════════════════
-function toggleNotifications(){
-  const on = document.getElementById('notif-toggle').checked;
-  if(!on){ localStorage.removeItem('st_notif'); updateNotifStatus(); return; }
+const VAPID_PUBLIC_KEY='BESHXB2fFWXy2JeDTUntrNzoQT6CtZ_cT_1ez5Ff8s1udCKmtHNN0Fl_3dZYepplxWAN9W1DpNw0S1VdlNnlB_s';
 
-  if(!('Notification' in window)){
-    showToast('Notifications not supported on this browser',true);
+function urlBase64ToUint8Array(b64){
+  const padding='='.repeat((4-b64.length%4)%4);
+  const base64=(b64+padding).replace(/-/g,'+').replace(/_/g,'/');
+  return Uint8Array.from([...window.atob(base64)].map(c=>c.charCodeAt(0)));
+}
+
+async function loadNotifStatus(){
+  const toggle=document.getElementById('notif-toggle');
+  const timingRow=document.getElementById('notif-timing-row');
+  const statusEl=document.getElementById('notif-status');
+  if(!toggle) return;
+
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){
+    statusEl.textContent='Not supported on this browser.';
+    toggle.disabled=true;
+    return;
+  }
+  const res=await apiFetch('/api/notifications/status');
+  if(res?.ok && res.subscribed){
+    toggle.checked=true;
+    timingRow.style.display='block';
+    document.getElementById('notif-minutes').value=String(res.notify_minutes||60);
+    statusEl.textContent='✓ Active on this device';
+    statusEl.style.color='var(--green)';
+  } else {
+    toggle.checked=false;
+    timingRow.style.display='none';
+    statusEl.textContent='Off';
+    statusEl.style.color='var(--dim)';
+  }
+}
+
+async function toggleNotifications(){
+  const on=document.getElementById('notif-toggle').checked;
+  const timingRow=document.getElementById('notif-timing-row');
+  const statusEl=document.getElementById('notif-status');
+
+  if(!on){
+    await apiFetch('/api/notifications/unsubscribe',{method:'DELETE'});
+    timingRow.style.display='none';
+    statusEl.textContent='Off';
+    statusEl.style.color='var(--dim)';
+    showToast('Notifications disabled');
+    return;
+  }
+
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){
+    showToast('Push notifications not supported on this browser',true);
     document.getElementById('notif-toggle').checked=false;
     return;
   }
-  Notification.requestPermission().then(perm=>{
-    if(perm==='granted'){
-      localStorage.setItem('st_notif', JSON.stringify({enabled:true}));
-      scheduleNotifications();
-      updateNotifStatus();
-      showToast('Shift reminders enabled ✓');
-    } else {
+
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){
       document.getElementById('notif-toggle').checked=false;
-      localStorage.setItem('st_notif', JSON.stringify({enabled:false}));
-      updateNotifStatus();
-      showToast('Permission denied — enable in browser settings',true);
+      statusEl.textContent='Permission denied — enable in browser settings';
+      statusEl.style.color='var(--red)';
+      showToast('Permission denied',true);
+      return;
     }
-  });
-}
-
-function updateNotifStatus(){
-  const s = document.getElementById('notif-status');
-  if(!s) return;
-  s.textContent='Notifications require backend push support (coming soon)';
-  s.style.color='var(--dim)';
-  document.getElementById('notif-toggle').checked=false;
-}
-
-// ═══════════════════════════════════════
-//  SWAP REQUESTS
-// ═══════════════════════════════════════
-// ═══════════════════════════════════════
-//  SWAP REQUESTS — 2-step flow
-// ═══════════════════════════════════════
-let swapCache=[];
-let swapState={ baseId:null, baseDay:null, baseWeek:null, baseStart:null, baseEnd:null, locName:null, locColor:null, weekDates:[], selectedDate:null };
-
-// Step 1: open sheet showing all base shifts
-function openSwapFlow(){
-  const base=getBase();
-  if(!base.length){ showToast('No base schedule set yet. Contact your admin.',true); return; }
-  swapGoStep1();
-  openSheet('sheet-swap');
-}
-
-function swapGoStep1(){
-  document.getElementById('swap-step1').style.display='block';
-  document.getElementById('swap-step2').style.display='none';
-  document.getElementById('swap-sheet-title').textContent='Request Shift Swap';
-  const base=getBase();
-  const list=document.getElementById('swap-shift-list');
-  list.innerHTML=base.sort((a,b)=>a.week-b.week||a.day-b.day).map(b=>{
-    const loc=getLocById(b.locationId);
-    return `<div class="shift-item base-item" style="cursor:pointer" onclick="swapSelectShift('${b.id}','${b.week}','${b.day}','${b.start}','${b.end}','${loc?.name||''}','${loc?.color||'#888'}')">
-      <div class="shift-dot sq" style="background:${loc?.color||'#888'}"></div>
-      <div class="shift-info">
-        <div class="name">Week ${b.week} · ${DAYS[b.day]}</div>
-        <div class="sub">${loc?.name||'—'} · ${fmtTime(b.start)}–${fmtTime(b.end)}</div>
-      </div>
-      <div style="color:var(--muted);font-size:18px">›</div>
-    </div>`;
-  }).join('');
-}
-
-// Step 2: pick a free day in that shift's week
-function swapSelectShift(baseId,week,day,start,end,locName,locColor){
-  swapState={baseId,baseDay:parseInt(day),baseWeek:parseInt(week),baseStart:start,baseEnd:end,locName,locColor,weekDates:[],selectedDate:null};
-  document.getElementById('swap-step1').style.display='none';
-  document.getElementById('swap-step2').style.display='block';
-  document.getElementById('swap-sheet-title').textContent='Pick New Day';
-  document.getElementById('swap-from-label').textContent=`Week ${week} · ${DAYS[day]} · ${locName} · ${fmtTime(start)}–${fmtTime(end)}`;
-  document.getElementById('swap-note').value='';
-  document.getElementById('swap-selected-info').style.display='none';
-  document.getElementById('swap-submit-btn').disabled=true;
-  document.getElementById('swap-submit-btn').style.opacity='.45';
-  renderSwapWeekCal();
-}
-
-function renderSwapWeekCal(){
-  // Figure out which calendar week this base shift falls in
-  // Use current week first, then next week — pick the one that matches the pay week
-  const settings=getSettings();
-  let wkDates=null;
-  for(let off=0;off<52;off++){
-    const wd=getWeekDates(off);
-    const sundayStr=toYMD(wd[0]);
-    if(!sundayStr) continue;
-    const pw=payWeekOf(sundayStr);
-    if(pw===swapState.baseWeek){ wkDates=wd; break; }
+    const reg=await navigator.serviceWorker.register('/shift-track/sw.js');
+    await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    const minutes=parseInt(document.getElementById('notif-minutes').value)||60;
+    const j=sub.toJSON();
+    const res=await apiFetch('/api/notifications/subscribe',{
+      method:'POST',
+      body:{endpoint:j.endpoint,keys:j.keys,notify_minutes:minutes}
+    });
+    if(!res?.ok){ throw new Error(res?.error||'Subscribe failed'); }
+    timingRow.style.display='block';
+    statusEl.textContent='✓ Active on this device';
+    statusEl.style.color='var(--green)';
+    showToast('Shift reminders enabled ✓');
+    apiFetch('/api/notifications/send-upcoming',{method:'POST'});
+  } catch(e){
+    console.error('Push error:',e);
+    document.getElementById('notif-toggle').checked=false;
+    statusEl.textContent='Could not enable — try again';
+    statusEl.style.color='var(--red)';
+    showToast('Failed to enable notifications',true);
   }
-  if(!wkDates){ showToast('Could not find week',true); return; }
-  swapState.weekDates=wkDates;
-
-  const today=new Date(); today.setHours(0,0,0,0);
-  const DAY_SHORT=['Su','Mo','Tu','We','Th','Fr','Sa'];
-
-  // Collect busy dates this week (logged shifts + other base shifts)
-  const wkYMDs=wkDates.map(toYMD);
-  const busyDates=new Set();
-  // Other base shifts this week (not the one being swapped)
-  getBase().filter(b=>b.id!==swapState.baseId).forEach(b=>{
-    const d=baseToDate(b,wkDates); if(d) busyDates.add(d);
-  });
-  // Logged shifts this week
-  getShifts().filter(s=>wkYMDs.includes(s.date)).forEach(s=>busyDates.add(s.date));
-  // The original shift's day is also "busy" (that's the one being moved away from)
-  busyDates.add(toYMD(wkDates[swapState.baseDay]));
-
-  // Also check 18hr daily limit — if adding this shift would exceed it
-  const shiftHrs=shiftHours(swapState.baseStart,swapState.baseEnd);
-
-  const cal=document.getElementById('swap-week-cal');
-  cal.innerHTML=wkDates.map((d,i)=>{
-    const ymd=toYMD(d);
-    const isPast=d<today;
-    const isBusy=busyDates.has(ymd);
-    // Check existing hours on this day
-    const dayHrs=getShifts().filter(s=>s.date===ymd).reduce((a,s)=>a+shiftHours(s.start,s.end),0);
-    const wouldExceed=dayHrs+shiftHrs>MAX_DAY_HOURS;
-    const isOriginal=i===swapState.baseDay;
-    const isFree=!isPast&&!isBusy&&!wouldExceed;
-    const isSelected=swapState.selectedDate===ymd;
-
-    let bg='var(--bg3)'; let textColor='var(--muted)'; let cursor='default'; let border='1px solid var(--border)';
-    if(isOriginal){ bg='rgba(91,143,255,.08)'; textColor='var(--accent)'; border='1px solid rgba(91,143,255,.3)'; }
-    else if(isFree){ bg='rgba(46,204,138,.08)'; textColor='var(--green)'; cursor='pointer'; border='1px solid rgba(46,204,138,.3)'; }
-    if(isSelected){ bg='var(--green)'; textColor='#000'; border='1px solid var(--green)'; }
-
-    const label=isOriginal?'current':isBusy?'busy':isPast?'past':wouldExceed?'>18h':'free';
-    return `<div onclick="${isFree?`swapPickDay('${ymd}',${i})`:''}" style="border-radius:10px;padding:10px 4px;text-align:center;background:${bg};border:${border};cursor:${cursor};">
-      <div style="font-size:10px;font-family:var(--mono);color:${isSelected?'#000':textColor};letter-spacing:.3px">${DAY_SHORT[i]}</div>
-      <div style="font-size:18px;font-weight:800;color:${isSelected?'#000':textColor};line-height:1.2;margin:2px 0">${d.getDate()}</div>
-      <div style="font-size:9px;font-family:var(--mono);color:${isSelected?'rgba(0,0,0,.6)':textColor};opacity:.8">${label}</div>
-    </div>`;
-  }).join('');
 }
 
-function swapPickDay(ymd,dayIndex){
-  swapState.selectedDate=ymd;
-  renderSwapWeekCal();
-  const d=new Date(ymd+'T12:00:00');
-  const dateStr=d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
-  const info=document.getElementById('swap-selected-info');
-  info.textContent=`✓ Moving to ${dateStr}`;
-  info.style.display='block';
-  document.getElementById('swap-submit-btn').disabled=false;
-  document.getElementById('swap-submit-btn').style.opacity='1';
+async function saveNotifMinutes(){
+  const minutes=parseInt(document.getElementById('notif-minutes').value)||60;
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(sub){
+      const j=sub.toJSON();
+      await apiFetch('/api/notifications/subscribe',{
+        method:'POST',
+        body:{endpoint:j.endpoint,keys:j.keys,notify_minutes:minutes}
+      });
+      showToast('Reminder timing updated ✓');
+    }
+  } catch(e){ showToast('Could not update timing',true); }
 }
 
-async function submitSwap(){
-  if(!swapState.selectedDate){ showToast('Pick a day first',true); return; }
-  const note=document.getElementById('swap-note').value.trim();
-  const res=await apiFetch('/api/swaps',{method:'POST',body:{
-    base_id:swapState.baseId,
-    swap_date:swapState.selectedDate,
-    note
-  }});
-  if(!res?.ok){ showToast(res?.error||'Failed to submit',true); return; }
-  swapCache.unshift(res.swap);
-  closeSheet('sheet-swap');
-  renderSwaps();
-  renderDash(); // refresh dashboard to show pending swap
-  showToast('Swap request submitted ✓');
-}
-
-async function loadSwaps(){
-  const res=await apiFetch('/api/swaps');
-  if(res?.ok){ swapCache=res.swaps; renderSwaps(); }
-}
-
-async function cancelSwap(id){
-  if(!confirm('Cancel this swap request?')) return;
-  const res=await apiFetch(`/api/swaps/${id}`,{method:'DELETE'});
-  if(res?.ok){ swapCache=swapCache.filter(s=>s.id!==id); renderSwaps(); renderDash(); showToast('Request cancelled'); }
-  else showToast('Failed to cancel',true);
-}
-
-function renderSwaps(){
-  const el=document.getElementById('swap-list');
-  if(!el) return;
-  if(!swapCache.length){ el.innerHTML='<div class="empty-state" style="padding:16px;font-size:12px">No swap requests yet</div>'; return; }
-  const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  el.innerHTML=swapCache.map(s=>{
-    const raw=s.swap_date||'';
-    const ymd=raw.slice(0,10);
-    const swapD=ymd?new Date(ymd+'T12:00:00'):null;
-    const swapFmt=swapD?swapD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'—';
-    const badge=s.status==='approved'?'<span class="badge swap">APPROVED</span>':s.status==='denied'?'<span class="badge denied">DENIED</span>':'<span class="badge pending">PENDING</span>';
-    const adminNote=s.admin_note?`<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px">Admin: ${s.admin_note}</div>`:'';
-    const cancelBtn=s.status==='pending'?`<div onclick="cancelSwap('${s.id}')" style="font-size:11px;color:var(--red);font-family:var(--mono);cursor:pointer;margin-top:4px">Cancel request</div>`:'';
-    const dayName=s.day_of_week!==undefined?DS[s.day_of_week]:'—';
-    return `<div class="shift-item base-item">
-      <div class="shift-dot sq" style="background:${s.color||'#888'}"></div>
-      <div class="shift-info">
-        <div class="name">${s.location_name||'—'}</div>
-        <div class="sub">${dayName} → ${swapFmt}</div>
-        ${s.note?`<div class="notes-chip">${s.note.slice(0,60)}${s.note.length>60?'…':''}</div>`:''}
-        ${adminNote}${cancelBtn}
-      </div>
-      <div class="shift-right" style="padding-top:2px">${badge}</div>
-    </div>`;
-  }).join('');
-}
-
-// Show approved/pending swaps on dashboard
-function getSwapsForWeek(wkYMDs){
-  return swapCache.filter(s=>{
-    const ymd=(s.swap_date||'').slice(0,10);
-    return wkYMDs.includes(ymd) && (s.status==='approved'||s.status==='pending');
-  });
-}
-function getOriginalDatesHiddenBySwap(wkYMDs){
-  // Returns set of YMDs where original base shift should be hidden
-  const hidden=new Set();
-  swapCache.forEach(s=>{
-    if(s.status!=='approved'&&s.status!=='pending') return;
-    // The base shift's original day in this week
-    const wkDates=wkYMDs.map(y=>new Date(y+'T12:00:00'));
-    if(s.day_of_week===undefined) return;
-    const origDate=wkDates[s.day_of_week];
-    if(origDate) hidden.add(toYMD(origDate));
-  });
-  return hidden;
-}
-
-// Load swaps after all data loads
-const _origLoadAllData=loadAllData;
-loadAllData=async function(){
-  await _origLoadAllData();
-  await loadSwaps();
+// Trigger reminder check 3 seconds after every login
+const _origEnterApp=enterApp;
+enterApp=function(user){
+  _origEnterApp(user);
+  setTimeout(()=>apiFetch('/api/notifications/send-upcoming',{method:'POST'}),3000);
 };
 
 // ═══════════════════════════════════════
