@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   name          TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'user', -- 'user' or 'admin'
+  position      TEXT NOT NULL DEFAULT '',     -- e.g. SRC, DSP, PRN
+  location_id   UUID REFERENCES locations(id) ON DELETE SET NULL,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -16,7 +16,11 @@ function adminOnly(req, res, next){
 router.get('/users', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC`
+      `SELECT u.id, u.email, u.name, u.role, u.position, u.location_id, u.created_at,
+              l.name AS location_name, l.color AS location_color
+       FROM users u
+       LEFT JOIN locations l ON u.location_id = l.id
+       ORDER BY u.created_at ASC`
     );
     res.json({ ok:true, users: result.rows });
   } catch(err) {
@@ -72,7 +76,7 @@ router.delete('/users/:id', auth, adminOnly, async (req, res) => {
 
 // POST /api/admin/users — create account (admin only)
 router.post('/users', auth, adminOnly, async (req, res) => {
-  const { email, name, password } = req.body;
+  const { email, name, password, position, location_id } = req.body;
   if(!email || !password)
     return res.status(400).json({ ok:false, error:'email and password required' });
   try {
@@ -81,12 +85,40 @@ router.post('/users', auth, adminOnly, async (req, res) => {
       return res.status(409).json({ ok:false, error:'Email already registered' });
     const hash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (email, name, password_hash) VALUES ($1,$2,$3) RETURNING id, email, name, role',
-      [email, name||email.split('@')[0], hash]
+      'INSERT INTO users (email, name, password_hash, position, location_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, email, name, role, position, location_id',
+      [email, name||email.split('@')[0], hash, position||'', location_id||null]
     );
     const user = result.rows[0];
     await db.query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id]);
     res.status(201).json({ ok:true, user });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
+// PATCH /api/admin/users/:id — update user info (name, email, role, position, location, optional password)
+router.patch('/users/:id', auth, adminOnly, async (req, res) => {
+  const { name, email, role, position, location_id, password } = req.body;
+  if(!['admin','user'].includes(role))
+    return res.status(400).json({ ok:false, error:'Invalid role' });
+  try {
+    let result;
+    if(password && password.length >= 4) {
+      const hash = await bcrypt.hash(password, 10);
+      result = await db.query(
+        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6
+         WHERE id=$7 RETURNING id, email, name, role, position, location_id`,
+        [name, email, role, position||'', location_id||null, hash, req.params.id]
+      );
+    } else {
+      result = await db.query(
+        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5
+         WHERE id=$6 RETURNING id, email, name, role, position, location_id`,
+        [name, email, role, position||'', location_id||null, req.params.id]
+      );
+    }
+    if(!result.rows.length) return res.status(404).json({ ok:false, error:'User not found' });
+    res.json({ ok:true, user: result.rows[0] });
   } catch(err) {
     res.status(500).json({ ok:false, error:'Server error' });
   }

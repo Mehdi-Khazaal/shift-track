@@ -93,6 +93,10 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .badge.admin{background:rgba(91,143,255,.15);color:var(--accent);}
 .badge.user{background:var(--bg3);color:var(--muted);}
 .badge.ot{background:rgba(245,166,35,.12);color:var(--orange);}
+.badge.src{background:rgba(46,204,138,.15);color:var(--green);}
+.badge.dsp{background:rgba(91,143,255,.15);color:var(--accent);}
+.badge.prn{background:rgba(245,166,35,.12);color:var(--orange);}
+.badge.pos{background:var(--bg4);color:var(--muted);}
 
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:var(--radius-sm);font-family:var(--sans);font-size:13px;font-weight:700;border:none;cursor:pointer;transition:all .15s;}
@@ -247,8 +251,8 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
       <div class="tbl-wrap" id="users-table">
         <table>
-          <thead><tr><th>Name / Email</th><th>Role</th><th>Joined</th><th>All-time hrs</th><th>All-time pay</th><th>Actions</th></tr></thead>
-          <tbody id="users-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+          <thead><tr><th>Name / Email</th><th>Position</th><th>Location</th><th>Role</th><th>All-time hrs</th><th>All-time pay</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
       <div class="user-cards" id="users-cards"></div>
@@ -277,6 +281,16 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
         <div class="form-group"><label>Full name</label><input type="text" id="new-name" placeholder="John Smith"/></div>
         <div class="form-group"><label>Email</label><input type="email" id="new-email" placeholder="john@email.com"/></div>
         <div class="form-group"><label>Password</label><input type="password" id="new-pass" placeholder="Temporary password"/></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:120px">
+            <label>Position</label>
+            <select id="new-position"><option value="">— None —</option><option value="SRC">SRC</option><option value="DSP">DSP</option><option value="PRN">PRN</option></select>
+          </div>
+          <div class="form-group" style="flex:2;min-width:160px">
+            <label>Main Location <span style="color:var(--dim);font-size:9px">(optional)</span></label>
+            <select id="new-location"><option value="">— None —</option></select>
+          </div>
+        </div>
         <div class="form-group" style="margin-bottom:0">
           <label>Role</label>
           <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
@@ -288,8 +302,8 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
         <div id="create-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none"></div>
       </div>
 
-      <div class="section-label">Set Password</div>
-      <div id="pwd-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+      <div class="section-label">Manage Users</div>
+      <div id="manage-users-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
         <div class="empty">Loading…</div>
       </div>
     </div>
@@ -335,18 +349,34 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   </div>
 </div>
 
-<!-- PASSWORD MODAL -->
-<div class="modal-overlay" id="pwd-modal">
-  <div class="modal">
-    <h3 id="pwd-modal-title">Set Password</h3>
-    <input type="hidden" id="pwd-user-id"/>
+<!-- EDIT USER MODAL -->
+<div class="modal-overlay" id="edit-user-modal">
+  <div class="modal" style="max-width:460px">
+    <h3 id="edit-user-title">Edit User</h3>
+    <input type="hidden" id="edit-user-id"/>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:2;min-width:160px"><label>Name</label><input type="text" id="edit-name" placeholder="John Smith"/></div>
+      <div class="form-group" style="flex:1;min-width:120px">
+        <label>Position</label>
+        <select id="edit-position"><option value="">— None —</option><option value="SRC">SRC</option><option value="DSP">DSP</option><option value="PRN">PRN</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label>Email</label><input type="email" id="edit-email" placeholder="john@email.com"/></div>
+    <div class="form-group">
+      <label>Main Location <span style="color:var(--dim);font-size:9px">(optional)</span></label>
+      <select id="edit-location"><option value="">— None —</option></select>
+    </div>
+    <div class="form-group">
+      <label>Role</label>
+      <select id="edit-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+    </div>
     <div class="form-group" style="margin-bottom:0">
-      <label>New Password <span style="color:var(--dim);font-size:9px">(visible so you can read it to them)</span></label>
-      <input type="text" id="pwd-input" placeholder="Enter new password" autocomplete="off"/>
+      <label>New Password <span style="color:var(--dim);font-size:9px">(leave blank to keep current — shown so you can read it to them)</span></label>
+      <input type="text" id="edit-password" placeholder="Leave blank to keep current" autocomplete="off"/>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closePwdModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="savePassword()">Set Password</button>
+      <button class="btn btn-ghost" onclick="closeEditUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditUser()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -494,7 +524,7 @@ async function loadAll(){
     renderOverview();
     renderUsers();
     renderLocs();
-    renderPasswordList();
+    renderManageUsers();
     showToast('Ready ✓');
   }catch(e){
     showToast('Failed to load data',true);
@@ -639,6 +669,19 @@ function renderOverview(){
 // ══════════════════════════════
 //  USERS
 // ══════════════════════════════
+const POSITIONS = ['SRC','DSP','PRN'];
+
+function posBadge(pos){
+  if(!pos) return '<span class="muted" style="font-family:var(--mono);font-size:11px">—</span>';
+  const cls = POSITIONS.includes(pos) ? pos.toLowerCase() : 'pos';
+  return `<span class="badge ${cls}">${pos}</span>`;
+}
+
+function locChip(u){
+  if(!u.location_id) return '<span class="muted" style="font-family:var(--mono);font-size:11px">—</span>';
+  return `<div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;border-radius:2px;background:${u.location_color};flex-shrink:0"></div><span style="font-size:12px">${u.location_name}</span></div>`;
+}
+
 function renderUsers(){
   const periods=getPayPeriods();
   const tableRows=[], cardItems=[];
@@ -650,21 +693,21 @@ function renderUsers(){
     for(const p of periods){ const r=computePayForShifts(shifts,sched,p.ymds); totPay+=r.pay; totHrs+=r.hrs; }
     const joined=new Date(u.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
     const actions=`
-      <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${u.name||u.email.split('@')[0]}')">Schedule</button>
-      ${u.role==='user'?`<button class="btn btn-ghost btn-sm" onclick="promoteUser('${u.id}')">Make Admin</button>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${(u.name||u.email.split('@')[0]).replace(/'/g,"\\'")}')">Schedule</button>
       <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>`;
 
     // Table row (desktop)
     tableRows.push(`<tr>
       <td><div style="font-weight:600">${u.name||'—'}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${u.email}</div></td>
+      <td>${posBadge(u.position)}</td>
+      <td>${locChip(u)}</td>
       <td><span class="badge ${u.role}">${u.role}</span></td>
-      <td class="muted">${joined}</td>
       <td class="mono">${totHrs.toFixed(1)} hrs</td>
       <td class="mono" style="color:var(--green)">${formatPay(totPay)}</td>
       <td><div style="display:flex;gap:6px">${actions}</div></td>
     </tr>
     <tr class="user-row-detail" id="detail-${u.id}">
-      <td colspan="6"><div class="user-detail-inner">
+      <td colspan="7"><div class="user-detail-inner">
         <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:10px">Pay period history</div>
         <div class="pay-period-list">
           ${periods.map(p=>{ const r=computePayForShifts(shifts,sched,p.ymds);
@@ -683,70 +726,96 @@ function renderUsers(){
           <div class="user-card-name">${u.name||'—'}</div>
           <div class="user-card-email">${u.email}</div>
         </div>
-        <span class="badge ${u.role}">${u.role}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="badge ${u.role}">${u.role}</span>
+          ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+        </div>
       </div>
+      ${u.location_id?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px"><div style="width:8px;height:8px;border-radius:2px;background:${u.location_color}"></div>${u.location_name}</div>`:''}
       <div class="user-card-stats">
         <span>${totHrs.toFixed(1)} hrs</span>
         <span style="color:var(--green);font-weight:700">${formatPay(totPay)}</span>
-        <span>joined ${joined}</span>
       </div>
       <div class="user-card-actions">${actions}</div>
     </div>`);
   });
 
-  document.getElementById('users-tbody').innerHTML=tableRows.join('')||'<tr><td colspan="6" class="empty">No users yet</td></tr>';
+  document.getElementById('users-tbody').innerHTML=tableRows.join('')||'<tr><td colspan="7" class="empty">No users yet</td></tr>';
   document.getElementById('users-cards').innerHTML=cardItems.join('')||'<div class="empty">No users yet</div>';
 }
 
 // ══════════════════════════════
-//  PASSWORD MANAGEMENT
+//  MANAGE USERS (Accounts panel)
 // ══════════════════════════════
-function renderPasswordList(){
-  const el=document.getElementById('pwd-list');
+function populateNewLocationSelect(){
+  const sel=document.getElementById('new-location');
+  if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— None —</option>'+allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  if(cur) sel.value=cur;
+}
+
+function renderManageUsers(){
+  populateNewLocationSelect();
+  const el=document.getElementById('manage-users-list');
   if(!el) return;
   if(!allUsers.length){ el.innerHTML='<div class="empty">No users yet</div>'; return; }
   el.innerHTML=allUsers.map((u,i)=>`
     <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;${i<allUsers.length-1?'border-bottom:1px solid var(--border)':''}">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:13px">${u.name||'—'}</div>
+        <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px">
+          ${u.name||'—'}
+          ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+        </div>
         <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="openPwdModal('${u.id}','${(u.name||u.email).replace(/'/g,"\\'")}')">Set Password</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.id}')">Edit</button>
     </div>`).join('');
 }
 
-function openPwdModal(id, name){
-  document.getElementById('pwd-user-id').value=id;
-  document.getElementById('pwd-modal-title').textContent=`Set Password — ${name}`;
-  document.getElementById('pwd-input').value='';
-  document.getElementById('pwd-modal').classList.add('open');
-  setTimeout(()=>document.getElementById('pwd-input').focus(),100);
-}
-function closePwdModal(){ document.getElementById('pwd-modal').classList.remove('open'); }
-
-async function savePassword(){
-  const id=document.getElementById('pwd-user-id').value;
-  const password=document.getElementById('pwd-input').value.trim();
-  if(!password){ showToast('Enter a password',true); return; }
-  if(password.length<4){ showToast('Password must be at least 4 characters',true); return; }
-  const res=await apiFetch(`/api/admin/users/${id}/password`,{method:'PATCH',body:{password}});
-  if(!res?.ok){ showToast(res?.error||'Failed to set password',true); return; }
-  closePwdModal();
-  showToast('Password updated ✓');
+function openEditUserModal(id){
+  const u=allUsers.find(u=>u.id===id);
+  if(!u) return;
+  document.getElementById('edit-user-id').value=id;
+  document.getElementById('edit-user-title').textContent=`Edit — ${u.name||u.email}`;
+  document.getElementById('edit-name').value=u.name||'';
+  document.getElementById('edit-email').value=u.email;
+  document.getElementById('edit-position').value=u.position||'';
+  document.getElementById('edit-role').value=u.role;
+  document.getElementById('edit-password').value='';
+  // Populate + set location
+  const locSel=document.getElementById('edit-location');
+  locSel.innerHTML='<option value="">— None —</option>'+allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  locSel.value=u.location_id||'';
+  document.getElementById('edit-user-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('edit-name').focus(),100);
 }
 
-document.getElementById('pwd-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('pwd-modal')) closePwdModal(); });
+function closeEditUserModal(){ document.getElementById('edit-user-modal').classList.remove('open'); }
+
+async function saveEditUser(){
+  const id=document.getElementById('edit-user-id').value;
+  const name=document.getElementById('edit-name').value.trim();
+  const email=document.getElementById('edit-email').value.trim();
+  const position=document.getElementById('edit-position').value;
+  const location_id=document.getElementById('edit-location').value||null;
+  const role=document.getElementById('edit-role').value;
+  const password=document.getElementById('edit-password').value.trim();
+  if(!name){ showToast('Enter a name',true); return; }
+  if(!email){ showToast('Enter an email',true); return; }
+  if(password&&password.length<4){ showToast('Password must be at least 4 characters',true); return; }
+  const body={name,email,position,location_id,role};
+  if(password) body.password=password;
+  const res=await apiFetch(`/api/admin/users/${id}`,{method:'PATCH',body});
+  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
+  closeEditUserModal(); await loadAll(); showToast('User updated ✓');
+}
+
+document.getElementById('edit-user-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('edit-user-modal')) closeEditUserModal(); });
 
 function toggleUserDetail(id){
   const el=document.getElementById('detail-'+id);
   if(el) el.classList.toggle('open');
-}
-
-async function promoteUser(id){
-  if(!confirm('Make this user an admin?')) return;
-  const res=await apiFetch(`/api/admin/users/${id}/role`,{method:'PATCH',body:{role:'admin'}});
-  if(res?.ok){ await loadAll(); showToast('User promoted to admin'); }
-  else showToast('Failed to update role',true);
 }
 
 async function deleteUser(id,email){
@@ -832,15 +901,15 @@ async function createAccount(){
   const email=document.getElementById('new-email').value.trim();
   const password=document.getElementById('new-pass').value;
   const role=document.getElementById('new-role').value;
+  const position=document.getElementById('new-position').value;
+  const location_id=document.getElementById('new-location').value||null;
   const res=document.getElementById('create-result');
 
   if(!email||!password){ showToast('Email and password required',true); return; }
 
-  // Use admin route
-  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password}});
+  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id}});
   res.style.display='block';
   if(data?.ok){
-    // If admin role selected, promote
     if(role==='admin') await apiFetch(`/api/admin/users/${data.user.id}/role`,{method:'PATCH',body:{role:'admin'}});
     res.style.color='var(--green)';
     res.textContent=`✓ Account created for ${email}`;
@@ -856,6 +925,8 @@ async function createAccount(){
 function clearCreateForm(){
   ['new-name','new-email','new-pass'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-role').value='user';
+  document.getElementById('new-position').value='';
+  document.getElementById('new-location').value='';
   const r=document.getElementById('create-result');
   r.style.display='none'; r.textContent='';
 }
@@ -871,9 +942,11 @@ async function openScheduleModal(userId, userName){
   schedUserId = userId;
   document.getElementById('sched-modal-title').textContent = `Schedule — ${userName}`;
   document.getElementById('sched-user-id').value = userId;
-  // Populate locations
   const sel = document.getElementById('sched-loc');
   sel.innerHTML = allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  // Pre-select user's main location
+  const user = allUsers.find(u=>u.id===userId);
+  if(user?.location_id) sel.value = user.location_id;
   await renderSchedList();
   document.getElementById('sched-modal').classList.add('open');
 }
