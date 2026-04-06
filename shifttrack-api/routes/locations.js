@@ -17,13 +17,13 @@ router.get('/', auth, async (req, res) => {
 
 // POST /api/locations
 router.post('/', auth, async (req, res) => {
-  const { name, color, rate } = req.body;
+  const { name, color, rate, address } = req.body;
   if (!name || !rate)
     return res.status(400).json({ ok: false, error: 'name and rate are required' });
   try {
     const result = await db.query(
-      'INSERT INTO locations (name, color, rate, created_by) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, color || '#5b8fff', rate, req.userId]
+      'INSERT INTO locations (name, color, rate, address, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [name, color || '#5b8fff', rate, address || '', req.userId]
     );
     res.status(201).json({ ok: true, location: result.rows[0] });
   } catch (err) {
@@ -33,11 +33,11 @@ router.post('/', auth, async (req, res) => {
 
 // PUT /api/locations/:id
 router.put('/:id', auth, async (req, res) => {
-  const { name, color, rate } = req.body;
+  const { name, color, rate, address } = req.body;
   try {
     const result = await db.query(
-      'UPDATE locations SET name=$1, color=$2, rate=$3 WHERE id=$4 RETURNING *',
-      [name, color, rate, req.params.id]
+      'UPDATE locations SET name=$1, color=$2, rate=$3, address=$4 WHERE id=$5 RETURNING *',
+      [name, color, rate, address || '', req.params.id]
     );
     if (result.rows.length === 0)
       return res.status(404).json({ ok: false, error: 'Location not found' });

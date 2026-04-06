@@ -126,6 +126,42 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 
 /* ── Empty ── */
 .empty{text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:13px;}
+
+/* ── Arrow buttons (pay period nav) ── */
+.arr-btn{width:28px;height:28px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--muted);user-select:none;transition:all .15s;}
+.arr-btn:hover{color:var(--text);border-color:var(--border2);}
+
+/* ── Mobile ── */
+@media(max-width:640px){
+  .top-bar{padding:14px 16px;}
+  .top-logo small{display:none;}
+  .top-user{display:none;}
+  .admin-badge{display:none;}
+  .logout-btn{padding:5px 10px;font-size:11px;}
+  .tabs{padding:0;overflow-x:auto;flex-wrap:nowrap;gap:0;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{padding:10px 16px;white-space:nowrap;font-size:12px;}
+  .content{padding:14px;}
+  .sec-hd{flex-direction:column;gap:10px;align-items:flex-start;}
+  .sec-hd h2{font-size:17px;}
+  .stat-row{grid-template-columns:1fr 1fr;}
+  .stat-box .val{font-size:22px;}
+  .modal{padding:20px;border-radius:14px;}
+  .modal h3{font-size:15px;margin-bottom:16px;}
+  .modal-overlay{padding:12px;}
+  .modal-footer{flex-wrap:wrap;}
+  .card{padding:16px;}
+  /* Schedule modal: stack the form fields on mobile */
+  #sched-modal .modal{max-width:100% !important;}
+  #sched-modal [style*="flex:1"]{min-width:100% !important;}
+  /* Tables: let them scroll */
+  .tbl-wrap{border-radius:var(--radius-sm);}
+  thead th{font-size:9px;padding:8px 10px;}
+  tbody td{padding:9px 10px;font-size:12px;}
+  .btn-sm{padding:5px 10px;font-size:11px;}
+  /* Pay period cards */
+  .pay-period-list{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
+}
 </style>
 </head>
 <body>
@@ -210,8 +246,8 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Color</th><th>Name</th><th>Pay rate</th><th>Created</th><th>Actions</th></tr></thead>
-          <tbody id="locs-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+          <thead><tr><th>Color</th><th>Name</th><th>Pay rate</th><th>Address</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="locs-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -283,6 +319,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <input type="hidden" id="loc-edit-id"/>
     <div class="form-group"><label>Name</label><input type="text" id="loc-name" placeholder="Oakland House"/></div>
     <div class="form-group"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
+    <div class="form-group"><label>Address <span style="color:var(--dim);font-size:9px;letter-spacing:.5px">(optional — shown as map link to staff)</span></label><input type="text" id="loc-address" placeholder="123 Main St, Pittsburgh, PA 15201"/></div>
     <div class="form-group">
       <label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="loc-colors">
@@ -632,14 +669,20 @@ async function deleteUser(id,email){
 //  LOCATIONS
 // ══════════════════════════════
 function renderLocs(){
-  const rows=allLocs.map(l=>`<tr>
-    <td><div style="width:16px;height:16px;border-radius:4px;background:${l.color}"></div></td>
-    <td style="font-weight:600">${l.name}</td>
-    <td class="mono" style="color:var(--green)">$${parseFloat(l.rate).toFixed(2)}/hr</td>
-    <td class="muted">${new Date(l.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
-    <td><button class="btn btn-ghost btn-sm" onclick="openLocModal('${l.id}')">Edit</button></td>
-  </tr>`);
-  document.getElementById('locs-tbody').innerHTML=rows.join('')||'<tr><td colspan="5" class="empty">No locations yet</td></tr>';
+  const rows=allLocs.map(l=>{
+    const addrCell=l.address
+      ?`<td><a href="https://maps.google.com/?q=${encodeURIComponent(l.address)}" target="_blank" rel="noopener" title="${l.address}" style="display:inline-flex;align-items:center;gap:5px;color:var(--accent);text-decoration:none;font-size:12px;font-family:var(--mono)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.address}</span></a></td>`
+      :`<td class="muted" style="font-size:11px;font-family:var(--mono)">—</td>`;
+    return `<tr>
+      <td><div style="width:16px;height:16px;border-radius:4px;background:${l.color}"></div></td>
+      <td style="font-weight:600">${l.name}</td>
+      <td class="mono" style="color:var(--green)">$${parseFloat(l.rate).toFixed(2)}/hr</td>
+      ${addrCell}
+      <td class="muted">${new Date(l.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openLocModal('${l.id}')">Edit</button></td>
+    </tr>`;
+  });
+  document.getElementById('locs-tbody').innerHTML=rows.join('')||'<tr><td colspan="6" class="empty">No locations yet</td></tr>';
 }
 
 function openLocModal(id=null){
@@ -650,11 +693,13 @@ function openLocModal(id=null){
   document.querySelector('.csw').classList.add('selected');
   document.getElementById('loc-name').value='';
   document.getElementById('loc-rate').value='';
+  document.getElementById('loc-address').value='';
   if(id){
     const loc=allLocs.find(l=>l.id===id);
     if(loc){
       document.getElementById('loc-name').value=loc.name;
       document.getElementById('loc-rate').value=parseFloat(loc.rate).toFixed(2);
+      document.getElementById('loc-address').value=loc.address||'';
       document.querySelectorAll('.csw').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
     }
   }
@@ -667,11 +712,12 @@ async function saveLoc(){
   const name=document.getElementById('loc-name').value.trim();
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.csw.selected')?.dataset.c||'#5b8fff';
+  const address=document.getElementById('loc-address').value.trim();
   if(!name){ showToast('Enter a name',true); return; }
   if(isNaN(rate)||rate<0){ showToast('Enter a valid rate',true); return; }
   const editId=document.getElementById('loc-edit-id').value;
   const res=await apiFetch(editId?`/api/locations/${editId}`:'/api/locations',
-    {method:editId?'PUT':'POST',body:{name,rate,color}});
+    {method:editId?'PUT':'POST',body:{name,rate,color,address}});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   closeLocModal(); await loadAll(); showToast('Location saved');
 }

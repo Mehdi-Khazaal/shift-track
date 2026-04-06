@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS locations (
   name       TEXT NOT NULL,
   color      TEXT NOT NULL DEFAULT '#5b8fff',
   rate       NUMERIC(10,2) NOT NULL,
+  address    TEXT DEFAULT '',
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
