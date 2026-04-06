@@ -79,15 +79,21 @@ cron.schedule('* * * * *', async () => {
       }
 
       for (const shift of toSend) {
+        const notifBody = `Your shift at ${shift.name} starts at ${shift.time}`;
         const payload = JSON.stringify({
           title: 'Shift Reminder',
-          body:  `Your shift at ${shift.name} starts at ${shift.time}`,
+          body:  notifBody,
           icon:  '/shift-track/icon-192.png',
         });
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             payload
+          );
+          // Log to notification history
+          await db.query(
+            'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
+            [sub.user_id, 'Shift Reminder', notifBody]
           );
           console.log(`[notify] Sent reminder to user ${sub.user_id} for ${shift.name} at ${shift.time}`);
         } catch (e) {

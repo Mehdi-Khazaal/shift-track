@@ -10,6 +10,16 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
+// ── Helper: write to notification_log ──────────────────────────────────────
+async function logNotification(userId, title, body) {
+  try {
+    await db.query(
+      'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
+      [userId, title, body]
+    );
+  } catch(e) { /* non-fatal — don't break the push flow */ }
+}
+
 // GET /api/notifications/vapid-public-key
 router.get('/vapid-public-key', (req, res) => {
   res.json({ ok: true, key: process.env.VAPID_PUBLIC_KEY });
@@ -61,6 +71,72 @@ router.get('/status', auth, async (req, res) => {
   }
 });
 
+// GET /api/notifications/history — last 30 notifications for the logged-in user
+router.get('/history', auth, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, title, body, sent_at FROM notification_log WHERE user_id=$1 ORDER BY sent_at DESC LIMIT 30',
+      [req.userId]
+    );
+    res.json({ ok: true, notifications: result.rows });
+  } catch(err) {
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// POST /api/notifications/broadcast — admin sends push to all/filtered users
+router.post('/broadcast', auth, async (req, res) => {
+  if(req.role !== 'admin')
+    return res.status(403).json({ ok: false, error: 'Admin access required' });
+
+  const { title, body, filter_type, filter_value } = req.body;
+  if(!body) return res.status(400).json({ ok: false, error: 'Message body required' });
+  const notifTitle = (title && title.trim()) ? title.trim() : 'Announcement';
+
+  try {
+    // Resolve target user IDs
+    let usersRes;
+    if(filter_type === 'location' && filter_value) {
+      usersRes = await db.query('SELECT id FROM users WHERE location_id=$1', [filter_value]);
+    } else if(filter_type === 'position' && filter_value) {
+      usersRes = await db.query('SELECT id FROM users WHERE position=$1', [filter_value]);
+    } else {
+      usersRes = await db.query('SELECT id FROM users');
+    }
+    const userIds = usersRes.rows.map(u => u.id);
+    if(!userIds.length) return res.json({ ok: true, sent: 0, total: 0 });
+
+    // Get push subscriptions for those users
+    const subs = await db.query(
+      'SELECT * FROM push_subscriptions WHERE user_id = ANY($1)',
+      [userIds]
+    );
+
+    const payload = JSON.stringify({ title: notifTitle, body, icon: '/shift-track/icon-192.png' });
+    let sent = 0;
+
+    for(const sub of subs.rows) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+        await logNotification(sub.user_id, notifTitle, body);
+        sent++;
+      } catch(e) {
+        if(e.statusCode === 410) {
+          await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
+        }
+      }
+    }
+
+    res.json({ ok: true, sent, total: userIds.length });
+  } catch(err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
 // POST /api/notifications/send-upcoming  (called on login to trigger reminders)
 router.post('/send-upcoming', auth, async (req, res) => {
   try {
@@ -87,12 +163,11 @@ router.post('/send-upcoming', auth, async (req, res) => {
 
     for(const sub of subs.rows) {
       const notifyMs = sub.notify_minutes * 60 * 1000;
-      const tzOffset = Number(sub.tz_offset || 0); // minutes, from getTimezoneOffset() (positive = behind UTC)
+      const tzOffset = Number(sub.tz_offset || 0);
       const upcoming = [];
 
       // Check logged shifts
       shiftsRes.rows.forEach(s => {
-        // Treat stored date+time as local, convert to UTC by adding tz_offset
         const shiftTime = new Date(`${s.date.toISOString().slice(0,10)}T${s.start_time}`);
         shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
         const notifTime = new Date(shiftTime.getTime() - notifyMs);
@@ -101,7 +176,7 @@ router.post('/send-upcoming', auth, async (req, res) => {
         }
       });
 
-      // Check base schedule shifts in next 14 days (using user's local dates)
+      // Check base schedule shifts in next 14 days
       const localNowMs = now.getTime() - tzOffset * 60 * 1000;
       for(let dayOffset=0; dayOffset<14; dayOffset++) {
         const localD = new Date(localNowMs + dayOffset * 86400000);
@@ -125,9 +200,10 @@ router.post('/send-upcoming', auth, async (req, res) => {
 
       // Send push for each upcoming shift
       for(const shift of upcoming) {
+        const notifBody = `Your shift at ${shift.name} starts at ${shift.time}`;
         const payload = JSON.stringify({
           title: 'Shift Reminder',
-          body: `Your shift at ${shift.name} starts at ${shift.time}`,
+          body: notifBody,
           icon: '/shift-track/icon-192.png'
         });
         try {
@@ -135,9 +211,9 @@ router.post('/send-upcoming', auth, async (req, res) => {
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             payload
           );
+          await logNotification(req.userId, 'Shift Reminder', notifBody);
           sent++;
         } catch(e) {
-          // Subscription expired — remove it
           if(e.statusCode === 410) {
             await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
           }

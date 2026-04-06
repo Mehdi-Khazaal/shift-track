@@ -190,6 +190,23 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   #pdf-print tbody td{padding:7px 10px;border-bottom:1px solid #e0e0e0;}
   #pdf-print .pdf-total{border-top:2px solid #111;font-weight:700;}
 }
+/* ── Bell / Notification History ── */
+.bell-btn{position:relative;width:38px;height:38px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:18px;transition:background .15s;flex-shrink:0;}
+.bell-btn:active{background:var(--bg4);}
+.bell-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:99px;background:var(--red);color:#fff;font-size:9px;font-family:var(--mono);font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid var(--bg);display:none;}
+.bell-badge.show{display:flex;}
+.notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);cursor:default;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item.unread{background:rgba(91,143,255,.05);}
+.notif-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.notif-icon.reminder{background:rgba(91,143,255,.12);}
+.notif-icon.broadcast{background:rgba(245,166,35,.12);}
+.notif-body-wrap{flex:1;min-width:0;}
+.notif-title{font-size:13px;font-weight:700;margin-bottom:2px;}
+.notif-body{font-size:12px;color:var(--muted);font-family:var(--mono);line-height:1.4;}
+.notif-time{font-size:10px;color:var(--dim);font-family:var(--mono);margin-top:4px;}
+.unread-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:4px;}
+
 /* Login screen */
 #login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;animation:fadeIn .3s ease;}
 #login-screen.hidden{display:none;}
@@ -241,6 +258,10 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
       <div class="user-chip">
         <span class="user-name" id="dash-user-name"></span>
         <div class="logout-btn" onclick="doLogout()" title="Sign out">↪</div>
+      </div>
+      <div class="bell-btn" onclick="openNotifHistory()" title="Notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="bell-badge" id="notif-badge"></span>
       </div>
       <div class="icon-btn" onclick="openAddShift()">＋</div>
     </div>
@@ -587,6 +608,20 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
         <input type="text" id="unavail-note" placeholder="Doctor appointment, vacation…" maxlength="120"/>
       </div>
       <button class="btn btn-primary" onclick="saveUnavail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHEET: NOTIFICATION HISTORY -->
+<div class="sheet-overlay" id="sheet-notif">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Notifications</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-notif')">✕</button>
+    </div>
+    <div id="notif-list" style="padding-bottom:8px">
+      <div class="empty-state"><div class="icon" style="font-size:28px">🔔</div>No notifications yet.</div>
     </div>
   </div>
 </div>
@@ -1909,6 +1944,87 @@ async function deleteUnavail(id){
   openDaySheet(daySheetDate);
   showToast('Removed ✓');
 }
+
+// ═══════════════════════════════════════
+//  NOTIFICATION HISTORY
+// ═══════════════════════════════════════
+let notifHistory = [];
+
+function relativeTime(isoStr){
+  const now  = Date.now();
+  const then = new Date(isoStr).getTime();
+  const diff = Math.floor((now - then) / 1000);
+  if(diff < 60)   return 'just now';
+  if(diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if(diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  if(diff < 86400*7) return `${Math.floor(diff/86400)}d ago`;
+  return new Date(isoStr).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+
+async function loadNotifHistory(){
+  const res = await apiFetch('/api/notifications/history');
+  if(!res?.ok) return;
+  notifHistory = res.notifications || [];
+  updateBellBadge();
+}
+
+function getLastSeenTs(){
+  return localStorage.getItem('st_notif_last_seen') || '1970-01-01T00:00:00Z';
+}
+
+function updateBellBadge(){
+  const lastSeen  = getLastSeenTs();
+  const unread    = notifHistory.filter(n => n.sent_at > lastSeen).length;
+  const badge     = document.getElementById('notif-badge');
+  if(!badge) return;
+  if(unread > 0){
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+    badge.classList.add('show');
+  } else {
+    badge.classList.remove('show');
+  }
+}
+
+function openNotifHistory(){
+  // Mark all as read
+  localStorage.setItem('st_notif_last_seen', new Date().toISOString());
+  updateBellBadge();
+  renderNotifHistory();
+  openSheet('sheet-notif');
+}
+
+function renderNotifHistory(){
+  const lastSeen = getLastSeenTs();
+  const el       = document.getElementById('notif-list');
+
+  if(!notifHistory.length){
+    el.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:28px">🔔</div>No notifications yet.</div>';
+    return;
+  }
+
+  el.innerHTML = notifHistory.map(n => {
+    const isUnread    = n.sent_at > lastSeen;
+    const isReminder  = n.title === 'Shift Reminder';
+    const iconClass   = isReminder ? 'reminder' : 'broadcast';
+    const iconEmoji   = isReminder ? '⏰' : '📢';
+    return `<div class="notif-item${isUnread?' unread':''}">
+      <div class="notif-icon ${iconClass}">${iconEmoji}</div>
+      <div class="notif-body-wrap">
+        <div class="notif-title">${n.title}</div>
+        <div class="notif-body">${n.body}</div>
+        <div class="notif-time">${relativeTime(n.sent_at)}</div>
+      </div>
+      ${isUnread ? '<div class="unread-dot"></div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+// Load notif history after login + after send-upcoming fires
+const _origEnterAppNotif = enterApp;
+enterApp = function(user){
+  _origEnterAppNotif(user);
+  setTimeout(loadNotifHistory, 3500); // after send-upcoming settles
+};
 
 // ═══════════════════════════════════════
 //  INIT

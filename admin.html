@@ -148,6 +148,26 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .arr-btn:hover{color:var(--text);border-color:var(--border2);}
 
 /* ── Mobile ── */
+/* ── Staffing Calendar ── */
+.stf-dow{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px;}
+.stf-dow span{text-align:center;font-size:10px;font-family:var(--mono);color:var(--dim);padding:4px 0;letter-spacing:.5px;text-transform:uppercase;}
+.stf-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.stf-cell{min-height:72px;border-radius:8px;padding:5px 4px;cursor:pointer;transition:background .1s;background:var(--bg2);border:1px solid var(--border);}
+.stf-cell:hover{background:var(--bg3);}
+.stf-cell.other{background:transparent;border-color:transparent;cursor:default;}
+.stf-cell.today{border-color:var(--accent);}
+.stf-dn{font-size:11px;font-weight:700;font-family:var(--mono);margin-bottom:3px;line-height:1;}
+.stf-cell.today .stf-dn{color:var(--accent);}
+.stf-cell.other .stf-dn{color:var(--dim);}
+.stf-pills{display:flex;flex-direction:column;gap:2px;}
+.stf-pill{display:flex;align-items:center;gap:3px;padding:1px 4px;border-radius:3px;}
+.stf-pill-dot{width:6px;height:6px;border-radius:1px;flex-shrink:0;}
+.stf-pill-n{font-size:9px;font-family:var(--mono);font-weight:700;line-height:1;}
+
+/* ── Notify tab ── */
+.bc-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:14px;padding:10px 14px;outline:none;resize:vertical;min-height:90px;transition:border-color .15s;}
+.bc-textarea:focus{border-color:var(--accent);}
+
 @media(max-width:640px){
   .top-bar{padding:14px 16px;}
   .top-logo small{display:none;}
@@ -180,6 +200,10 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   /* Users: swap table for cards */
   #users-table{display:none;}
   .user-cards{display:flex;}
+  /* Staffing: smaller cells on mobile */
+  .stf-cell{min-height:52px;padding:3px 2px;}
+  .stf-dn{font-size:10px;}
+  .stf-pill-n{font-size:8px;}
 }
 </style>
 </head>
@@ -214,8 +238,10 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   <div class="tabs">
     <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
     <div class="tab" onclick="switchTab('users',this)">Users</div>
+    <div class="tab" onclick="switchTab('staffing',this)">Staffing</div>
     <div class="tab" onclick="switchTab('locations',this)">Locations</div>
     <div class="tab" onclick="switchTab('accounts',this)">Accounts</div>
+    <div class="tab" onclick="switchTab('notify',this)">Notify</div>
   </div>
 
   <div class="content">
@@ -257,6 +283,63 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
           <thead><tr><th>Color</th><th>Name</th><th>Pay rate</th><th>Address</th><th>Created</th><th>Actions</th></tr></thead>
           <tbody id="locs-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- STAFFING -->
+    <div class="panel" id="panel-staffing">
+      <div class="sec-hd">
+        <div><h2>Staffing View</h2><p>Daily coverage by location — logged &amp; base shifts</p></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="arr-btn" onclick="staffingNav(-1)">‹</div>
+          <div id="staffing-month-label" style="font-family:var(--mono);font-size:12px;color:var(--muted);min-width:100px;text-align:center">—</div>
+          <div class="arr-btn" onclick="staffingNav(1)">›</div>
+        </div>
+      </div>
+      <div id="staffing-legend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px"></div>
+      <div class="stf-dow">
+        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+      </div>
+      <div class="stf-grid" id="staffing-grid"></div>
+    </div>
+
+    <!-- NOTIFY -->
+    <div class="panel" id="panel-notify">
+      <div class="sec-hd">
+        <div><h2>Send Announcement</h2><p>Push notification broadcast to staff</p></div>
+      </div>
+      <div class="card" style="max-width:520px">
+        <div class="form-group">
+          <label>Title <span style="color:var(--dim);font-size:9px">(optional — defaults to "Announcement")</span></label>
+          <input type="text" id="bc-title" placeholder="Announcement" maxlength="80"/>
+        </div>
+        <div class="form-group">
+          <label>Message</label>
+          <textarea class="bc-textarea" id="bc-body" placeholder="Type your message to staff…" maxlength="200"></textarea>
+          <div id="bc-char-count" style="font-size:10px;font-family:var(--mono);color:var(--dim);text-align:right;margin-top:3px">0 / 200</div>
+        </div>
+        <div class="form-group">
+          <label>Audience</label>
+          <select id="bc-filter" onchange="toggleBcFilter()">
+            <option value="all">All employees</option>
+            <option value="location">By location</option>
+            <option value="position">By position</option>
+          </select>
+        </div>
+        <div class="form-group" id="bc-filter-val-row" style="display:none">
+          <label id="bc-filter-val-label">Location</label>
+          <select id="bc-filter-val"></select>
+        </div>
+        <button class="btn btn-primary" style="width:auto;padding:10px 20px" id="bc-send-btn" onclick="sendBroadcast()">Send Notification</button>
+        <div id="bc-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none;padding:10px 12px;border-radius:var(--radius-sm)"></div>
+      </div>
+
+      <div style="margin-top:32px">
+        <div class="section-label">Delivery note</div>
+        <div style="font-size:12px;font-family:var(--mono);color:var(--muted);line-height:1.7;max-width:480px">
+          Only employees who have enabled push notifications on their device will receive the message.
+          The notification will also appear in each employee's in-app notification history.
+        </div>
       </div>
     </div>
 
@@ -436,6 +519,17 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   </div>
 </div>
 
+<!-- STAFFING DAY MODAL -->
+<div class="modal-overlay" id="staffing-day-modal">
+  <div class="modal" style="max-width:460px;max-height:80vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 id="staffing-day-title" style="margin-bottom:0;font-size:16px"></h3>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('staffing-day-modal').classList.remove('open')">✕</button>
+    </div>
+    <div id="staffing-day-content"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -515,6 +609,8 @@ function switchTab(name,el){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-'+name).classList.add('active');
+  if(name==='staffing') renderStaffing();
+  if(name==='notify')   toggleBcFilter();
 }
 
 // ══════════════════════════════
@@ -1100,6 +1196,235 @@ function showToast(msg,isErr=false){
   clearTimeout(t._t);
   t._t=setTimeout(()=>t.classList.remove('show','err'),2500);
 }
+
+// ══════════════════════════════
+//  STAFFING VIEW
+// ══════════════════════════════
+let staffingMonthOffset = 0;
+
+function staffingNav(dir){ staffingMonthOffset += dir; renderStaffing(); }
+
+// Returns array of 7 Date objects for the week containing dateStr (Sun–Sat)
+function weekDatesForDateStr(dateStr){
+  const d = new Date(dateStr + 'T12:00:00');
+  const sun = new Date(d);
+  sun.setDate(d.getDate() - d.getDay());
+  const dates = [];
+  for(let i = 0; i < 7; i++){
+    const dd = new Date(sun); dd.setDate(sun.getDate() + i);
+    dates.push(dd);
+  }
+  return dates;
+}
+
+// Returns { locationId: [userObj, ...] } for a given date string
+function getStaffingForDate(dateStr){
+  const byLoc = {};
+  const wkDates = weekDatesForDateStr(dateStr);
+
+  for(const u of allUsers){
+    const shifts   = allShifts[u.id]   || [];
+    const sched    = allSchedules[u.id] || [];
+    const seenLocs = new Set();
+
+    // Logged shifts on this date
+    for(const s of shifts){
+      if(s.date === dateStr && !seenLocs.has(s.locationId)){
+        seenLocs.add(s.locationId);
+        (byLoc[s.locationId] = byLoc[s.locationId] || []).push(u);
+      }
+    }
+
+    // Base schedule shifts that fall on this date
+    for(const b of sched){
+      const bDate = baseToDate(b, wkDates);
+      if(bDate === dateStr && !seenLocs.has(b.locationId)){
+        seenLocs.add(b.locationId);
+        (byLoc[b.locationId] = byLoc[b.locationId] || []).push(u);
+      }
+    }
+  }
+  return byLoc;
+}
+
+function renderStaffing(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const ref   = new Date(today.getFullYear(), today.getMonth() + staffingMonthOffset, 1);
+
+  document.getElementById('staffing-month-label').textContent =
+    ref.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  // Legend
+  document.getElementById('staffing-legend').innerHTML = allLocs.map(l =>
+    `<div style="display:flex;align-items:center;gap:5px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${l.color}"></div>
+      <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">${l.name}</span>
+    </div>`
+  ).join('');
+
+  // Build calendar cells
+  const firstDay = ref.getDay();
+  const daysInMonth = new Date(ref.getFullYear(), ref.getMonth()+1, 0).getDate();
+  const cells = [];
+
+  for(let i = 0; i < firstDay; i++){
+    const d = new Date(ref.getFullYear(), ref.getMonth(), -firstDay+i+1);
+    cells.push({ date: d, other: true });
+  }
+  for(let i = 1; i <= daysInMonth; i++){
+    cells.push({ date: new Date(ref.getFullYear(), ref.getMonth(), i), other: false });
+  }
+  while(cells.length % 7 !== 0){
+    const last = cells[cells.length-1].date;
+    const d = new Date(last); d.setDate(d.getDate()+1);
+    cells.push({ date: d, other: true });
+  }
+
+  const grid = document.getElementById('staffing-grid');
+  grid.innerHTML = cells.map(({ date, other }) => {
+    const ymd     = toYMD(date);
+    const isToday = ymd === toYMD(today);
+    const staffing = other ? {} : getStaffingForDate(ymd);
+
+    const pills = Object.entries(staffing)
+      .filter(([, users]) => users.length)
+      .sort((a, b) => {
+        const la = allLocs.find(l => l.id === a[0]);
+        const lb = allLocs.find(l => l.id === b[0]);
+        return (la?.name || '').localeCompare(lb?.name || '');
+      })
+      .map(([lid, users]) => {
+        const loc = allLocs.find(l => l.id === lid);
+        const c   = loc?.color || '#888';
+        return `<div class="stf-pill" style="background:${c}20;border:1px solid ${c}50">
+          <div class="stf-pill-dot" style="background:${c}"></div>
+          <span class="stf-pill-n" style="color:${c}">${users.length}</span>
+        </div>`;
+      }).join('');
+
+    const clickAttr = other ? '' : `onclick="openStaffingDay('${ymd}')"`;
+    return `<div class="stf-cell${other?' other':''}${isToday?' today':''}" ${clickAttr}>
+      <div class="stf-dn">${date.getDate()}</div>
+      <div class="stf-pills">${pills}</div>
+    </div>`;
+  }).join('');
+}
+
+function openStaffingDay(dateStr){
+  const staffing = getStaffingForDate(dateStr);
+  const d        = new Date(dateStr + 'T12:00:00');
+  document.getElementById('staffing-day-title').textContent =
+    d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+
+  const entries = Object.entries(staffing).filter(([, u]) => u.length);
+  const content = document.getElementById('staffing-day-content');
+
+  if(!entries.length){
+    content.innerHTML = '<div class="empty" style="padding:20px 0">No staff scheduled this day</div>';
+  } else {
+    content.innerHTML = entries
+      .sort((a,b) => {
+        const la = allLocs.find(l=>l.id===a[0]);
+        const lb = allLocs.find(l=>l.id===b[0]);
+        return (la?.name||'').localeCompare(lb?.name||'');
+      })
+      .map(([lid, users]) => {
+        const loc = allLocs.find(l => l.id === lid);
+        const c   = loc?.color || '#888';
+        return `<div style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+            <div style="width:12px;height:12px;border-radius:3px;background:${c}"></div>
+            <span style="font-weight:700;font-size:14px">${loc?.name||'Unknown'}</span>
+            <span style="font-size:10px;font-family:var(--mono);color:${c};background:${c}20;padding:1px 7px;border-radius:99px">${users.length} staff</span>
+          </div>
+          ${users.map(u=>`<div style="display:flex;align-items:center;gap:6px;padding:5px 0 5px 14px;border-left:2px solid ${c}40;margin-left:5px">
+            <span style="font-size:13px">${u.name||u.email}</span>
+            ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+          </div>`).join('')}
+        </div>`;
+      }).join('');
+  }
+
+  document.getElementById('staffing-day-modal').classList.add('open');
+}
+
+document.getElementById('staffing-day-modal').addEventListener('click', e => {
+  if(e.target === document.getElementById('staffing-day-modal'))
+    document.getElementById('staffing-day-modal').classList.remove('open');
+});
+
+// ══════════════════════════════
+//  BROADCAST NOTIFICATIONS
+// ══════════════════════════════
+// Character counter for message textarea
+document.getElementById('bc-body').addEventListener('input', function(){
+  document.getElementById('bc-char-count').textContent = `${this.value.length} / 200`;
+});
+
+function toggleBcFilter(){
+  const val    = document.getElementById('bc-filter').value;
+  const row    = document.getElementById('bc-filter-val-row');
+  const label  = document.getElementById('bc-filter-val-label');
+  const select = document.getElementById('bc-filter-val');
+
+  if(val === 'all'){
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = 'block';
+
+  if(val === 'location'){
+    label.textContent = 'Location';
+    select.innerHTML  = allLocs.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  } else {
+    label.textContent = 'Position';
+    select.innerHTML  = ['SRC','DSP','PRN'].map(p => `<option value="${p}">${p}</option>`).join('');
+  }
+}
+
+async function sendBroadcast(){
+  const title       = document.getElementById('bc-title').value.trim();
+  const body        = document.getElementById('bc-body').value.trim();
+  const filterType  = document.getElementById('bc-filter').value;
+  const filterValue = document.getElementById('bc-filter-val').value;
+  const btn         = document.getElementById('bc-send-btn');
+  const result      = document.getElementById('bc-result');
+
+  if(!body){ showToast('Enter a message',true); return; }
+
+  btn.textContent = 'Sending…'; btn.disabled = true;
+  result.style.display = 'none';
+
+  const payload = { title, body };
+  if(filterType !== 'all'){ payload.filter_type = filterType; payload.filter_value = filterValue; }
+
+  const data = await apiFetch('/api/notifications/broadcast', { method:'POST', body: payload });
+  btn.textContent = 'Send Notification'; btn.disabled = false;
+
+  if(data?.ok){
+    result.style.display   = 'block';
+    result.style.background = 'var(--green-bg)';
+    result.style.color      = 'var(--green)';
+    result.textContent      = `✓ Sent to ${data.sent} subscriber${data.sent!==1?'s':''} (${data.total} employee${data.total!==1?'s':''} matched)`;
+    document.getElementById('bc-body').value = '';
+    document.getElementById('bc-char-count').textContent = '0 / 200';
+  } else {
+    result.style.display   = 'block';
+    result.style.background = 'var(--red-bg)';
+    result.style.color      = 'var(--red)';
+    result.textContent      = '✗ ' + (data?.error || 'Failed to send');
+  }
+}
+
+// Hook renderStaffing into loadAll (re-render when data changes)
+const _origRenderAll = renderUsers;
+// Patch loadAll to also render staffing after data loads
+const _origLoadAll = loadAll;
+loadAll = async function(){
+  await _origLoadAll();
+  renderStaffing();
+  toggleBcFilter(); // populate filter dropdown with fresh loc data
+};
 </script>
 </body>
 </html>

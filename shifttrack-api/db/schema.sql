@@ -62,3 +62,12 @@ CREATE TABLE IF NOT EXISTS user_unavailability (
   note       TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Notification log (in-app history of all push notifications sent)
+CREATE TABLE IF NOT EXISTS notification_log (
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title    TEXT NOT NULL,
+  body     TEXT NOT NULL,
+  sent_at  TIMESTAMPTZ DEFAULT NOW()
+);
