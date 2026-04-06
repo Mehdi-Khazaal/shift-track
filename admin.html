@@ -671,7 +671,7 @@ async function deleteUser(id,email){
 function renderLocs(){
   const rows=allLocs.map(l=>{
     const addrCell=l.address
-      ?`<td><button onclick="openMapAddress(${JSON.stringify(l.address)})" title="${l.address}" style="display:inline-flex;align-items:center;gap:5px;color:var(--accent);background:none;border:none;cursor:pointer;font-size:12px;font-family:var(--mono);padding:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.address}</span></button></td>`
+      ?`<td><button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="openMapAddress(this.dataset.addr)" title="${l.address}" style="display:inline-flex;align-items:center;gap:5px;color:var(--accent);background:none;border:none;cursor:pointer;font-size:12px;font-family:var(--mono);padding:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.address}</span></button></td>`
       :`<td class="muted" style="font-size:11px;font-family:var(--mono)">—</td>`;
     return `<tr>
       <td><div style="width:16px;height:16px;border-radius:4px;background:${l.color}"></div></td>
@@ -838,13 +838,14 @@ document.getElementById('sched-modal').addEventListener('click',e=>{ if(e.target
 function openMapAddress(address){
   const q = encodeURIComponent(address);
   const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua)) {
-    window.location.href = `maps://?q=${q}`;
-  } else if (/Android/.test(ua)) {
-    window.location.href = `geo:0,0?q=${q}`;
-  } else {
-    window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, '_blank');
-  }
+  const url = /iPad|iPhone|iPod/.test(ua)
+    ? `maps://?q=${q}`
+    : /Android/.test(ua)
+    ? `geo:0,0?q=${q}`
+    : `https://www.google.com/maps/search/?api=1&query=${q}`;
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 // ══════════════════════════════
