@@ -5,6 +5,9 @@ require('dotenv').config();
 // Import database connection (this will test the connection on startup)
 const db = require('./db/index');
 
+// Background scheduler for push notifications
+require('./scheduler');
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
