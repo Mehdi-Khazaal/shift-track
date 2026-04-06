@@ -14,8 +14,9 @@ const ANCHOR = new Date('2026-03-22T00:00:00Z');
 cron.schedule('* * * * *', async () => {
   try {
     const now = new Date();
-    // ±90s window — cron fires every 60s so each notification fires once
-    const windowMs = 90 * 1000;
+    // Send if notifTime fell within the last 60s (matches cron interval, no duplicates)
+    const windowBackMs  = 60 * 1000;
+    const windowFwdMs   = 5  * 1000; // small forward buffer for cron jitter
 
     const subsRes = await db.query('SELECT * FROM push_subscriptions');
     if (!subsRes.rows.length) return;
@@ -50,7 +51,7 @@ cron.schedule('* * * * *', async () => {
         const shiftTime = new Date(`${dateStr}T${s.start_time}`);
         shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
         const notifTime = new Date(shiftTime.getTime() - notifyMs);
-        if (Math.abs(notifTime - now) <= windowMs) {
+        if (notifTime >= now - windowBackMs && notifTime <= now + windowFwdMs) {
           toSend.push({ name: s.location_name, time: s.start_time.slice(0, 5) });
         }
       }
@@ -70,7 +71,7 @@ cron.schedule('* * * * *', async () => {
             const shiftTime = new Date(`${dayStr}T${b.start_time}`);
             shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
             const notifTime = new Date(shiftTime.getTime() - notifyMs);
-            if (Math.abs(notifTime - now) <= windowMs) {
+            if (notifTime >= now - windowBackMs && notifTime <= now + windowFwdMs) {
               toSend.push({ name: b.location_name, time: b.start_time.slice(0, 5) });
             }
           }
