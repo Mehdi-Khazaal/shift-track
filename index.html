@@ -1306,8 +1306,26 @@ function renderSettings(){
     <div class="shift-item">
       <div class="shift-dot" style="background:${l.color}"></div>
       <div class="shift-info"><div class="name">${l.name}</div><div class="sub">$${l.rate.toFixed(2)}/hr</div></div>
-      ${l.address?`<a href="https://maps.google.com/?q=${encodeURIComponent(l.address)}" target="_blank" rel="noopener" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;text-decoration:none;" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></a>`:''}
+      ${l.address?`<button onclick="event.stopPropagation();openMapAddress(${JSON.stringify(l.address)})" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;cursor:pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>`:''}
     </div>`).join('');
+}
+
+// ═══════════════════════════════════════
+//  MAP HELPER — lets the OS pick the app
+// ═══════════════════════════════════════
+function openMapAddress(address){
+  const q = encodeURIComponent(address);
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua)) {
+    // iOS: maps:// opens the user's default maps app (iOS 14+ lets them set Google Maps/Waze as default)
+    window.location.href = `maps://?q=${q}`;
+  } else if (/Android/.test(ua)) {
+    // Android: geo: URI triggers the native app picker
+    window.location.href = `geo:0,0?q=${q}`;
+  } else {
+    // Desktop: open Google Maps in a new tab
+    window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, '_blank');
+  }
 }
 
 // ═══════════════════════════════════════
