@@ -51,7 +51,7 @@ cron.schedule('* * * * *', async () => {
         const shiftTime = new Date(`${dateStr}T${s.start_time}`);
         shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
         const notifTime = new Date(shiftTime.getTime() - notifyMs);
-        if (notifTime >= now - windowBackMs && notifTime <= now + windowFwdMs) {
+        if (notifTime >= now - windowBackMs && notifTime <= now.getTime() + windowFwdMs) {
           toSend.push({ name: s.location_name, time: s.start_time.slice(0, 5) });
         }
       }
@@ -71,7 +71,7 @@ cron.schedule('* * * * *', async () => {
             const shiftTime = new Date(`${dayStr}T${b.start_time}`);
             shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
             const notifTime = new Date(shiftTime.getTime() - notifyMs);
-            if (notifTime >= now - windowBackMs && notifTime <= now + windowFwdMs) {
+            if (notifTime >= now - windowBackMs && notifTime <= now.getTime() + windowFwdMs) {
               toSend.push({ name: b.location_name, time: b.start_time.slice(0, 5) });
             }
           }
