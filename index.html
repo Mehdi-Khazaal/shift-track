@@ -1621,7 +1621,7 @@ async function toggleNotifications(){
     const j=sub.toJSON();
     const res=await apiFetch('/api/notifications/subscribe',{
       method:'POST',
-      body:{endpoint:j.endpoint,keys:j.keys,notify_minutes:minutes}
+      body:{endpoint:j.endpoint,keys:j.keys,notify_minutes:minutes,tz_offset:new Date().getTimezoneOffset()}
     });
     if(!res?.ok){ throw new Error(res?.error||'Subscribe failed'); }
     timingRow.style.display='block';
@@ -1647,7 +1647,7 @@ async function saveNotifMinutes(){
       const j=sub.toJSON();
       await apiFetch('/api/notifications/subscribe',{
         method:'POST',
-        body:{endpoint:j.endpoint,keys:j.keys,notify_minutes:minutes}
+        body:{endpoint:j.endpoint,keys:j.keys,notify_minutes:minutes,tz_offset:new Date().getTimezoneOffset()}
       });
       showToast('Reminder timing updated ✓');
     }

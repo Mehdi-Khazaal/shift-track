@@ -17,16 +17,16 @@ router.get('/vapid-public-key', (req, res) => {
 
 // POST /api/notifications/subscribe
 router.post('/subscribe', auth, async (req, res) => {
-  const { endpoint, keys, notify_minutes } = req.body;
+  const { endpoint, keys, notify_minutes, tz_offset } = req.body;
   if(!endpoint || !keys?.p256dh || !keys?.auth)
     return res.status(400).json({ ok: false, error: 'Invalid subscription' });
   try {
     await db.query(
-      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, notify_minutes)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, notify_minutes, tz_offset)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (user_id, endpoint) DO UPDATE
-       SET p256dh=$3, auth=$4, notify_minutes=$5`,
-      [req.userId, endpoint, keys.p256dh, keys.auth, notify_minutes||60]
+       SET p256dh=$3, auth=$4, notify_minutes=$5, tz_offset=$6`,
+      [req.userId, endpoint, keys.p256dh, keys.auth, notify_minutes||60, tz_offset??0]
     );
     res.json({ ok: true });
   } catch(err) {
