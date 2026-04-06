@@ -121,8 +121,8 @@ router.post('/send-upcoming', auth, async (req, res) => {
       // Send push for each upcoming shift
       for(const shift of upcoming) {
         const payload = JSON.stringify({
-          title: 'ShiftTrack — Shift Reminder',
-          body: `${shift.name} starts at ${shift.time}`,
+          title: 'Shift Reminder',
+          body: `Your shift at ${shift.name} starts at ${shift.time}`,
           icon: '/shift-track/icon-192.png'
         });
         try {
