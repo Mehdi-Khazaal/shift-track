@@ -174,6 +174,9 @@ select option{background:var(--bg3);}
 .toggle-wrap input:checked ~ .toggle-track{background:var(--accent);border-color:var(--accent);}
 .toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;}
 .toggle-wrap input:checked ~ .toggle-track .toggle-thumb{transform:translateX(18px);}
+details summary::-webkit-details-marker{display:none;}
+details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
+#loc-chevron{transition:transform .2s;}
 /* Login screen */
 #login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;animation:fadeIn .3s ease;}
 #login-screen.hidden{display:none;}
@@ -305,7 +308,13 @@ select option{background:var(--bg3);}
     <h2>Locations &amp; pay rates</h2>
   </div>
   <div style="padding:0 16px 8px;font-size:12px;color:var(--muted);font-family:var(--mono)">Managed by your administrator.</div>
-  <div class="card" style="padding:0"><div id="location-list"><div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div></div></div>
+  <details id="locations-dropdown" class="card" style="padding:0">
+    <summary style="padding:14px 16px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;font-family:var(--sans)">
+      <span id="locations-summary-label">Locations</span>
+      <svg id="loc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;transition:transform .2s"><polyline points="6 9 12 15 18 9"/></svg>
+    </summary>
+    <div id="location-list" style="border-top:1px solid var(--border)"><div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div></div>
+  </details>
 
   <div class="section-hd" style="margin-top:8px"><h2>Notifications</h2></div>
   <div class="card">
@@ -588,7 +597,7 @@ function doLogout(){
 function enterApp(user){
   document.getElementById('login-screen').classList.add('hidden');
   const nameEl=document.getElementById('dash-user-name');
-  if(nameEl) nameEl.textContent=user.email.split('@')[0];
+  if(nameEl) nameEl.textContent=(user.name||user.email.split('@')[0]).split(' ')[0];
   loadAllData();
 }
 
@@ -1238,7 +1247,7 @@ function shiftItemHTML(s,bd){
   const otNote=otHrs>0&&!s.isBase
     ?`<div class="ot-note">${(hrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
 
-  const click=s.isBase?`openAddBase('${s.id}')`:`openAddShift('${s.id}')`;
+  const click=s.isBase?`showToast('Base shifts are set by your administrator',false)`:`openAddShift('${s.id}')`;
   const payStr=s.isBase?'—':formatPay(pay);
   const schedLabel=s.isBase?` <span style="font-size:10px;opacity:.6">(schedule)</span>`:'';
 
@@ -1290,6 +1299,8 @@ function renderSchedule(){
 function renderSettings(){
   const locs=getLocations();
   const el=document.getElementById('location-list');
+  const label=document.getElementById('locations-summary-label');
+  if(label) label.textContent=locs.length?`Locations (${locs.length})`:'Locations';
   if(!locs.length){ el.innerHTML='<div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div>'; return; }
   el.innerHTML=locs.map(l=>`
     <div class="shift-item">
