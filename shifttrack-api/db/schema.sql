@@ -50,3 +50,15 @@ CREATE TABLE IF NOT EXISTS user_settings (
   ot_threshold  NUMERIC(5,2) DEFAULT 40,
   pp_anchor     DATE DEFAULT '2026-03-22'
 );
+
+-- Unavailability table (days/times a user marks themselves unavailable)
+CREATE TABLE IF NOT EXISTS user_unavailability (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_date DATE NOT NULL,
+  end_date   DATE NOT NULL,
+  start_time TIME,
+  end_time   TIME,
+  note       TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);

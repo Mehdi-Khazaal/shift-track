@@ -21,7 +21,8 @@ app.use('/api/locations',require('./routes/locations'));
 app.use('/api/schedule', require('./routes/schedule'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/admin',    require('./routes/admin'));
-app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/notifications',   require('./routes/notifications'));
+app.use('/api/unavailability',  require('./routes/unavailability'));
 
 // Health check
 app.get('/health', (req, res) => {

@@ -177,6 +177,19 @@ select option{background:var(--bg3);}
 details summary::-webkit-details-marker{display:none;}
 details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 #loc-chevron{transition:transform .2s;}
+/* Unavailability calendar markers */
+.cal-cell.unavail{background:rgba(120,128,160,.13);}
+.unavail-stripe{width:calc(100% - 4px);height:3px;border-radius:1px;background:var(--muted);opacity:.45;margin-top:1px;}
+/* PDF print div */
+#pdf-print{display:none;}
+@media print{
+  body>*:not(#pdf-print){display:none!important;}
+  #pdf-print{display:block!important;font-family:sans-serif;color:#111;background:#fff;padding:32px;font-size:13px;}
+  #pdf-print table{width:100%;border-collapse:collapse;font-size:12px;}
+  #pdf-print thead th{background:#f0f0f0;padding:7px 10px;text-align:left;border-bottom:2px solid #ccc;font-size:11px;text-transform:uppercase;letter-spacing:.5px;}
+  #pdf-print tbody td{padding:7px 10px;border-bottom:1px solid #e0e0e0;}
+  #pdf-print .pdf-total{border-top:2px solid #111;font-weight:700;}
+}
 /* Login screen */
 #login-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;animation:fadeIn .3s ease;}
 #login-screen.hidden{display:none;}
@@ -529,8 +542,9 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
     </div>
     <div class="sheet-body" style="padding-top:8px">
       <div id="day-shift-list"></div>
-      <div style="margin-top:14px">
-        <button class="btn btn-primary" id="day-add-btn" onclick="openAddShiftForDay()">＋ Log shift for this day</button>
+      <div style="margin-top:14px;display:flex;gap:8px">
+        <button class="btn btn-primary" id="day-add-btn" onclick="openAddShiftForDay()" style="flex:1">＋ Log shift</button>
+        <button class="btn btn-ghost" onclick="openMarkUnavail()" style="flex:1">✗ Mark unavailable</button>
       </div>
       <div id="day-summary" style="margin-top:14px;background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-family:var(--mono);font-size:13px;display:none">
         <div class="calc-row"><span style="color:var(--muted)">Total hours</span><span id="day-total-hrs">—</span></div>
@@ -538,6 +552,66 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
       </div>
     </div>
   </div>
+</div>
+
+<!-- SHEET: MARK UNAVAILABLE -->
+<div class="sheet-overlay" id="sheet-unavail">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Mark Unavailable</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-unavail')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group"><label>Start date</label><input type="date" id="unavail-start"/></div>
+        <div class="form-group"><label>End date</label><input type="date" id="unavail-end"/></div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;justify-content:space-between;cursor:default">
+          <span>All day</span>
+          <label class="toggle-wrap" style="cursor:pointer">
+            <input type="checkbox" id="unavail-allday" checked onchange="toggleUnavailAllDay()"/>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </label>
+      </div>
+      <div id="unavail-time-row" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>From</label><input type="time" id="unavail-start-time" value="09:00"/></div>
+          <div class="form-group"><label>Until</label><input type="time" id="unavail-end-time" value="17:00"/></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Note <span style="color:var(--dim);font-size:10px">(optional)</span></label>
+        <input type="text" id="unavail-note" placeholder="Doctor appointment, vacation…" maxlength="120"/>
+      </div>
+      <button class="btn btn-primary" onclick="saveUnavail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF PRINT LAYOUT (hidden — shown only when printing) -->
+<div id="pdf-print">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #111;padding-bottom:12px">
+    <div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:-1px">ShiftTrack</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">Passavant Memorial Homes</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:13px;font-weight:700">Pay Period Summary</div>
+      <div style="font-size:11px;color:#666;margin-top:2px" id="pdf-dates"></div>
+    </div>
+  </div>
+  <div id="pdf-employee" style="margin-bottom:14px;font-size:13px;color:#444"></div>
+  <table>
+    <thead><tr>
+      <th>Date</th><th>Location</th><th>Hours</th><th>Type</th><th style="text-align:right">Pay</th>
+    </tr></thead>
+    <tbody id="pdf-tbody"></tbody>
+    <tfoot id="pdf-tfoot"></tfoot>
+  </table>
+  <div style="margin-top:20px;font-size:10px;color:#aaa">Generated by ShiftTrack · Passavant Memorial Homes</div>
 </div>
 
 <div id="toast"></div>
@@ -621,7 +695,7 @@ const DEFAULT_ANCHOR = '2026-03-22';
 //  All data lives in Neon via the Render API.
 //  We keep an in-memory cache so renders are instant.
 // ═══════════════════════════════════════
-const cache = { locations:[], shifts:[], base:[], settings:null, loaded:false };
+const cache = { locations:[], shifts:[], base:[], settings:null, unavailability:[], loaded:false };
 
 function getLocations(){ return cache.locations; }
 function getShifts()   { return cache.shifts;    }
@@ -641,16 +715,18 @@ async function loadAllData(attempt=1){
   const MAX = 3;
   showToast(attempt===1 ? 'Loading your data…' : `Connecting… (${attempt}/${MAX})`, false, 20000);
   try {
-    const [locsRes, shiftsRes, baseRes, settingsRes] = await Promise.all([
+    const [locsRes, shiftsRes, baseRes, settingsRes, unavailRes] = await Promise.all([
       apiFetch('/api/locations'),
       apiFetch('/api/shifts'),
       apiFetch('/api/schedule'),
       apiFetch('/api/settings'),
+      apiFetch('/api/unavailability'),
     ]);
-    if(locsRes?.ok)     cache.locations = locsRes.locations.map(normalizeLocation);
-    if(shiftsRes?.ok)   cache.shifts    = shiftsRes.shifts.map(normalizeShift);
-    if(baseRes?.ok)     cache.base      = baseRes.schedule.map(normalizeBase);
-    if(settingsRes?.ok) cache.settings  = settingsRes.settings;
+    if(locsRes?.ok)     cache.locations     = locsRes.locations.map(normalizeLocation);
+    if(shiftsRes?.ok)   cache.shifts        = shiftsRes.shifts.map(normalizeShift);
+    if(baseRes?.ok)     cache.base          = baseRes.schedule.map(normalizeBase);
+    if(settingsRes?.ok) cache.settings      = settingsRes.settings;
+    if(unavailRes?.ok)  cache.unavailability= unavailRes.entries.map(normalizeUnavail);
     cache.loaded = true;
     showToast('Ready ✓');
     renderDash();
@@ -695,6 +771,19 @@ function normalizeBase(b){
     start:      b.start_time.slice(0,5),
     end:        b.end_time.slice(0,5),
   };
+}
+function normalizeUnavail(u){
+  return {
+    id:        u.id,
+    startDate: (u.start_date||'').slice(0,10),
+    endDate:   (u.end_date||'').slice(0,10),
+    startTime: u.start_time ? u.start_time.slice(0,5) : null,
+    endTime:   u.end_time   ? u.end_time.slice(0,5)   : null,
+    note:      u.note||'',
+  };
+}
+function getUnavailForDate(dateStr){
+  return cache.unavailability.filter(u=>dateStr>=u.startDate && dateStr<=u.endDate);
 }
 
 async function saveSettings(){
@@ -1404,12 +1493,14 @@ function renderCalMonth(){
     const ymd = toYMD(date);
     const isToday = toYMD(date)===toYMD(today);
     const shifts = getShiftsForDate(ymd);
+    const unavail = getUnavailForDate(ymd);
     const dots = shifts.slice(0,4).map(s=>{
       const loc=getLocById(s.locationId);
       return `<div class="cal-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>`;
     }).join('');
-    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${shifts.length?' has-shift':''}" onclick="openDaySheet('${ymd}')">
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}" onclick="openDaySheet('${ymd}')">
       <div class="cal-dn">${date.getDate()}</div>
+      ${unavail.length?'<div class="unavail-stripe"></div>':''}
       ${dots?`<div class="cal-dots">${dots}</div>`:''}
     </div>`;
   }).join('');
@@ -1462,9 +1553,21 @@ function openDaySheet(dateStr){
 
   const shifts = getShiftsForDate(dateStr);
   const listEl = document.getElementById('day-shift-list');
+  const unavails = getUnavailForDate(dateStr);
+
+  // Show unavailability entries at top
+  const unavailHTML = unavails.map(u=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="width:10px;height:10px;border-radius:2px;background:var(--muted);flex-shrink:0;opacity:.6"></div>
+      <div style="flex:1">
+        <div style="font-size:13px;color:var(--muted)">Unavailable${u.startTime?` · ${fmtTime(u.startTime)}–${fmtTime(u.endTime)}`:' · All day'}</div>
+        ${u.note?`<div style="font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px">${u.note}</div>`:''}
+      </div>
+      <button onclick="deleteUnavail('${u.id}')" style="background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:4px 6px;line-height:1" title="Remove">✕</button>
+    </div>`).join('');
 
   if(!shifts.length){
-    listEl.innerHTML='<div style="text-align:center;padding:16px 0;color:var(--muted);font-family:var(--mono);font-size:12px">No shifts on this day</div>';
+    listEl.innerHTML=(unavailHTML||'<div style="text-align:center;padding:16px 0;color:var(--muted);font-family:var(--mono);font-size:12px">No shifts on this day</div>');
     document.getElementById('day-summary').style.display='none';
   } else {
     // Compute OT in weekly context
@@ -1477,7 +1580,7 @@ function openDaySheet(dateStr){
     const {breakdown} = computeWeekPay(allWk);
     const bdMap = {}; breakdown.forEach(b=>{ bdMap[b.id+(b.isBase?'_b':'')]=b; });
 
-    listEl.innerHTML = shifts.map(s=>{
+    listEl.innerHTML = unavailHTML + shifts.map(s=>{
       const key = s.id+(s.isBase?'_b':'');
       return shiftItemHTML(s, bdMap[key]);
     }).join('');
@@ -1559,14 +1662,20 @@ function renderHistory(){
     const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
     const isCurrent=offset===0;
     const isFuture=start>today;
+    const capturedOffset=offset;
 
     cards.push(`<div class="hist-card${isCurrent?' current':''}">
-      <div class="hist-period">${fmt(start)} – ${fmt(end)}${isCurrent?' · <span style="color:var(--accent)">current</span>':''}</div>
-      <div class="hist-pay" style="color:${isFuture?'var(--muted)':'var(--text)'}">${formatPay(total)}</div>
-      <div class="hist-meta">
-        <div class="hist-chip"><span>${hrs.toFixed(1)}h</span> total</div>
-        ${ot>0?`<div class="hist-chip ot"><span>${ot.toFixed(1)}h</span> OT</div>`:''}
-        <div class="hist-chip"><span>${r1.totalHrs.toFixed(1)}h</span> wk1 · <span>${r2.totalHrs.toFixed(1)}h</span> wk2</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div class="hist-period">${fmt(start)} – ${fmt(end)}${isCurrent?' · <span style="color:var(--accent)">current</span>':''}</div>
+          <div class="hist-pay" style="color:${isFuture?'var(--muted)':'var(--text)'}">${formatPay(total)}</div>
+          <div class="hist-meta">
+            <div class="hist-chip"><span>${hrs.toFixed(1)}h</span> total</div>
+            ${ot>0?`<div class="hist-chip ot"><span>${ot.toFixed(1)}h</span> OT</div>`:''}
+            <div class="hist-chip"><span>${r1.totalHrs.toFixed(1)}h</span> wk1 · <span>${r2.totalHrs.toFixed(1)}h</span> wk2</div>
+          </div>
+        </div>
+        ${!isFuture?`<button class="btn btn-ghost btn-sm" style="flex-shrink:0;margin-top:2px" onclick="downloadPayPDF(${capturedOffset})">↓ PDF</button>`:''}
       </div>
     </div>`);
   }
@@ -1688,6 +1797,118 @@ enterApp=function(user){
   _origEnterApp(user);
   setTimeout(()=>apiFetch('/api/notifications/send-upcoming',{method:'POST'}),3000);
 };
+
+// ═══════════════════════════════════════
+//  PAY PERIOD PDF (browser print → Save as PDF)
+// ═══════════════════════════════════════
+function downloadPayPDF(offset){
+  const { ppAnchor } = getSettings();
+  const anchor = new Date(ppAnchor+'T00:00:00');
+  const today  = new Date(); today.setHours(0,0,0,0);
+  const diffDays = Math.round((today-anchor)/86400000);
+  const currentN = diffDays<0 ? Math.ceil(diffDays/14) : Math.floor(diffDays/14);
+  const n = currentN+offset;
+  const start = new Date(anchor); start.setDate(anchor.getDate()+n*14);
+  const end   = new Date(start);  end.setDate(start.getDate()+13);
+
+  const ppYMDs=[];
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
+  const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
+
+  function weekBreakdown(ymdSet){
+    const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
+    const logged=getShifts().filter(s=>ymdSet.includes(s.date));
+    const base=getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&ymdSet.includes(b.date));
+    const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+    const { otThreshold:thresh } = getSettings();
+    let regRun=0, rows=[], totPay=0, totHrs=0, totOt=0;
+    for(const s of all){
+      const loc=getLocById(s.locationId);
+      const rate=loc?loc.rate:0;
+      const h=shiftHours(s.start,s.end);
+      const reg=Math.max(0,Math.min(h,thresh-regRun)), otH=h-reg;
+      const p=reg*rate+otH*rate*1.5;
+      regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
+      rows.push({...s,h,otH,p,loc});
+    }
+    return {rows,totPay,totHrs,totOt};
+  }
+
+  const w1=weekBreakdown(ppW1), w2=weekBreakdown(ppW2);
+  const allRows=[...w1.rows,...w2.rows];
+  const totPay=w1.totPay+w2.totPay, totHrs=w1.totHrs+w2.totHrs, totOt=w1.totOt+w2.totOt;
+  const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const user=getUser();
+
+  document.getElementById('pdf-dates').textContent=`${fmt(start)} – ${fmt(end)}`;
+  document.getElementById('pdf-employee').innerHTML=`<strong>${user?.name||user?.email||''}</strong>${user?.email&&user?.name?' &nbsp;·&nbsp; '+user.email:''}`;
+
+  document.getElementById('pdf-tbody').innerHTML=allRows.map(s=>{
+    const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const type=s.isBase?'BASE':s.otH>=s.h?'OT':s.otH>0?'REG+OT':'REG';
+    return `<tr>
+      <td>${d}</td>
+      <td>${s.loc?.name||'—'}</td>
+      <td>${s.h.toFixed(1)}h${s.otH>0&&!s.isBase?` (${s.otH.toFixed(1)}h OT)`:''}</td>
+      <td>${type}</td>
+      <td style="text-align:right">${s.isBase?'—':formatPay(s.p)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('pdf-tfoot').innerHTML=`
+    <tr class="pdf-total">
+      <td colspan="2"><strong>Total</strong></td>
+      <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>
+      <td></td>
+      <td style="text-align:right"><strong>${formatPay(totPay)}</strong></td>
+    </tr>`;
+
+  window.print();
+}
+
+// ═══════════════════════════════════════
+//  UNAVAILABILITY
+// ═══════════════════════════════════════
+function openMarkUnavail(){
+  document.getElementById('unavail-start').value = daySheetDate;
+  document.getElementById('unavail-end').value   = daySheetDate;
+  document.getElementById('unavail-allday').checked = true;
+  document.getElementById('unavail-time-row').style.display = 'none';
+  document.getElementById('unavail-note').value = '';
+  closeSheet('sheet-day');
+  setTimeout(()=>openSheet('sheet-unavail'), 200);
+}
+
+function toggleUnavailAllDay(){
+  const allDay = document.getElementById('unavail-allday').checked;
+  document.getElementById('unavail-time-row').style.display = allDay ? 'none' : 'block';
+}
+
+async function saveUnavail(){
+  const startDate = document.getElementById('unavail-start').value;
+  const endDate   = document.getElementById('unavail-end').value;
+  const allDay    = document.getElementById('unavail-allday').checked;
+  const startTime = allDay ? null : document.getElementById('unavail-start-time').value;
+  const endTime   = allDay ? null : document.getElementById('unavail-end-time').value;
+  const note      = document.getElementById('unavail-note').value.trim();
+  if(!startDate||!endDate){ showToast('Select dates',true); return; }
+  if(endDate<startDate){ showToast('End date must be on or after start date',true); return; }
+  const res = await apiFetch('/api/unavailability',{method:'POST',body:{start_date:startDate,end_date:endDate,start_time:startTime,end_time:endTime,note}});
+  if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
+  cache.unavailability.push(normalizeUnavail(res.entry));
+  closeSheet('sheet-unavail');
+  renderCalendar();
+  showToast('Marked unavailable ✓');
+}
+
+async function deleteUnavail(id){
+  const res = await apiFetch(`/api/unavailability/${id}`,{method:'DELETE'});
+  if(!res?.ok){ showToast('Failed to remove',true); return; }
+  cache.unavailability = cache.unavailability.filter(u=>u.id!==id);
+  renderCalendar();
+  openDaySheet(daySheetDate);
+  showToast('Removed ✓');
+}
 
 // ═══════════════════════════════════════
 //  INIT

@@ -232,9 +232,6 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
       <div class="stat-row" id="overview-stats">
         <div class="stat-box accent"><div class="val" id="ov-users">—</div><div class="lbl">employees</div></div>
-        <div class="stat-box green"><div class="val" id="ov-pay">—</div><div class="lbl">total payroll</div></div>
-        <div class="stat-box"><div class="val" id="ov-hrs">—</div><div class="lbl">total hours</div></div>
-        <div class="stat-box orange"><div class="val" id="ov-ot">—</div><div class="lbl">overtime hours</div></div>
       </div>
       <div class="tbl-wrap">
         <table>
@@ -246,16 +243,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 
     <!-- USERS -->
     <div class="panel" id="panel-users">
-      <div class="sec-hd">
-        <div><h2>Users</h2><p>All employee accounts and their full history</p></div>
-      </div>
-      <div class="tbl-wrap" id="users-table">
-        <table>
-          <thead><tr><th>Name / Email</th><th>Position</th><th>Location</th><th>Role</th><th>All-time hrs</th><th>All-time pay</th><th>Actions</th></tr></thead>
-          <tbody id="users-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
-        </table>
-      </div>
-      <div class="user-cards" id="users-cards"></div>
+      <div id="users-grouped-content"><div class="empty">Loading…</div></div>
     </div>
 
     <!-- LOCATIONS -->
@@ -414,6 +402,39 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .csw{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .1s;flex-shrink:0;}
 .csw.selected{border-color:var(--text);}
 </style>
+
+<!-- USER DASHBOARD MODAL -->
+<div class="modal-overlay" id="user-dash-modal">
+  <div class="modal" style="max-width:720px;width:100%;max-height:88vh;overflow-y:auto;padding:24px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <h3 id="udash-name" style="margin-bottom:3px;font-size:20px"></h3>
+        <div id="udash-meta" style="font-size:11px;font-family:var(--mono);color:var(--muted)"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="closeUserDash()">✕ Close</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius-sm)">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--muted)" id="udash-period-desc"></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="arr-btn" onclick="changeUDashPP(-1)">‹</div>
+        <div id="udash-pp-label" style="font-family:var(--mono);font-size:12px;color:var(--text);min-width:120px;text-align:center"></div>
+        <div class="arr-btn" onclick="changeUDashPP(1)">›</div>
+      </div>
+    </div>
+    <div class="stat-row" style="margin-bottom:16px">
+      <div class="stat-box"><div class="val" id="udash-hrs">—</div><div class="lbl">total hours</div></div>
+      <div class="stat-box orange"><div class="val" id="udash-ot">—</div><div class="lbl">overtime hrs</div></div>
+      <div class="stat-box green"><div class="val" id="udash-pay">—</div><div class="lbl">est. pay</div></div>
+      <div class="stat-box accent"><div class="val" id="udash-count">—</div><div class="lbl">shifts</div></div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>Type</th><th>Est. Pay</th></tr></thead>
+        <tbody id="udash-tbody"><tr><td colspan="5" class="empty">No shifts</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -620,9 +641,7 @@ function computePayForShifts(shifts,schedules,ymds){
 let overviewPPOffset=0;
 
 function changeOverviewPP(dir){
-  const next=overviewPPOffset+dir;
-  if(next>0) return; // no future periods
-  overviewPPOffset=next;
+  overviewPPOffset+=dir;
   renderOverview();
 }
 
@@ -640,16 +659,17 @@ function renderOverview(){
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ymds.push(toYMD(new Date(d)));
 
   document.getElementById('pp-label').textContent=`${fmtShort(start)} – ${fmtShort(end)}`;
-  document.getElementById('ov-period-desc').textContent=overviewPPOffset===0
-    ?'Current pay period summary across all employees'
+  const today2=new Date(); today2.setHours(0,0,0,0);
+  const isCurr=overviewPPOffset===0, isFut=start>today2;
+  document.getElementById('ov-period-desc').textContent=isCurr
+    ?'Current pay period — all employees'
+    :isFut?`${overviewPPOffset} period${overviewPPOffset>1?'s':''} ahead — all employees`
     :`${Math.abs(overviewPPOffset)} period${Math.abs(overviewPPOffset)>1?'s':''} ago — all employees`;
 
-  let totPay=0,totHrs=0,totOt=0;
   const rows=allUsers.map(u=>{
     const shifts=allShifts[u.id]||[];
     const sched=allSchedules[u.id]||[];
     const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,ymds);
-    totPay+=pay; totHrs+=hrs; totOt+=ot;
     return `<tr>
       <td><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></td>
       <td class="mono">${hrs.toFixed(1)} hrs</td>
@@ -660,89 +680,147 @@ function renderOverview(){
   });
 
   document.getElementById('ov-users').textContent=allUsers.length;
-  document.getElementById('ov-pay').textContent=formatPay(totPay);
-  document.getElementById('ov-hrs').textContent=totHrs.toFixed(1);
-  document.getElementById('ov-ot').textContent=totOt.toFixed(1);
   document.getElementById('overview-tbody').innerHTML=rows.join('')||'<tr><td colspan="5" class="empty">No employees yet</td></tr>';
 }
 
 // ══════════════════════════════
-//  USERS
+//  USERS — grouped by house
 // ══════════════════════════════
 const POSITIONS = ['SRC','DSP','PRN'];
 
-function posBadge(pos){
-  if(!pos) return '<span class="muted" style="font-family:var(--mono);font-size:11px">—</span>';
-  const cls = POSITIONS.includes(pos) ? pos.toLowerCase() : 'pos';
-  return `<span class="badge ${cls}">${pos}</span>`;
-}
-
-function locChip(u){
-  if(!u.location_id) return '<span class="muted" style="font-family:var(--mono);font-size:11px">—</span>';
-  return `<div style="display:flex;align-items:center;gap:5px"><div style="width:8px;height:8px;border-radius:2px;background:${u.location_color};flex-shrink:0"></div><span style="font-size:12px">${u.location_name}</span></div>`;
-}
-
 function renderUsers(){
-  const periods=getPayPeriods();
-  const tableRows=[], cardItems=[];
+  const byLoc={}, unassigned=[];
+  for(const u of allUsers){
+    if(u.location_id){ (byLoc[u.location_id]||(byLoc[u.location_id]=[])).push(u); }
+    else unassigned.push(u);
+  }
 
-  allUsers.forEach(u=>{
-    const shifts=allShifts[u.id]||[];
-    const sched=allSchedules[u.id]||[];
-    let totPay=0,totHrs=0;
-    for(const p of periods){ const r=computePayForShifts(shifts,sched,p.ymds); totPay+=r.pay; totHrs+=r.hrs; }
-    const joined=new Date(u.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    const actions=`
-      <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${(u.name||u.email.split('@')[0]).replace(/'/g,"\\'")}')">Schedule</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>`;
+  let html='';
+  for(const loc of allLocs){
+    const users=byLoc[loc.id];
+    if(!users||!users.length) continue;
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:14px 0 8px">
+      <div style="width:12px;height:12px;border-radius:3px;background:${loc.color};flex-shrink:0"></div>
+      <span style="font-weight:700;font-size:15px">${loc.name}</span>
+      <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">${users.length} employee${users.length>1?'s':''}</span>
+    </div>
+    <div class="card" style="padding:0;margin-bottom:20px">${users.map(userRowHTML).join('')}</div>`;
+  }
+  if(unassigned.length){
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:14px 0 8px">
+      <div style="width:12px;height:12px;border-radius:3px;background:var(--border2);flex-shrink:0"></div>
+      <span style="font-weight:700;font-size:15px;color:var(--muted)">Unassigned</span>
+      <span style="font-size:11px;font-family:var(--mono);color:var(--dim)">${unassigned.length} employee${unassigned.length>1?'s':''}</span>
+    </div>
+    <div class="card" style="padding:0;margin-bottom:20px">${unassigned.map(userRowHTML).join('')}</div>`;
+  }
+  if(!allUsers.length) html='<div class="empty">No users yet</div>';
 
-    // Table row (desktop)
-    tableRows.push(`<tr>
-      <td><div style="font-weight:600">${u.name||'—'}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${u.email}</div></td>
-      <td>${posBadge(u.position)}</td>
-      <td>${locChip(u)}</td>
-      <td><span class="badge ${u.role}">${u.role}</span></td>
-      <td class="mono">${totHrs.toFixed(1)} hrs</td>
-      <td class="mono" style="color:var(--green)">${formatPay(totPay)}</td>
-      <td><div style="display:flex;gap:6px">${actions}</div></td>
-    </tr>
-    <tr class="user-row-detail" id="detail-${u.id}">
-      <td colspan="7"><div class="user-detail-inner">
-        <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:10px">Pay period history</div>
-        <div class="pay-period-list">
-          ${periods.map(p=>{ const r=computePayForShifts(shifts,sched,p.ymds);
-            return `<div class="pp-card"><div class="period">${fmtShort(p.start)} – ${fmtShort(p.end)}</div>
-              <div class="amount" style="color:${r.pay>0?'var(--green)':'var(--muted)'}">${formatPay(r.pay)}</div>
-              <div class="meta">${r.hrs.toFixed(1)}h total${r.ot>0?' · '+r.ot.toFixed(1)+'h OT':''}</div></div>`;
-          }).join('')}
-        </div>
-      </div></td>
-    </tr>`);
-
-    // Card (mobile)
-    cardItems.push(`<div class="user-card">
-      <div class="user-card-head">
-        <div>
-          <div class="user-card-name">${u.name||'—'}</div>
-          <div class="user-card-email">${u.email}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <span class="badge ${u.role}">${u.role}</span>
-          ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
-        </div>
-      </div>
-      ${u.location_id?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px"><div style="width:8px;height:8px;border-radius:2px;background:${u.location_color}"></div>${u.location_name}</div>`:''}
-      <div class="user-card-stats">
-        <span>${totHrs.toFixed(1)} hrs</span>
-        <span style="color:var(--green);font-weight:700">${formatPay(totPay)}</span>
-      </div>
-      <div class="user-card-actions">${actions}</div>
-    </div>`);
-  });
-
-  document.getElementById('users-tbody').innerHTML=tableRows.join('')||'<tr><td colspan="7" class="empty">No users yet</td></tr>';
-  document.getElementById('users-cards').innerHTML=cardItems.join('')||'<div class="empty">No users yet</div>';
+  document.getElementById('users-grouped-content').innerHTML=`
+    <div class="sec-hd"><div><h2>Users</h2><p>Employees organised by house</p></div></div>
+    ${html}`;
 }
+
+function userRowHTML(u){
+  const safeName=(u.name||u.email.split('@')[0]).replace(/'/g,"\\'");
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        ${u.name||'—'}
+        ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+        ${u.role==='admin'?'<span class="badge admin">admin</span>':''}
+      </div>
+      <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="openUserDashboard('${u.id}')">View</button>
+      <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${safeName}')">Schedule</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════
+//  USER DASHBOARD MODAL
+// ══════════════════════════════
+let viewUserId='', viewUserPPOffset=0;
+
+function openUserDashboard(userId){
+  viewUserId=userId; viewUserPPOffset=0;
+  const u=allUsers.find(u=>u.id===userId);
+  if(!u) return;
+  document.getElementById('udash-name').textContent=u.name||u.email.split('@')[0];
+  const meta=[u.email, u.position, u.location_name].filter(Boolean).join(' · ');
+  document.getElementById('udash-meta').textContent=meta;
+  renderUserDashboard();
+  document.getElementById('user-dash-modal').classList.add('open');
+}
+function closeUserDash(){ document.getElementById('user-dash-modal').classList.remove('open'); }
+function changeUDashPP(dir){ viewUserPPOffset+=dir; renderUserDashboard(); }
+
+function renderUserDashboard(){
+  const anchor=new Date(PP_ANCHOR+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const diffDays=Math.round((today-anchor)/86400000);
+  const currentN=diffDays<0?Math.ceil(diffDays/14):Math.floor(diffDays/14);
+  const n=currentN+viewUserPPOffset;
+  const start=new Date(anchor); start.setDate(anchor.getDate()+n*14);
+  const end=new Date(start); end.setDate(start.getDate()+13);
+  const ymds=[];
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ymds.push(toYMD(new Date(d)));
+
+  document.getElementById('udash-pp-label').textContent=`${fmtShort(start)} – ${fmtShort(end)}`;
+  const isFuture=start>today;
+  document.getElementById('udash-period-desc').textContent=viewUserPPOffset===0?'Current pay period'
+    :isFuture?`${viewUserPPOffset} period${viewUserPPOffset>1?'s':''} ahead`
+    :`${Math.abs(viewUserPPOffset)} period${Math.abs(viewUserPPOffset)>1?'s':''} ago`;
+
+  const shifts=allShifts[viewUserId]||[];
+  const sched=allSchedules[viewUserId]||[];
+
+  function weekRows(wkYMDs){
+    const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
+    const logged=shifts.filter(s=>wkYMDs.includes(s.date));
+    const base=sched.map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkYMDs.includes(b.date));
+    const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+    let regRun=0,totPay=0,totHrs=0,totOt=0;
+    const rows=all.map(s=>{
+      const h=shiftHours(s.start,s.end), rate=s.rate||0;
+      const reg=Math.max(0,Math.min(h,OT_THRESH-regRun)), otH=h-reg;
+      const p=reg*rate+otH*rate*1.5;
+      regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
+      return {...s,h,otH,p};
+    });
+    return {rows,totPay,totHrs,totOt};
+  }
+
+  const w1=weekRows(ymds.slice(0,7)), w2=weekRows(ymds.slice(7,14));
+  const allRows=[...w1.rows,...w2.rows];
+  const totPay=w1.totPay+w2.totPay, totHrs=w1.totHrs+w2.totHrs, totOt=w1.totOt+w2.totOt;
+
+  document.getElementById('udash-hrs').textContent=totHrs.toFixed(1);
+  document.getElementById('udash-ot').textContent=totOt.toFixed(1);
+  document.getElementById('udash-pay').textContent=formatPay(totPay);
+  document.getElementById('udash-count').textContent=allRows.length;
+
+  const tbody=document.getElementById('udash-tbody');
+  if(!allRows.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">No shifts this period</td></tr>'; return; }
+
+  tbody.innerHTML=allRows.map(s=>{
+    const loc=allLocs.find(l=>l.id===s.locationId);
+    const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const typeBadge=s.isBase?'<span class="badge dsp">BASE</span>':s.otH>=s.h?'<span class="badge ot">OT</span>':s.otH>0?'<span class="badge ot" style="background:rgba(245,166,35,.12)">REG+OT</span>':'<span style="color:var(--muted);font-family:var(--mono);font-size:11px">REG</span>';
+    return `<tr>
+      <td class="mono" style="white-space:nowrap">${d}</td>
+      <td><div style="display:flex;align-items:center;gap:6px"><div style="width:8px;height:8px;border-radius:2px;background:${loc?.color||'#888'};flex-shrink:0"></div>${loc?.name||'—'}</div></td>
+      <td class="mono">${s.h.toFixed(1)}h${s.otH>0&&!s.isBase?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
+      <td>${typeBadge}</td>
+      <td class="mono" style="color:var(--green)">${s.isBase?'—':formatPay(s.p)}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('user-dash-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('user-dash-modal')) closeUserDash(); });
 
 // ══════════════════════════════
 //  MANAGE USERS (Accounts panel)

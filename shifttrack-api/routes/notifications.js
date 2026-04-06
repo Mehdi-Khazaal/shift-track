@@ -87,29 +87,34 @@ router.post('/send-upcoming', auth, async (req, res) => {
 
     for(const sub of subs.rows) {
       const notifyMs = sub.notify_minutes * 60 * 1000;
+      const tzOffset = Number(sub.tz_offset || 0); // minutes, from getTimezoneOffset() (positive = behind UTC)
       const upcoming = [];
 
-      // Check logged shifts in next 7 days
+      // Check logged shifts
       shiftsRes.rows.forEach(s => {
+        // Treat stored date+time as local, convert to UTC by adding tz_offset
         const shiftTime = new Date(`${s.date.toISOString().slice(0,10)}T${s.start_time}`);
+        shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
         const notifTime = new Date(shiftTime.getTime() - notifyMs);
         if(notifTime > now && notifTime < new Date(now.getTime() + 60*60*1000)) {
           upcoming.push({ name: s.location_name, time: s.start_time.slice(0,5), shiftTime });
         }
       });
 
-      // Check base schedule shifts in next 14 days
+      // Check base schedule shifts in next 14 days (using user's local dates)
+      const localNowMs = now.getTime() - tzOffset * 60 * 1000;
       for(let dayOffset=0; dayOffset<14; dayOffset++) {
-        const d = new Date(now); d.setDate(now.getDate()+dayOffset);
-        const dayStr = d.toISOString().slice(0,10);
-        const diffDays = Math.round((d - anchor) / 86400000);
+        const localD = new Date(localNowMs + dayOffset * 86400000);
+        const dayStr = localD.toISOString().slice(0,10);
+        const diffDays = Math.round((localD - anchor) / 86400000);
         const inPeriod = ((diffDays % 14) + 14) % 14;
         const weekNum = inPeriod < 7 ? 1 : 2;
-        const dayOfWeek = d.getDay();
+        const dayOfWeek = localD.getUTCDay();
 
         baseRes.rows.forEach(b => {
           if(b.week === weekNum && b.day_of_week === dayOfWeek) {
             const shiftTime = new Date(`${dayStr}T${b.start_time}`);
+            shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
             const notifTime = new Date(shiftTime.getTime() - notifyMs);
             if(notifTime > now && notifTime < new Date(now.getTime() + 60*60*1000)) {
               upcoming.push({ name: b.location_name, time: b.start_time.slice(0,5), shiftTime });
