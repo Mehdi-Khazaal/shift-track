@@ -838,9 +838,9 @@ function checkConflicts(newShift, skipId=null){
   const {date,start,end}=newShift;
   const hrs=shiftHours(start,end);
 
-  // 1. Single shift too long
-  if(hrs>MAX_DAY_HOURS)
-    return `This shift is ${hrs.toFixed(1)} hrs. Max consecutive hours allowed is ${MAX_DAY_HOURS}.`;
+  // 1. Single consecutive shift too long
+  if(hrs>=MAX_DAY_HOURS)
+    return `This shift is ${hrs.toFixed(1)} consecutive hours. Shifts of ${MAX_DAY_HOURS}+ hours in a row are not allowed.`;
 
   // 2. Collect all other shifts on this date
   const loggedSameDay=getShifts().filter(s=>s.date===date&&s.id!==skipId);
@@ -854,12 +854,7 @@ function checkConflicts(newShift, skipId=null){
     ...baseSameDay.map(b=>({start:b.start,end:b.end,name:b.name,isBase:true}))
   ];
 
-  // 3. Total hours on this date would exceed max
-  const dayTotal=existing.reduce((a,s)=>a+shiftHours(s.start,s.end),0)+hrs;
-  if(dayTotal>MAX_DAY_HOURS)
-    return `Total hours on ${date} would be ${dayTotal.toFixed(1)} hrs. Max allowed is ${MAX_DAY_HOURS} hrs in one day.`;
-
-  // 4. Time overlap
+  // 3. Time overlap
   const ns=toMins(start), ne=toMinsEnd(start,end);
   for(const ex of existing){
     const es=toMins(ex.start), ee=toMinsEnd(ex.start,ex.end);
