@@ -2027,7 +2027,7 @@ function renderNotifHistory(){
         <div class="notif-body">${n.body}</div>
         <div class="notif-time">${relativeTime(n.sent_at)}</div>
       </div>
-      <div onclick="clearOneNotif(${n.id})" style="flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--dim);font-size:13px;cursor:pointer;margin-left:4px" title="Dismiss">✕</div>
+      <div onclick="clearOneNotif('${n.id}')" style="flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--dim);font-size:13px;cursor:pointer;margin-left:4px" title="Dismiss">✕</div>
     </div>`;
   }).join('');
 }

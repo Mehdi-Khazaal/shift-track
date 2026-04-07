@@ -137,6 +137,7 @@ router.post('/broadcast', auth, async (req, res) => {
 
     const payload = JSON.stringify({ title: notifTitle, body, icon: '/shift-track/icon-192.png' });
     let sent = 0;
+    const loggedUsers = new Set(); // log once per user regardless of device count
 
     for(const sub of subs.rows) {
       try {
@@ -144,7 +145,10 @@ router.post('/broadcast', auth, async (req, res) => {
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           payload
         );
-        await logNotification(sub.user_id, notifTitle, body);
+        if(!loggedUsers.has(sub.user_id)){
+          loggedUsers.add(sub.user_id);
+          await logNotification(sub.user_id, notifTitle, body);
+        }
         sent++;
       } catch(e) {
         if(e.statusCode === 410) {
