@@ -183,13 +183,14 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 /* PDF print div */
 #pdf-print{display:none;}
 @media print{
+  @page{margin:12mm 10mm;size:auto;}
+  html,body{height:auto!important;min-height:0!important;overflow:visible!important;background:#fff!important;color:#111!important;margin:0!important;padding:0!important;}
   body>*:not(#pdf-print){display:none!important;}
-  #pdf-print{display:block!important;font-family:sans-serif;color:#111;background:#fff;padding:32px;font-size:13px;}
-  #pdf-print table{width:100%;border-collapse:collapse;font-size:12px;}
-  #pdf-print thead th{background:#f0f0f0;padding:7px 10px;text-align:left;border-bottom:2px solid #ccc;font-size:11px;text-transform:uppercase;letter-spacing:.5px;}
-  #pdf-print tbody td{padding:7px 10px;border-bottom:1px solid #e0e0e0;}
+  #pdf-print{display:block!important;font-family:sans-serif;color:#111;background:#fff;padding:0;font-size:12px;}
+  #pdf-print table{width:100%;border-collapse:collapse;font-size:11px;}
+  #pdf-print thead th{background:#f0f0f0;padding:6px 8px;text-align:left;border-bottom:2px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+  #pdf-print tbody td{padding:6px 8px;border-bottom:1px solid #e0e0e0;}
   #pdf-print .pdf-total{border-top:2px solid #111;font-weight:700;}
-  body{background:#fff!important;color:#111!important;}
 }
 /* ── Bell / Notification History ── */
 .bell-btn{position:relative;width:38px;height:38px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:18px;transition:background .15s;flex-shrink:0;}
