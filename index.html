@@ -192,6 +192,18 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   #pdf-print tbody td{padding:6px 8px;border-bottom:1px solid #e0e0e0;}
   #pdf-print .pdf-total{border-top:2px solid #111;font-weight:700;}
 }
+/* ── My Shifts week groups ── */
+.wk-group{margin:0 16px 10px;}
+.wk-group:last-child{margin-bottom:4px;}
+.wk-group-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;user-select:none;transition:background .15s;}
+.wk-group-hd:active{background:var(--bg4);}
+.wk-group-hd.open{border-radius:var(--radius-sm) var(--radius-sm) 0 0;}
+.wk-chevron{width:16px;height:16px;color:var(--dim);flex-shrink:0;transition:transform .22s ease;}
+.wk-group-hd.open .wk-chevron{transform:rotate(90deg);}
+.wk-label{font-size:12px;font-weight:700;font-family:var(--mono);color:var(--text);flex:1;}
+.wk-meta{font-size:11px;font-family:var(--mono);color:var(--muted);}
+.wk-shifts-card{background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);overflow:hidden;}
+.wk-shifts-card.collapsed{display:none;}
 /* ── Open Shifts ── */
 .os-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:10px;}
 .os-card-hd{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
@@ -347,10 +359,8 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   </div>
 
   <div class="section-hd"><h2>My Shifts</h2></div>
-  <div class="card" style="padding:0">
-    <div id="shift-list-all">
-      <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
-    </div>
+  <div id="shift-list-all">
+    <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
   </div>
 </div>
 
@@ -1355,19 +1365,61 @@ function renderAllShifts(){
   const shifts=getShifts();
   const el=document.getElementById('shift-list-all');
   if(!shifts.length){ el.innerHTML='<div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>'; return; }
+
+  // Group by week (Sun as key, descending)
   const sorted=[...shifts].sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start));
-  el.innerHTML=sorted.map(s=>{
-    // Compute OT breakdown in context of that week
+  const groups=new Map();
+  sorted.forEach(s=>{
     const wkD=weekDatesForDate(s.date);
+    const key=toYMD(wkD[0]);
+    if(!groups.has(key)) groups.set(key,{wkD,shifts:[]});
+    groups.get(key).shifts.push(s);
+  });
+
+  const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  const today=toYMD(new Date());
+
+  // Current week key — open by default, past weeks collapsed
+  const currentWkKey=toYMD(weekDatesForDate(today)[0]);
+
+  el.innerHTML=[...groups.entries()].map(([key,{wkD,shifts:wkShifts}])=>{
     const wkY=wkD.map(toYMD);
-    const weekShifts=[
+    const allWkShifts=[
       ...getShifts().filter(x=>wkY.includes(x.date)),
       ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkY.includes(b.date))
     ];
-    const {breakdown}=computeWeekPay(weekShifts);
-    const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
-    return shiftItemHTML({...s,isBase:false},bd);
+    const {breakdown}=computeWeekPay(allWkShifts);
+    const totHrs=wkShifts.reduce((t,s)=>t+shiftHours(s.start,s.end),0);
+    const totPay=wkShifts.reduce((t,s)=>{
+      const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
+      return t+(bd?bd.pay:shiftHours(s.start,s.end)*(getLocById(s.locationId)?.rate||0));
+    },0);
+
+    const isCurrentWk=key===currentWkKey;
+    const weekLabel=`${fmt(wkD[0])} – ${fmt(wkD[6])}`;
+    const shiftsHtml=wkShifts.map(s=>{
+      const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
+      return shiftItemHTML({...s,isBase:false},bd);
+    }).join('');
+
+    return `<div class="wk-group" id="wkg-${key}">
+      <div class="wk-group-hd${isCurrentWk?' open':''}" onclick="toggleWeek('${key}')">
+        <svg class="wk-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 4 10 8 6 12"/></svg>
+        <span class="wk-label">${weekLabel}</span>
+        <span class="wk-meta">${wkShifts.length} shift${wkShifts.length!==1?'s':''} · ${totHrs.toFixed(1)}h · ${formatPay(totPay)}</span>
+      </div>
+      <div class="wk-shifts-card${isCurrentWk?'':' collapsed'}">${shiftsHtml}</div>
+    </div>`;
   }).join('');
+}
+
+function toggleWeek(key){
+  const hd=document.querySelector(`#wkg-${key} .wk-group-hd`);
+  const body=document.querySelector(`#wkg-${key} .wk-shifts-card`);
+  if(!hd||!body) return;
+  const isOpen=hd.classList.contains('open');
+  hd.classList.toggle('open',!isOpen);
+  body.classList.toggle('collapsed',isOpen);
 }
 
 // ═══════════════════════════════════════
@@ -2098,7 +2150,7 @@ function renderOpenShifts(){
     if(minsLeft < 0) dlStr = 'Deadline passed';
     else if(minsLeft < 60) dlStr = `Respond within ${minsLeft}m`;
     else if(minsLeft < 1440) dlStr = `Respond within ${Math.round(minsLeft/60)}h`;
-    else dlStr = `Deadline: ${dl.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`;
+    else dlStr = `Deadline: ${dl.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}`;
 
     const isHouse    = s.target_type === 'house';
     const responded  = s.my_response;

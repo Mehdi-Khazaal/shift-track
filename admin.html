@@ -188,6 +188,36 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .bc-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:14px;padding:10px 14px;outline:none;resize:vertical;min-height:90px;transition:border-color .15s;}
 .bc-textarea:focus{border-color:var(--accent);}
 
+/* ── Employee Picker ── */
+.emp-picker{position:relative;}
+.emp-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:14px;padding:11px 14px;cursor:pointer;text-align:left;transition:border-color .15s;}
+.emp-trigger:focus,.emp-trigger.open{border-color:var(--accent);outline:none;}
+.emp-trigger-label{flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.emp-trigger-label.has-sel{color:var(--text);}
+.emp-trigger-chevron{flex-shrink:0;width:16px;height:16px;color:var(--muted);transition:transform .2s;}
+.emp-trigger.open .emp-trigger-chevron{transform:rotate(180deg);}
+.emp-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:200;overflow:hidden;display:none;}
+.emp-dropdown.open{display:block;}
+.emp-search-wrap{padding:10px 10px 6px;border-bottom:1px solid var(--border);}
+.emp-search{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:13px;padding:7px 10px;outline:none;transition:border-color .15s;}
+.emp-search:focus{border-color:var(--accent);}
+.emp-list{max-height:200px;overflow-y:auto;}
+.emp-item{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background .1s;}
+.emp-item:hover{background:var(--bg3);}
+.emp-item.selected{background:rgba(91,143,255,.08);}
+.emp-avatar{width:30px;height:30px;border-radius:50%;background:var(--bg4);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);color:var(--muted);flex-shrink:0;transition:background .15s,color .15s;}
+.emp-item.selected .emp-avatar{background:var(--accent);color:#fff;border-color:var(--accent);}
+.emp-item-info{flex:1;min-width:0;}
+.emp-item-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.emp-item-hire{font-size:10px;font-family:var(--mono);color:var(--muted);}
+.emp-item-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;background:transparent;transition:all .15s;}
+.emp-item.selected .emp-item-check{background:var(--accent);border-color:var(--accent);color:#fff;}
+.emp-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:0;}
+.emp-chip{display:flex;align-items:center;gap:5px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);border-radius:99px;padding:3px 10px 3px 8px;font-size:11px;font-family:var(--mono);color:var(--accent);}
+.emp-chip-x{cursor:pointer;opacity:.7;font-size:13px;line-height:1;padding-left:2px;}
+.emp-chip-x:hover{opacity:1;}
+.emp-empty{padding:16px;text-align:center;font-size:12px;font-family:var(--mono);color:var(--dim);}
+
 @media(max-width:640px){
   .top-bar{padding:14px 16px;}
   .top-logo small{display:none;}
@@ -420,8 +450,20 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
           </select>
         </div>
         <div class="form-group" id="os-specific-row" style="display:none">
-          <label>Select employees <span style="color:var(--dim);font-size:9px">(hold Ctrl / ⌘ for multiple)</span></label>
-          <select id="os-user-select" multiple size="5" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:13px;padding:4px;appearance:none;outline:none;transition:border-color .15s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"></select>
+          <label>Select employees</label>
+          <div class="emp-picker" id="emp-picker">
+            <button type="button" class="emp-trigger" id="emp-trigger" onclick="toggleEmpPicker(event)">
+              <span class="emp-trigger-label" id="emp-trigger-label">Choose employees…</span>
+              <svg class="emp-trigger-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 6 8 10 12 6"/></svg>
+            </button>
+            <div class="emp-dropdown" id="emp-dropdown">
+              <div class="emp-search-wrap">
+                <input class="emp-search" id="emp-search" type="text" placeholder="Search by name…" oninput="filterEmpPicker()" autocomplete="off"/>
+              </div>
+              <div class="emp-list" id="emp-list"></div>
+            </div>
+          </div>
+          <div class="emp-chips" id="emp-chips"></div>
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label>Notes <span style="color:var(--dim);font-size:9px">(optional)</span></label>
@@ -1623,12 +1665,9 @@ function populateOsForm(){
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
   const dateEl = document.getElementById('os-date');
   if(!dateEl.value) dateEl.value = tomorrow.toISOString().slice(0,10);
-  // Employee dropdown for specific target
-  const sel = document.getElementById('os-user-select');
-  sel.innerHTML = allUsers.filter(u=>u.role==='user').map(u=>{
-    const label = (u.name||u.email.split('@')[0]) + (u.hire_date ? '  ·  hired '+u.hire_date.slice(0,10) : '');
-    return `<option value="${u.id}">${label}</option>`;
-  }).join('');
+  // Employee picker — reset selection and populate list
+  empPickerSelected.clear();
+  updateEmpPicker();
 }
 
 function toggleOsTarget(){
@@ -1652,8 +1691,7 @@ async function postOpenShift(){
 
   let target_user_ids = [];
   if(target_type === 'specific'){
-    const sel = document.getElementById('os-user-select');
-    target_user_ids = Array.from(sel.selectedOptions).map(o=>o.value);
+    target_user_ids = Array.from(empPickerSelected);
     if(!target_user_ids.length){ showToast('Select at least one employee',true); return; }
   }
 
@@ -1668,13 +1706,95 @@ async function postOpenShift(){
     result.style.color='var(--green)';
     result.textContent='✓ Open shift posted and notifications sent';
     document.getElementById('os-notes').value='';
-    document.querySelectorAll('#os-user-checkboxes input').forEach(cb=>cb.checked=false);
+    empPickerSelected.clear(); updateEmpPicker();
     loadOpenShifts();
   } else {
     result.style.color='var(--red)';
     result.textContent='✗ '+(data?.error||'Failed to post');
   }
 }
+
+// ── Employee Picker ─────────────────────────────────────────────
+const empPickerSelected = new Set();
+
+function updateEmpPicker(){
+  renderEmpList();
+  renderEmpChips();
+  // Update trigger label
+  const label = document.getElementById('emp-trigger-label');
+  if(!label) return;
+  const n = empPickerSelected.size;
+  if(n === 0){ label.textContent='Choose employees…'; label.className='emp-trigger-label'; }
+  else { label.textContent=`${n} employee${n>1?'s':''} selected`; label.className='emp-trigger-label has-sel'; }
+}
+
+function renderEmpList(){
+  const el = document.getElementById('emp-list');
+  if(!el) return;
+  const q = (document.getElementById('emp-search')?.value||'').toLowerCase();
+  const users = allUsers.filter(u=>u.role==='user'&&(u.name||u.email).toLowerCase().includes(q));
+  if(!users.length){ el.innerHTML=`<div class="emp-empty">No employees found</div>`; return; }
+  el.innerHTML = users.map(u=>{
+    const name = u.name||u.email.split('@')[0];
+    const initials = name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+    const hire = u.hire_date ? 'Hired '+u.hire_date.slice(0,10) : '';
+    const sel = empPickerSelected.has(u.id);
+    return `<div class="emp-item${sel?' selected':''}" onclick="toggleEmpItem('${u.id}')">
+      <div class="emp-avatar">${initials}</div>
+      <div class="emp-item-info">
+        <div class="emp-item-name">${name}</div>
+        ${hire?`<div class="emp-item-hire">${hire}</div>`:''}
+      </div>
+      <div class="emp-item-check">✓</div>
+    </div>`;
+  }).join('');
+}
+
+function renderEmpChips(){
+  const el = document.getElementById('emp-chips');
+  if(!el) return;
+  el.innerHTML = [...empPickerSelected].map(id=>{
+    const u = allUsers.find(x=>x.id===id);
+    if(!u) return '';
+    const name = u.name||u.email.split('@')[0];
+    return `<div class="emp-chip"><span>${name}</span><span class="emp-chip-x" onclick="removeEmpItem('${id}')">×</span></div>`;
+  }).join('');
+}
+
+function toggleEmpItem(id){
+  empPickerSelected.has(id)?empPickerSelected.delete(id):empPickerSelected.add(id);
+  updateEmpPicker();
+}
+
+function removeEmpItem(id){
+  empPickerSelected.delete(id);
+  updateEmpPicker();
+}
+
+function toggleEmpPicker(e){
+  e.stopPropagation();
+  const dd = document.getElementById('emp-dropdown');
+  const trigger = document.getElementById('emp-trigger');
+  const isOpen = dd.classList.contains('open');
+  if(isOpen){ dd.classList.remove('open'); trigger.classList.remove('open'); }
+  else {
+    dd.classList.add('open'); trigger.classList.add('open');
+    document.getElementById('emp-search').value='';
+    renderEmpList();
+    setTimeout(()=>document.getElementById('emp-search').focus(),50);
+  }
+}
+
+function filterEmpPicker(){ renderEmpList(); }
+
+document.addEventListener('click', e=>{
+  const picker = document.getElementById('emp-picker');
+  if(picker && !picker.contains(e.target)){
+    document.getElementById('emp-dropdown')?.classList.remove('open');
+    document.getElementById('emp-trigger')?.classList.remove('open');
+  }
+});
+// ────────────────────────────────────────────────────────────────
 
 async function loadOpenShifts(){
   const data = await apiFetch('/api/open-shifts/admin');
