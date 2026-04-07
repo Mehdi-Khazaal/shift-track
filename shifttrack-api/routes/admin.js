@@ -16,7 +16,7 @@ function adminOnly(req, res, next){
 router.get('/users', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id, u.email, u.name, u.role, u.position, u.location_id, u.created_at,
+      `SELECT u.id, u.email, u.name, u.role, u.position, u.location_id, u.hire_date, u.created_at,
               l.name AS location_name, l.color AS location_color
        FROM users u
        LEFT JOIN locations l ON u.location_id = l.id
@@ -83,10 +83,12 @@ router.post('/users', auth, adminOnly, async (req, res) => {
     const existing = await db.query('SELECT id FROM users WHERE email=$1', [email]);
     if(existing.rows.length)
       return res.status(409).json({ ok:false, error:'Email already registered' });
+    const { hire_date } = req.body;
+    if(!hire_date) return res.status(400).json({ ok:false, error:'Hire date is required' });
     const hash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (email, name, password_hash, position, location_id) VALUES ($1,$2,$3,$4,$5) RETURNING id, email, name, role, position, location_id',
-      [email, name||email.split('@')[0], hash, position||'', location_id||null]
+      'INSERT INTO users (email, name, password_hash, position, location_id, hire_date) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, email, name, role, position, location_id, hire_date',
+      [email, name||email.split('@')[0], hash, position||'', location_id||null, hire_date]
     );
     const user = result.rows[0];
     await db.query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id]);
@@ -96,9 +98,9 @@ router.post('/users', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id — update user info (name, email, role, position, location, optional password)
+// PATCH /api/admin/users/:id — update user info (name, email, role, position, location, hire_date, optional password)
 router.patch('/users/:id', auth, adminOnly, async (req, res) => {
-  const { name, email, role, position, location_id, password } = req.body;
+  const { name, email, role, position, location_id, password, hire_date } = req.body;
   if(!['admin','user'].includes(role))
     return res.status(400).json({ ok:false, error:'Invalid role' });
   try {
@@ -106,15 +108,15 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
     if(password && password.length >= 4) {
       const hash = await bcrypt.hash(password, 10);
       result = await db.query(
-        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6
-         WHERE id=$7 RETURNING id, email, name, role, position, location_id`,
-        [name, email, role, position||'', location_id||null, hash, req.params.id]
+        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6, hire_date=$7
+         WHERE id=$8 RETURNING id, email, name, role, position, location_id, hire_date`,
+        [name, email, role, position||'', location_id||null, hash, hire_date||null, req.params.id]
       );
     } else {
       result = await db.query(
-        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5
-         WHERE id=$6 RETURNING id, email, name, role, position, location_id`,
-        [name, email, role, position||'', location_id||null, req.params.id]
+        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, hire_date=$6
+         WHERE id=$7 RETURNING id, email, name, role, position, location_id, hire_date`,
+        [name, email, role, position||'', location_id||null, hire_date||null, req.params.id]
       );
     }
     if(!result.rows.length) return res.status(404).json({ ok:false, error:'User not found' });

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT NOT NULL DEFAULT 'user', -- 'user' or 'admin'
   position      TEXT NOT NULL DEFAULT '',     -- e.g. SRC, DSP, PRN
   location_id   UUID REFERENCES locations(id) ON DELETE SET NULL,
+  hire_date     DATE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -61,6 +62,33 @@ CREATE TABLE IF NOT EXISTS user_unavailability (
   end_time   TIME,
   note       TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Open shifts (admin posts, employees claim)
+CREATE TABLE IF NOT EXISTS open_shifts (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  location_id     UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  date            DATE NOT NULL,
+  start_time      TIME NOT NULL,
+  end_time        TIME NOT NULL,
+  notes           TEXT DEFAULT '',
+  target_type     TEXT NOT NULL CHECK (target_type IN ('specific','house','everyone')),
+  target_user_ids UUID[] DEFAULT '{}',
+  deadline        TIMESTAMPTZ NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','claimed','expired')),
+  claimed_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Claims / responses to open shifts
+CREATE TABLE IF NOT EXISTS open_shift_claims (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  open_shift_id   UUID NOT NULL REFERENCES open_shifts(id) ON DELETE CASCADE,
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  response        TEXT NOT NULL CHECK (response IN ('claimed','rejected')),
+  responded_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(open_shift_id, user_id)
 );
 
 -- Notification log (in-app history of all push notifications sent)

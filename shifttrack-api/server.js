@@ -23,6 +23,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/admin',    require('./routes/admin'));
 app.use('/api/notifications',   require('./routes/notifications'));
 app.use('/api/unavailability',  require('./routes/unavailability'));
+app.use('/api/open-shifts',    require('./routes/openShifts'));
 
 // Health check
 app.get('/health', (req, res) => {

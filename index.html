@@ -192,6 +192,14 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   #pdf-print tbody td{padding:6px 8px;border-bottom:1px solid #e0e0e0;}
   #pdf-print .pdf-total{border-top:2px solid #111;font-weight:700;}
 }
+/* ── Open Shifts ── */
+.os-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:10px;}
+.os-card-hd{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.os-loc{font-weight:700;font-size:14px;}
+.os-time{font-size:12px;font-family:var(--mono);color:var(--muted);}
+.os-deadline{font-size:11px;font-family:var(--mono);color:var(--dim);margin-bottom:10px;}
+.os-actions{display:flex;gap:8px;}
+.os-badge{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:99px;}
 /* ── Bell / Notification History ── */
 .bell-btn{position:relative;width:38px;height:38px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:18px;transition:background .15s;flex-shrink:0;}
 .bell-btn:active{background:var(--bg4);}
@@ -331,6 +339,14 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
     <h1>All Shifts</h1>
     <div class="icon-btn" onclick="openAddShift()">＋</div>
   </div>
+
+  <!-- Open Shifts -->
+  <div id="open-shifts-section" style="display:none">
+    <div class="section-hd"><h2>Open Shifts</h2></div>
+    <div id="open-shifts-list" style="margin-bottom:8px"></div>
+  </div>
+
+  <div class="section-hd"><h2>My Shifts</h2></div>
   <div class="card" style="padding:0">
     <div id="shift-list-all">
       <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
@@ -1013,7 +1029,7 @@ function switchScreen(name,el){
   document.getElementById('screen-'+name).classList.add('active');
   el.classList.add('active');
   if(name==='dash')     renderDash();
-  if(name==='log')      renderAllShifts();
+  if(name==='log')      { renderAllShifts(); loadOpenShifts(); }
   if(name==='calendar') renderCalendar();
   if(name==='history')  renderHistory();
   if(name==='settings'){ renderSettings(); loadNotifStatus(); }
@@ -2052,7 +2068,82 @@ const _origEnterAppNotif = enterApp;
 enterApp = function(user){
   _origEnterAppNotif(user);
   setTimeout(loadNotifHistory, 3500); // after send-upcoming settles
+  setTimeout(loadOpenShifts, 1000);
 };
+
+// ═══════════════════════════════════════
+//  OPEN SHIFTS
+// ═══════════════════════════════════════
+let openShiftsData = [];
+
+async function loadOpenShifts(){
+  const res = await apiFetch('/api/open-shifts');
+  if(!res?.ok) return;
+  openShiftsData = res.shifts || [];
+  renderOpenShifts();
+}
+
+function renderOpenShifts(){
+  const section = document.getElementById('open-shifts-section');
+  const list    = document.getElementById('open-shifts-list');
+  if(!openShiftsData.length){ section.style.display='none'; return; }
+  section.style.display = '';
+
+  list.innerHTML = openShiftsData.map(s => {
+    const c   = s.location_color || '#888';
+    const dl  = new Date(s.deadline);
+    const now = new Date();
+    const minsLeft = Math.round((dl - now) / 60000);
+    let dlStr;
+    if(minsLeft < 0) dlStr = 'Deadline passed';
+    else if(minsLeft < 60) dlStr = `Respond within ${minsLeft}m`;
+    else if(minsLeft < 1440) dlStr = `Respond within ${Math.round(minsLeft/60)}h`;
+    else dlStr = `Deadline: ${dl.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`;
+
+    const isHouse    = s.target_type === 'house';
+    const responded  = s.my_response;
+    const hasClaimed = responded === 'claimed';
+    const hasRejected= responded === 'rejected';
+
+    let actionsHtml;
+    if(hasClaimed && isHouse){
+      actionsHtml = `<div class="os-badge" style="background:rgba(91,143,255,.12);color:var(--accent)">Waiting — seniority assigned at deadline</div>`;
+    } else if(hasClaimed){
+      actionsHtml = `<div class="os-badge" style="background:rgba(46,204,138,.12);color:var(--green)">✓ Claimed</div>`;
+    } else if(hasRejected){
+      actionsHtml = `<div class="os-badge" style="background:var(--bg3);color:var(--dim)">Declined</div>`;
+    } else {
+      actionsHtml = `
+        <button class="btn btn-primary btn-sm" onclick="respondOpenShift('${s.id}','claimed')">Claim</button>
+        <button class="btn btn-ghost btn-sm" onclick="respondOpenShift('${s.id}','rejected')">Decline</button>`;
+    }
+
+    return `<div class="os-card">
+      <div class="os-card-hd">
+        <div style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0"></div>
+        <div class="os-loc">${s.location_name}</div>
+        <div class="os-time">${s.date} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</div>
+        ${isHouse?`<span class="os-badge" style="background:rgba(245,166,35,.1);color:var(--orange)">Seniority</span>`:'<span class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">First come</span>'}
+      </div>
+      <div class="os-deadline">${dlStr}</div>
+      ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${s.notes}</div>`:''}
+      <div class="os-actions">${actionsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+async function respondOpenShift(id, response){
+  const res = await apiFetch(`/api/open-shifts/${id}/respond`, { method:'POST', body:{ response } });
+  if(!res?.ok){ showToast(res?.error || 'Failed to respond', true); return; }
+  if(response === 'claimed' && res.assigned){
+    showToast('Shift claimed and added to your schedule ✓');
+  } else if(response === 'claimed' && !res.assigned){
+    showToast('Response recorded — assigned at deadline by seniority');
+  } else {
+    showToast('Shift declined');
+  }
+  await loadOpenShifts();
+}
 
 // ═══════════════════════════════════════
 //  INIT

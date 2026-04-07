@@ -262,6 +262,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div class="tab" onclick="switchTab('staffing',this)">Staffing</div>
     <div class="tab" onclick="switchTab('locations',this)">Locations</div>
     <div class="tab" onclick="switchTab('accounts',this)">Accounts</div>
+    <div class="tab" onclick="switchTab('openshifts',this)">Open Shifts</div>
     <div class="tab" onclick="switchTab('notify',this)">Notify</div>
   </div>
 
@@ -368,6 +369,75 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       </div>
     </div>
 
+    <!-- OPEN SHIFTS -->
+    <div class="panel" id="panel-openshifts">
+      <div class="sec-hd">
+        <div><h2>Open Shifts</h2><p>Post unfilled shifts — employees can claim them</p></div>
+        <button class="btn btn-primary btn-sm" onclick="loadOpenShifts()">↻ Refresh</button>
+      </div>
+
+      <!-- Post form -->
+      <div class="card" style="max-width:560px;margin-bottom:24px">
+        <div class="section-label" style="margin-bottom:12px">Post an Open Shift</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:2;min-width:160px">
+            <label>Location</label>
+            <select id="os-location"></select>
+          </div>
+          <div class="form-group" style="flex:1;min-width:120px">
+            <label>Date</label>
+            <input type="date" id="os-date"/>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:100px">
+            <label>Start</label>
+            <input type="time" id="os-start" value="07:00"/>
+          </div>
+          <div class="form-group" style="flex:1;min-width:100px">
+            <label>End</label>
+            <input type="time" id="os-end" value="15:00"/>
+          </div>
+          <div class="form-group" style="flex:1;min-width:120px">
+            <label>Response deadline</label>
+            <select id="os-deadline">
+              <option value="1">1 hour</option>
+              <option value="2">2 hours</option>
+              <option value="4">4 hours</option>
+              <option value="8" selected>8 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24">24 hours</option>
+              <option value="48">48 hours</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Send to</label>
+          <select id="os-target" onchange="toggleOsTarget()">
+            <option value="everyone">Everyone</option>
+            <option value="house">This house (seniority-based)</option>
+            <option value="specific">Specific employee(s)</option>
+          </select>
+        </div>
+        <div class="form-group" id="os-specific-row" style="display:none">
+          <label>Select employees</label>
+          <div id="os-user-checkboxes" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:8px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)"></div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Notes <span style="color:var(--dim);font-size:9px">(optional)</span></label>
+          <input type="text" id="os-notes" placeholder="Any special instructions…" maxlength="200"/>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-primary" onclick="postOpenShift()">Post Open Shift</button>
+        </div>
+        <div id="os-result" style="margin-top:12px;font-size:12px;font-family:var(--mono);display:none"></div>
+      </div>
+
+      <!-- Active open shifts list -->
+      <div class="section-label" style="margin-bottom:12px">Active &amp; Recent</div>
+      <div id="os-list"><div class="empty">No open shifts posted yet</div></div>
+    </div>
+
     <!-- ACCOUNTS -->
     <div class="panel" id="panel-accounts">
       <div class="sec-hd"><div><h2>Accounts</h2><p>Create new accounts and manage existing ones</p></div></div>
@@ -387,9 +457,15 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
             <select id="new-location"><option value="">— None —</option></select>
           </div>
         </div>
-        <div class="form-group" style="margin-bottom:0">
-          <label>Role</label>
-          <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:140px">
+            <label>Hire Date <span style="color:var(--red);font-size:10px">*required</span></label>
+            <input type="date" id="new-hire-date"/>
+          </div>
+          <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0">
+            <label>Role</label>
+            <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+          </div>
         </div>
         <div style="margin-top:20px;display:flex;gap:10px">
           <button class="btn btn-primary" onclick="createAccount()">Create Account</button>
@@ -465,6 +541,10 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div class="form-group">
       <label>Role</label>
       <select id="edit-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+    </div>
+    <div class="form-group">
+      <label>Hire Date <span style="color:var(--red);font-size:10px">*required</span></label>
+      <input type="date" id="edit-hire-date"/>
     </div>
     <div class="form-group" style="margin-bottom:0">
       <label>New Password <span style="color:var(--dim);font-size:9px">(leave blank to keep current — shown so you can read it to them)</span></label>
@@ -634,8 +714,9 @@ function switchTab(name,el){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-'+name).classList.add('active');
-  if(name==='staffing') renderStaffing();
-  if(name==='notify')   toggleBcFilter();
+  if(name==='staffing')    renderStaffing();
+  if(name==='notify')      toggleBcFilter();
+  if(name==='openshifts')  { populateOsForm(); loadOpenShifts(); }
 }
 
 // ══════════════════════════════
@@ -982,6 +1063,7 @@ function openEditUserModal(id){
   document.getElementById('edit-position').value=u.position||'';
   document.getElementById('edit-role').value=u.role;
   document.getElementById('edit-password').value='';
+  document.getElementById('edit-hire-date').value=u.hire_date?u.hire_date.slice(0,10):'';
   // Populate + set location
   const locSel=document.getElementById('edit-location');
   locSel.innerHTML='<option value="">— None —</option>'+allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
@@ -1000,10 +1082,12 @@ async function saveEditUser(){
   const location_id=document.getElementById('edit-location').value||null;
   const role=document.getElementById('edit-role').value;
   const password=document.getElementById('edit-password').value.trim();
+  const hire_date=document.getElementById('edit-hire-date').value;
   if(!name){ showToast('Enter a name',true); return; }
   if(!email){ showToast('Enter an email',true); return; }
+  if(!hire_date){ showToast('Hire date is required',true); return; }
   if(password&&password.length<4){ showToast('Password must be at least 4 characters',true); return; }
-  const body={name,email,position,location_id,role};
+  const body={name,email,position,location_id,role,hire_date};
   if(password) body.password=password;
   const res=await apiFetch(`/api/admin/users/${id}`,{method:'PATCH',body});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
@@ -1104,9 +1188,11 @@ async function createAccount(){
   const location_id=document.getElementById('new-location').value||null;
   const res=document.getElementById('create-result');
 
+  const hire_date=document.getElementById('new-hire-date').value;
   if(!email||!password){ showToast('Email and password required',true); return; }
+  if(!hire_date){ showToast('Hire date is required',true); return; }
 
-  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id}});
+  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date}});
   res.style.display='block';
   if(data?.ok){
     if(role==='admin') await apiFetch(`/api/admin/users/${data.user.id}/role`,{method:'PATCH',body:{role:'admin'}});
@@ -1122,7 +1208,7 @@ async function createAccount(){
 }
 
 function clearCreateForm(){
-  ['new-name','new-email','new-pass'].forEach(id=>document.getElementById(id).value='');
+  ['new-name','new-email','new-pass','new-hire-date'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-role').value='user';
   document.getElementById('new-position').value='';
   document.getElementById('new-location').value='';
@@ -1524,6 +1610,125 @@ async function sendBroadcast(){
     result.style.color      = 'var(--red)';
     result.textContent      = '✗ ' + (data?.error || 'Failed to send');
   }
+}
+
+// ══════════════════════════════
+//  OPEN SHIFTS
+// ══════════════════════════════
+function populateOsForm(){
+  const locSel = document.getElementById('os-location');
+  if(!locSel) return;
+  locSel.innerHTML = allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  // Default date to tomorrow
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const dateEl = document.getElementById('os-date');
+  if(!dateEl.value) dateEl.value = tomorrow.toISOString().slice(0,10);
+  // User checkboxes for specific target
+  const box = document.getElementById('os-user-checkboxes');
+  box.innerHTML = allUsers.filter(u=>u.role==='user').map(u=>
+    `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" value="${u.id}" style="accent-color:var(--accent)"/>
+      <span>${u.name||u.email.split('@')[0]}</span>
+      <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${u.hire_date?u.hire_date.slice(0,10):''}</span>
+    </label>`
+  ).join('');
+}
+
+function toggleOsTarget(){
+  const v = document.getElementById('os-target').value;
+  document.getElementById('os-specific-row').style.display = v==='specific' ? '' : 'none';
+}
+
+async function postOpenShift(){
+  const location_id   = document.getElementById('os-location').value;
+  const date          = document.getElementById('os-date').value;
+  const start_time    = document.getElementById('os-start').value;
+  const end_time      = document.getElementById('os-end').value;
+  const deadline_hours= document.getElementById('os-deadline').value;
+  const target_type   = document.getElementById('os-target').value;
+  const notes         = document.getElementById('os-notes').value.trim();
+  const result        = document.getElementById('os-result');
+
+  if(!location_id||!date||!start_time||!end_time){
+    showToast('Fill in all required fields',true); return;
+  }
+
+  let target_user_ids = [];
+  if(target_type === 'specific'){
+    document.querySelectorAll('#os-user-checkboxes input:checked').forEach(cb=>target_user_ids.push(cb.value));
+    if(!target_user_ids.length){ showToast('Select at least one employee',true); return; }
+  }
+
+  const btn = event.target; btn.disabled=true; btn.textContent='Posting…';
+  const data = await apiFetch('/api/open-shifts/admin',{method:'POST',body:{
+    location_id,date,start_time,end_time,notes,target_type,target_user_ids,deadline_hours:Number(deadline_hours)
+  }});
+  btn.disabled=false; btn.textContent='Post Open Shift';
+
+  result.style.display='block';
+  if(data?.ok){
+    result.style.color='var(--green)';
+    result.textContent='✓ Open shift posted and notifications sent';
+    document.getElementById('os-notes').value='';
+    document.querySelectorAll('#os-user-checkboxes input').forEach(cb=>cb.checked=false);
+    loadOpenShifts();
+  } else {
+    result.style.color='var(--red)';
+    result.textContent='✗ '+(data?.error||'Failed to post');
+  }
+}
+
+async function loadOpenShifts(){
+  const data = await apiFetch('/api/open-shifts/admin');
+  if(!data?.ok) return;
+  renderOpenShiftsList(data.shifts);
+}
+
+function renderOpenShiftsList(shifts){
+  const el = document.getElementById('os-list');
+  if(!shifts.length){ el.innerHTML='<div class="empty">No open shifts yet</div>'; return; }
+
+  const statusColor = { open:'var(--accent)', claimed:'var(--green)', expired:'var(--dim)' };
+  const statusLabel = { open:'Open', claimed:'Claimed', expired:'Expired' };
+  const targetLabel = { everyone:'Everyone', house:'House (seniority)', specific:'Specific' };
+
+  el.innerHTML = shifts.map(s => {
+    const c    = s.location_color || '#888';
+    const dl   = new Date(s.deadline);
+    const dlStr= dl.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const isPast = dl < new Date();
+    const claimsHtml = s.claims.length
+      ? s.claims.map((c,i)=>`<div style="font-size:11px;font-family:var(--mono);padding:3px 0;color:${c.response==='claimed'?'var(--green)':'var(--dim)'}">
+          ${i===0&&s.target_type==='house'?'★ ':''}${c.name||c.email} · ${c.response} · hired ${c.hire_date?c.hire_date.slice(0,10):'?'}
+        </div>`).join('')
+      : '<div style="font-size:11px;font-family:var(--mono);color:var(--dim)">No responses yet</div>';
+
+    return `<div class="card" style="margin-bottom:12px;padding:14px 16px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0"></div>
+          <span style="font-weight:700">${s.location_name}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${s.date} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:99px;font-family:var(--mono);background:${statusColor[s.status]}20;color:${statusColor[s.status]}">${statusLabel[s.status]}</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:99px;font-family:var(--mono);background:var(--bg3);color:var(--muted)">${targetLabel[s.target_type]||s.target_type}</span>
+        </div>
+        ${s.status==='open'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}')">Cancel</button>`:''}
+      </div>
+      <div style="font-size:11px;font-family:var(--mono);color:${isPast?'var(--dim)':'var(--muted)'};margin-top:6px">
+        Deadline: ${dlStr}${isPast?' (passed)':''}
+        ${s.claimed_by_name?` · Assigned to <strong>${s.claimed_by_name}</strong>`:''}
+      </div>
+      ${s.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${claimsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+async function cancelOpenShift(id){
+  if(!confirm('Cancel this open shift?')) return;
+  const data = await apiFetch(`/api/open-shifts/admin/${id}`,{method:'DELETE'});
+  if(data?.ok){ showToast('Open shift cancelled'); loadOpenShifts(); }
+  else showToast(data?.error||'Failed to cancel',true);
 }
 
 // Hook renderStaffing into loadAll (re-render when data changes)
