@@ -148,21 +148,36 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .arr-btn:hover{color:var(--text);border-color:var(--border2);}
 
 /* ── Mobile ── */
-/* ── Staffing Calendar ── */
-.stf-dow{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px;}
-.stf-dow span{text-align:center;font-size:10px;font-family:var(--mono);color:var(--dim);padding:4px 0;letter-spacing:.5px;text-transform:uppercase;}
-.stf-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
-.stf-cell{min-height:72px;border-radius:8px;padding:5px 4px;cursor:pointer;transition:background .1s;background:var(--bg2);border:1px solid var(--border);}
-.stf-cell:hover{background:var(--bg3);}
-.stf-cell.other{background:transparent;border-color:transparent;cursor:default;}
-.stf-cell.today{border-color:var(--accent);}
-.stf-dn{font-size:11px;font-weight:700;font-family:var(--mono);margin-bottom:3px;line-height:1;}
-.stf-cell.today .stf-dn{color:var(--accent);}
-.stf-cell.other .stf-dn{color:var(--dim);}
-.stf-pills{display:flex;flex-direction:column;gap:2px;}
-.stf-pill{display:flex;align-items:center;gap:3px;padding:1px 4px;border-radius:3px;}
-.stf-pill-dot{width:6px;height:6px;border-radius:1px;flex-shrink:0;}
-.stf-pill-n{font-size:9px;font-family:var(--mono);font-weight:700;line-height:1;}
+/* ── Staffing View ── */
+.stf-vtog{padding:5px 12px;font-size:11px;font-family:var(--mono);color:var(--muted);cursor:pointer;letter-spacing:.3px;transition:all .15s;user-select:none;}
+.stf-vtog.active{background:var(--accent);color:#fff;}
+.stf-house-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden;}
+.stf-house-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);}
+.stf-house-name{font-weight:700;font-size:14px;flex:1;}
+.stf-house-count{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:99px;}
+/* Month */
+.stf-month-dow{display:grid;grid-template-columns:repeat(7,1fr);padding:6px 8px 0;}
+.stf-month-dow span{text-align:center;font-size:9px;font-family:var(--mono);color:var(--dim);padding:4px 0;letter-spacing:.5px;text-transform:uppercase;}
+.stf-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:4px 8px 8px;}
+.stf-mcell{min-height:40px;border-radius:6px;padding:4px;cursor:pointer;transition:background .1s;border:1px solid transparent;}
+.stf-mcell:hover:not(.stf-mcell-other){background:var(--bg3);}
+.stf-mcell-other{opacity:.3;cursor:default;}
+.stf-mcell-today{border-color:var(--accent)!important;}
+.stf-mcell-dn{font-size:10px;font-weight:700;font-family:var(--mono);line-height:1;margin-bottom:2px;}
+.stf-mcell-today .stf-mcell-dn{color:var(--accent);}
+.stf-mcell-count{font-size:12px;font-weight:700;font-family:var(--mono);}
+/* Week */
+.stf-week-table{width:100%;border-collapse:collapse;}
+.stf-week-table th{font-size:10px;font-family:var(--mono);color:var(--dim);text-align:center;padding:8px 4px;letter-spacing:.3px;font-weight:600;}
+.stf-week-table th:first-child{text-align:left;padding-left:16px;}
+.stf-week-table td{text-align:center;padding:6px 4px;font-size:11px;font-family:var(--mono);border-top:1px solid var(--border);color:var(--dim);}
+.stf-week-table td:first-child{text-align:left;padding-left:16px;font-size:12px;color:var(--text);font-family:var(--sans);font-weight:500;}
+.stf-shift-pill{background:rgba(91,143,255,.12);color:var(--accent);border-radius:4px;padding:2px 5px;font-size:10px;display:inline-block;white-space:nowrap;}
+.stf-shift-pill.base{opacity:.65;}
+/* Day */
+.stf-day-row{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid var(--border);}
+.stf-day-name{font-size:13px;font-weight:500;min-width:130px;}
+.stf-day-time{font-size:11px;font-family:var(--mono);color:var(--muted);}
 
 /* ── Notify tab ── */
 .bc-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:14px;padding:10px 14px;outline:none;resize:vertical;min-height:90px;transition:border-color .15s;}
@@ -201,9 +216,10 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   #users-table{display:none;}
   .user-cards{display:flex;}
   /* Staffing: smaller cells on mobile */
-  .stf-cell{min-height:52px;padding:3px 2px;}
-  .stf-dn{font-size:10px;}
-  .stf-pill-n{font-size:8px;}
+  .stf-mcell{min-height:32px;padding:3px 2px;}
+  .stf-mcell-dn{font-size:9px;}
+  .stf-week-table td,.stf-week-table th{padding:5px 2px;font-size:9px;}
+  .stf-week-table td:first-child,.stf-week-table th:first-child{padding-left:10px;}
 }
 </style>
 </head>
@@ -289,18 +305,22 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <!-- STAFFING -->
     <div class="panel" id="panel-staffing">
       <div class="sec-hd">
-        <div><h2>Staffing View</h2><p>Daily coverage by location — logged &amp; base shifts</p></div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="arr-btn" onclick="staffingNav(-1)">‹</div>
-          <div id="staffing-month-label" style="font-family:var(--mono);font-size:12px;color:var(--muted);min-width:100px;text-align:center">—</div>
-          <div class="arr-btn" onclick="staffingNav(1)">›</div>
+        <div><h2>Staffing</h2><p>Coverage by house — base &amp; logged shifts</p></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <div id="stf-v-day"   class="stf-vtog" onclick="setStfView('day')">Day</div>
+            <div id="stf-v-week"  class="stf-vtog" onclick="setStfView('week')">Week</div>
+            <div id="stf-v-month" class="stf-vtog active" onclick="setStfView('month')">Month</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="arr-btn" onclick="staffingNav(-1)">‹</div>
+            <div id="staffing-label" style="font-family:var(--mono);font-size:12px;color:var(--muted);min-width:120px;text-align:center">—</div>
+            <div class="arr-btn" onclick="staffingNav(1)">›</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="staffingGoToday()">Today</button>
         </div>
       </div>
-      <div id="staffing-legend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px"></div>
-      <div class="stf-dow">
-        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
-      </div>
-      <div class="stf-grid" id="staffing-grid"></div>
+      <div id="staffing-body"></div>
     </div>
 
     <!-- NOTIFY -->
@@ -1200,47 +1220,59 @@ function showToast(msg,isErr=false){
 // ══════════════════════════════
 //  STAFFING VIEW
 // ══════════════════════════════
-let staffingMonthOffset = 0;
+let staffingView = 'month';
+let staffingAnchor = new Date();
 
-function staffingNav(dir){ staffingMonthOffset += dir; renderStaffing(); }
+function staffingGoToday(){ staffingAnchor = new Date(); renderStaffing(); }
+
+function setStfView(v){
+  staffingView = v;
+  document.querySelectorAll('.stf-vtog').forEach(el => el.classList.remove('active'));
+  document.getElementById('stf-v-' + v).classList.add('active');
+  renderStaffing();
+}
+
+function staffingNav(dir){
+  if(staffingView === 'month'){
+    staffingAnchor = new Date(staffingAnchor.getFullYear(), staffingAnchor.getMonth() + dir, 1);
+  } else if(staffingView === 'week'){
+    const a = new Date(staffingAnchor); a.setDate(a.getDate() + dir * 7); staffingAnchor = a;
+  } else {
+    const a = new Date(staffingAnchor); a.setDate(a.getDate() + dir); staffingAnchor = a;
+  }
+  renderStaffing();
+}
 
 // Returns array of 7 Date objects for the week containing dateStr (Sun–Sat)
 function weekDatesForDateStr(dateStr){
   const d = new Date(dateStr + 'T12:00:00');
-  const sun = new Date(d);
-  sun.setDate(d.getDate() - d.getDay());
+  const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
   const dates = [];
   for(let i = 0; i < 7; i++){
-    const dd = new Date(sun); dd.setDate(sun.getDate() + i);
-    dates.push(dd);
+    const dd = new Date(sun); dd.setDate(sun.getDate() + i); dates.push(dd);
   }
   return dates;
 }
 
-// Returns { locationId: [userObj, ...] } for a given date string
-function getStaffingForDate(dateStr){
+// Returns { locationId: [{ user, start, end, isBase }, ...] } for a date string
+function getDetailedStaffingForDate(dateStr){
   const byLoc = {};
   const wkDates = weekDatesForDateStr(dateStr);
-
   for(const u of allUsers){
-    const shifts   = allShifts[u.id]   || [];
-    const sched    = allSchedules[u.id] || [];
+    const shifts = allShifts[u.id] || [];
+    const sched  = allSchedules[u.id] || [];
     const seenLocs = new Set();
-
-    // Logged shifts on this date
     for(const s of shifts){
       if(s.date === dateStr && !seenLocs.has(s.locationId)){
         seenLocs.add(s.locationId);
-        (byLoc[s.locationId] = byLoc[s.locationId] || []).push(u);
+        (byLoc[s.locationId] = byLoc[s.locationId] || []).push({ user:u, start:s.start, end:s.end, isBase:false });
       }
     }
-
-    // Base schedule shifts that fall on this date
     for(const b of sched){
       const bDate = baseToDate(b, wkDates);
       if(bDate === dateStr && !seenLocs.has(b.locationId)){
         seenLocs.add(b.locationId);
-        (byLoc[b.locationId] = byLoc[b.locationId] || []).push(u);
+        (byLoc[b.locationId] = byLoc[b.locationId] || []).push({ user:u, start:b.start, end:b.end, isBase:true });
       }
     }
   }
@@ -1249,102 +1281,162 @@ function getStaffingForDate(dateStr){
 
 function renderStaffing(){
   const today = new Date(); today.setHours(0,0,0,0);
-  const ref   = new Date(today.getFullYear(), today.getMonth() + staffingMonthOffset, 1);
+  const label = document.getElementById('staffing-label');
+  if(staffingView === 'month'){
+    const ref = new Date(staffingAnchor.getFullYear(), staffingAnchor.getMonth(), 1);
+    label.textContent = ref.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+    renderStaffingMonth(ref, today);
+  } else if(staffingView === 'week'){
+    const wkDates = weekDatesForDateStr(toYMD(staffingAnchor));
+    label.textContent = `${fmtShort(wkDates[0])} – ${fmtShort(wkDates[6])}`;
+    renderStaffingWeek(wkDates, today);
+  } else {
+    const d = new Date(staffingAnchor); d.setHours(0,0,0,0);
+    label.textContent = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+    renderStaffingDay(toYMD(d), today);
+  }
+}
 
-  document.getElementById('staffing-month-label').textContent =
-    ref.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  // Legend
-  document.getElementById('staffing-legend').innerHTML = allLocs.map(l =>
-    `<div style="display:flex;align-items:center;gap:5px">
-      <div style="width:10px;height:10px;border-radius:2px;background:${l.color}"></div>
-      <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">${l.name}</span>
-    </div>`
-  ).join('');
-
-  // Build calendar cells
+function renderStaffingMonth(ref, today){
+  const todayYMD = toYMD(today);
   const firstDay = ref.getDay();
   const daysInMonth = new Date(ref.getFullYear(), ref.getMonth()+1, 0).getDate();
   const cells = [];
-
-  for(let i = 0; i < firstDay; i++){
-    const d = new Date(ref.getFullYear(), ref.getMonth(), -firstDay+i+1);
-    cells.push({ date: d, other: true });
+  for(let i=0;i<firstDay;i++){
+    const d=new Date(ref.getFullYear(),ref.getMonth(),-firstDay+i+1); cells.push({date:d,other:true});
   }
-  for(let i = 1; i <= daysInMonth; i++){
-    cells.push({ date: new Date(ref.getFullYear(), ref.getMonth(), i), other: false });
+  for(let i=1;i<=daysInMonth;i++) cells.push({date:new Date(ref.getFullYear(),ref.getMonth(),i),other:false});
+  while(cells.length%7!==0){
+    const last=cells[cells.length-1].date; const d=new Date(last); d.setDate(d.getDate()+1); cells.push({date:d,other:true});
   }
-  while(cells.length % 7 !== 0){
-    const last = cells[cells.length-1].date;
-    const d = new Date(last); d.setDate(d.getDate()+1);
-    cells.push({ date: d, other: true });
-  }
+  const staffingByDate = {};
+  cells.filter(c=>!c.other).forEach(c=>{ staffingByDate[toYMD(c.date)]=getDetailedStaffingForDate(toYMD(c.date)); });
 
-  const grid = document.getElementById('staffing-grid');
-  grid.innerHTML = cells.map(({ date, other }) => {
-    const ymd     = toYMD(date);
-    const isToday = ymd === toYMD(today);
-    const staffing = other ? {} : getStaffingForDate(ymd);
-
-    const pills = Object.entries(staffing)
-      .filter(([, users]) => users.length)
-      .sort((a, b) => {
-        const la = allLocs.find(l => l.id === a[0]);
-        const lb = allLocs.find(l => l.id === b[0]);
-        return (la?.name || '').localeCompare(lb?.name || '');
-      })
-      .map(([lid, users]) => {
-        const loc = allLocs.find(l => l.id === lid);
-        const c   = loc?.color || '#888';
-        return `<div class="stf-pill" style="background:${c}20;border:1px solid ${c}50">
-          <div class="stf-pill-dot" style="background:${c}"></div>
-          <span class="stf-pill-n" style="color:${c}">${users.length}</span>
-        </div>`;
-      }).join('');
-
-    const clickAttr = other ? '' : `onclick="openStaffingDay('${ymd}')"`;
-    return `<div class="stf-cell${other?' other':''}${isToday?' today':''}" ${clickAttr}>
-      <div class="stf-dn">${date.getDate()}</div>
-      <div class="stf-pills">${pills}</div>
+  document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
+    const c = loc.color || '#888';
+    const cellsHtml = cells.map(({date,other})=>{
+      const ymd = toYMD(date);
+      const staff = other ? [] : (staffingByDate[ymd]?.[loc.id] || []);
+      const isToday = ymd === todayYMD;
+      const cls = 'stf-mcell' + (other?' stf-mcell-other':'') + (isToday?' stf-mcell-today':'');
+      const clickAttr = other ? '' : `onclick="stfMonthDayClick('${ymd}','${loc.id}')"`;
+      return `<div class="${cls}" ${clickAttr}>
+        <div class="stf-mcell-dn">${date.getDate()}</div>
+        ${!other && staff.length ? `<div class="stf-mcell-count" style="color:${c}">${staff.length}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="stf-house-card">
+      <div class="stf-house-hd">
+        <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
+        <div class="stf-house-name">${loc.name}</div>
+      </div>
+      <div class="stf-month-dow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+      <div class="stf-month-grid">${cellsHtml}</div>
     </div>`;
-  }).join('');
+  }).join('') || '<div class="empty">No locations configured</div>';
 }
 
-function openStaffingDay(dateStr){
-  const staffing = getStaffingForDate(dateStr);
+function renderStaffingWeek(wkDates, today){
+  const todayYMD = toYMD(today);
+  const ymds = wkDates.map(toYMD);
+  const staffingByDay = {};
+  ymds.forEach(ymd => { staffingByDay[ymd] = getDetailedStaffingForDate(ymd); });
+  const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
+    const c = loc.color || '#888';
+    const userMap = new Map();
+    ymds.forEach(ymd => {
+      (staffingByDay[ymd]?.[loc.id] || []).forEach(e => userMap.set(e.user.id, e.user));
+    });
+    if(!userMap.size){
+      return `<div class="stf-house-card">
+        <div class="stf-house-hd">
+          <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
+          <div class="stf-house-name">${loc.name}</div>
+          <div class="stf-house-count" style="color:var(--dim);background:var(--bg3)">No staff this week</div>
+        </div>
+      </div>`;
+    }
+    const dayHeaders = wkDates.map((d,i)=>{
+      const isToday = ymds[i] === todayYMD;
+      return `<th style="${isToday?'color:var(--accent)':''}">${DAY_ABBR[i]}<br><span style="font-size:9px;opacity:.7">${d.getDate()}</span></th>`;
+    }).join('');
+    const rows = [...userMap.values()].map(u => {
+      const cells = ymds.map(ymd => {
+        const entry = (staffingByDay[ymd]?.[loc.id]||[]).find(e=>e.user.id===u.id);
+        if(!entry) return '<td>—</td>';
+        return `<td><span class="stf-shift-pill${entry.isBase?' base':''}">${entry.start}–${entry.end}</span></td>`;
+      }).join('');
+      const name = u.name || u.email.split('@')[0];
+      return `<tr><td>${name}${u.position?` <span style="font-size:9px;color:var(--dim)">${u.position}</span>`:''}</td>${cells}</tr>`;
+    }).join('');
+    return `<div class="stf-house-card">
+      <div class="stf-house-hd">
+        <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
+        <div class="stf-house-name">${loc.name}</div>
+        <div class="stf-house-count" style="color:${c};background:${c}20">${userMap.size} staff</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="stf-week-table">
+          <thead><tr><th>Staff</th>${dayHeaders}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">No locations configured</div>';
+}
+
+function renderStaffingDay(dateStr, today){
+  const staffing = getDetailedStaffingForDate(dateStr);
+  document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
+    const c = loc.color || '#888';
+    const entries = (staffing[loc.id] || []).sort((a,b)=>a.start.localeCompare(b.start));
+    const listHtml = entries.length
+      ? entries.map(e => {
+          const name = e.user.name || e.user.email.split('@')[0];
+          return `<div class="stf-day-row">
+            <div class="stf-day-name">${name}</div>
+            <div class="stf-day-time">${e.start} – ${e.end}</div>
+            ${e.user.position?`<span class="badge ${POSITIONS.includes(e.user.position)?e.user.position.toLowerCase():'pos'}">${e.user.position}</span>`:''}
+            ${e.isBase?`<span style="font-size:9px;color:var(--dim);font-family:var(--mono);margin-left:4px">base</span>`:''}
+          </div>`;
+        }).join('')
+      : '<div style="padding:14px 16px;font-size:12px;color:var(--dim);font-family:var(--mono)">No staff scheduled</div>';
+    return `<div class="stf-house-card">
+      <div class="stf-house-hd">
+        <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
+        <div class="stf-house-name">${loc.name}</div>
+        ${entries.length?`<div class="stf-house-count" style="color:${c};background:${c}20">${entries.length} staff</div>`:''}
+      </div>
+      <div>${listHtml}</div>
+    </div>`;
+  }).join('') || '<div class="empty">No locations configured</div>';
+}
+
+function stfMonthDayClick(dateStr, locId){
+  const staffing = getDetailedStaffingForDate(dateStr);
+  const entries  = staffing[locId] || [];
+  const loc      = allLocs.find(l => l.id === locId);
   const d        = new Date(dateStr + 'T12:00:00');
   document.getElementById('staffing-day-title').textContent =
-    d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
-
-  const entries = Object.entries(staffing).filter(([, u]) => u.length);
+    `${loc?.name} · ${d.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})}`;
   const content = document.getElementById('staffing-day-content');
-
   if(!entries.length){
-    content.innerHTML = '<div class="empty" style="padding:20px 0">No staff scheduled this day</div>';
+    content.innerHTML = '<div class="empty" style="padding:20px 0">No staff scheduled</div>';
   } else {
     content.innerHTML = entries
-      .sort((a,b) => {
-        const la = allLocs.find(l=>l.id===a[0]);
-        const lb = allLocs.find(l=>l.id===b[0]);
-        return (la?.name||'').localeCompare(lb?.name||'');
-      })
-      .map(([lid, users]) => {
-        const loc = allLocs.find(l => l.id === lid);
-        const c   = loc?.color || '#888';
-        return `<div style="margin-bottom:16px">
-          <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
-            <div style="width:12px;height:12px;border-radius:3px;background:${c}"></div>
-            <span style="font-weight:700;font-size:14px">${loc?.name||'Unknown'}</span>
-            <span style="font-size:10px;font-family:var(--mono);color:${c};background:${c}20;padding:1px 7px;border-radius:99px">${users.length} staff</span>
-          </div>
-          ${users.map(u=>`<div style="display:flex;align-items:center;gap:6px;padding:5px 0 5px 14px;border-left:2px solid ${c}40;margin-left:5px">
-            <span style="font-size:13px">${u.name||u.email}</span>
-            ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
-          </div>`).join('')}
+      .sort((a,b)=>a.start.localeCompare(b.start))
+      .map(e => {
+        const name = e.user.name || e.user.email.split('@')[0];
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:500;flex:1">${name}</div>
+          <div style="font-size:11px;font-family:var(--mono);color:var(--muted)">${e.start} – ${e.end}</div>
+          ${e.user.position?`<span class="badge ${POSITIONS.includes(e.user.position)?e.user.position.toLowerCase():'pos'}">${e.user.position}</span>`:''}
+          ${e.isBase?`<span style="font-size:9px;color:var(--dim);font-family:var(--mono)">base</span>`:''}
         </div>`;
       }).join('');
   }
-
   document.getElementById('staffing-day-modal').classList.add('open');
 }
 
