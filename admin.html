@@ -152,9 +152,14 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .stf-vtog{padding:5px 12px;font-size:11px;font-family:var(--mono);color:var(--muted);cursor:pointer;letter-spacing:.3px;transition:all .15s;user-select:none;}
 .stf-vtog.active{background:var(--accent);color:#fff;}
 .stf-house-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden;}
-.stf-house-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);}
+.stf-house-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;user-select:none;transition:background .1s;}
+.stf-house-hd:hover{background:var(--bg3);}
+.stf-house-hd.open{border-bottom:1px solid var(--border);}
 .stf-house-name{font-weight:700;font-size:14px;flex:1;}
 .stf-house-count{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:99px;}
+.stf-chevron{width:16px;height:16px;flex-shrink:0;transition:transform .2s;color:var(--dim);}
+.stf-card-body{display:none;}
+.stf-card-body.open{display:block;}
 /* Month */
 .stf-month-dow{display:grid;grid-template-columns:repeat(7,1fr);padding:6px 8px 0;}
 .stf-month-dow span{text-align:center;font-size:9px;font-family:var(--mono);color:var(--dim);padding:4px 0;letter-spacing:.5px;text-transform:uppercase;}
@@ -1225,6 +1230,14 @@ let staffingAnchor = new Date();
 
 function staffingGoToday(){ staffingAnchor = new Date(); renderStaffing(); }
 
+function toggleStfCard(hd){
+  hd.classList.toggle('open');
+  const body = hd.nextElementSibling;
+  if(body) body.classList.toggle('open');
+  const chevron = hd.querySelector('.stf-chevron');
+  if(chevron) chevron.style.transform = hd.classList.contains('open') ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+
 function setStfView(v){
   staffingView = v;
   document.querySelectorAll('.stf-vtog').forEach(el => el.classList.remove('active'));
@@ -1312,6 +1325,7 @@ function renderStaffingMonth(ref, today){
   const staffingByDate = {};
   cells.filter(c=>!c.other).forEach(c=>{ staffingByDate[toYMD(c.date)]=getDetailedStaffingForDate(toYMD(c.date)); });
 
+  const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
   document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
     const c = loc.color || '#888';
     const cellsHtml = cells.map(({date,other})=>{
@@ -1326,12 +1340,15 @@ function renderStaffingMonth(ref, today){
       </div>`;
     }).join('');
     return `<div class="stf-house-card">
-      <div class="stf-house-hd">
+      <div class="stf-house-hd" onclick="toggleStfCard(this)">
         <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
         <div class="stf-house-name">${loc.name}</div>
+        ${chevronSvg}
       </div>
-      <div class="stf-month-dow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
-      <div class="stf-month-grid">${cellsHtml}</div>
+      <div class="stf-card-body">
+        <div class="stf-month-dow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+        <div class="stf-month-grid">${cellsHtml}</div>
+      </div>
     </div>`;
   }).join('') || '<div class="empty">No locations configured</div>';
 }
@@ -1342,6 +1359,7 @@ function renderStaffingWeek(wkDates, today){
   const staffingByDay = {};
   ymds.forEach(ymd => { staffingByDay[ymd] = getDetailedStaffingForDate(ymd); });
   const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
 
   document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
     const c = loc.color || '#888';
@@ -1349,49 +1367,48 @@ function renderStaffingWeek(wkDates, today){
     ymds.forEach(ymd => {
       (staffingByDay[ymd]?.[loc.id] || []).forEach(e => userMap.set(e.user.id, e.user));
     });
-    if(!userMap.size){
-      return `<div class="stf-house-card">
-        <div class="stf-house-hd">
-          <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
-          <div class="stf-house-name">${loc.name}</div>
-          <div class="stf-house-count" style="color:var(--dim);background:var(--bg3)">No staff this week</div>
-        </div>
-      </div>`;
-    }
+    const countBadge = userMap.size
+      ? `<div class="stf-house-count" style="color:${c};background:${c}20">${userMap.size} staff</div>`
+      : `<div class="stf-house-count" style="color:var(--dim);background:var(--bg3)">No staff</div>`;
     const dayHeaders = wkDates.map((d,i)=>{
       const isToday = ymds[i] === todayYMD;
       return `<th style="${isToday?'color:var(--accent)':''}">${DAY_ABBR[i]}<br><span style="font-size:9px;opacity:.7">${d.getDate()}</span></th>`;
     }).join('');
-    const rows = [...userMap.values()].map(u => {
-      const cells = ymds.map(ymd => {
-        const entry = (staffingByDay[ymd]?.[loc.id]||[]).find(e=>e.user.id===u.id);
-        if(!entry) return '<td>—</td>';
-        return `<td><span class="stf-shift-pill${entry.isBase?' base':''}">${entry.start}–${entry.end}</span></td>`;
-      }).join('');
-      const name = u.name || u.email.split('@')[0];
-      return `<tr><td>${name}${u.position?` <span style="font-size:9px;color:var(--dim)">${u.position}</span>`:''}</td>${cells}</tr>`;
-    }).join('');
+    const bodyContent = userMap.size
+      ? `<div style="overflow-x:auto"><table class="stf-week-table">
+          <thead><tr><th>Staff</th>${dayHeaders}</tr></thead>
+          <tbody>${[...userMap.values()].map(u => {
+            const cells = ymds.map(ymd => {
+              const entry = (staffingByDay[ymd]?.[loc.id]||[]).find(e=>e.user.id===u.id);
+              if(!entry) return '<td>—</td>';
+              return `<td><span class="stf-shift-pill${entry.isBase?' base':''}">${entry.start}–${entry.end}</span></td>`;
+            }).join('');
+            const name = u.name || u.email.split('@')[0];
+            return `<tr><td>${name}${u.position?` <span style="font-size:9px;color:var(--dim)">${u.position}</span>`:''}</td>${cells}</tr>`;
+          }).join('')}</tbody>
+        </table></div>`
+      : '<div style="padding:14px 16px;font-size:12px;color:var(--dim);font-family:var(--mono)">No staff scheduled this week</div>';
     return `<div class="stf-house-card">
-      <div class="stf-house-hd">
+      <div class="stf-house-hd" onclick="toggleStfCard(this)">
         <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
         <div class="stf-house-name">${loc.name}</div>
-        <div class="stf-house-count" style="color:${c};background:${c}20">${userMap.size} staff</div>
+        ${countBadge}
+        ${chevronSvg}
       </div>
-      <div style="overflow-x:auto">
-        <table class="stf-week-table">
-          <thead><tr><th>Staff</th>${dayHeaders}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      <div class="stf-card-body">${bodyContent}</div>
     </div>`;
   }).join('') || '<div class="empty">No locations configured</div>';
 }
 
 function renderStaffingDay(dateStr, today){
   const staffing = getDetailedStaffingForDate(dateStr);
+  const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
   document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
     const c = loc.color || '#888';
     const entries = (staffing[loc.id] || []).sort((a,b)=>a.start.localeCompare(b.start));
+    const countBadge = entries.length
+      ? `<div class="stf-house-count" style="color:${c};background:${c}20">${entries.length} staff</div>`
+      : '';
     const listHtml = entries.length
       ? entries.map(e => {
           const name = e.user.name || e.user.email.split('@')[0];
@@ -1404,12 +1421,13 @@ function renderStaffingDay(dateStr, today){
         }).join('')
       : '<div style="padding:14px 16px;font-size:12px;color:var(--dim);font-family:var(--mono)">No staff scheduled</div>';
     return `<div class="stf-house-card">
-      <div class="stf-house-hd">
+      <div class="stf-house-hd" onclick="toggleStfCard(this)">
         <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
         <div class="stf-house-name">${loc.name}</div>
-        ${entries.length?`<div class="stf-house-count" style="color:${c};background:${c}20">${entries.length} staff</div>`:''}
+        ${countBadge}
+        ${chevronSvg}
       </div>
-      <div>${listHtml}</div>
+      <div class="stf-card-body">${listHtml}</div>
     </div>`;
   }).join('') || '<div class="empty">No locations configured</div>';
 }

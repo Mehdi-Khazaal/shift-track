@@ -2034,7 +2034,7 @@ function renderNotifHistory(){
 
 async function clearOneNotif(id){
   await apiFetch(`/api/notifications/history/${id}`, { method: 'DELETE' });
-  notifHistory = notifHistory.filter(n => n.id !== id);
+  notifHistory = notifHistory.filter(n => String(n.id) !== String(id));
   updateBellBadge();
   renderNotifHistory();
 }

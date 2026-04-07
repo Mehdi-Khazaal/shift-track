@@ -183,6 +183,7 @@ router.post('/send-upcoming', auth, async (req, res) => {
     const now = new Date();
     const anchor = new Date('2026-03-22T00:00:00');
     let sent = 0;
+    const logged = new Set(); // deduplicate log entries across multiple devices
 
     for(const sub of subs.rows) {
       const notifyMs = sub.notify_minutes * 60 * 1000;
@@ -234,7 +235,11 @@ router.post('/send-upcoming', auth, async (req, res) => {
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             payload
           );
-          await logNotification(req.userId, 'Shift Reminder', notifBody);
+          // Log once per unique shift body across all subscriptions
+          if(!logged.has(notifBody)){
+            logged.add(notifBody);
+            await logNotification(req.userId, 'Shift Reminder', notifBody);
+          }
           sent++;
         } catch(e) {
           if(e.statusCode === 410) {
