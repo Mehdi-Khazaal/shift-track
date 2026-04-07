@@ -2122,7 +2122,7 @@ function renderOpenShifts(){
       <div class="os-card-hd">
         <div style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0"></div>
         <div class="os-loc">${s.location_name}</div>
-        <div class="os-time">${s.date} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</div>
+        <div class="os-time">${(s.date||'').slice(0,10)} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</div>
         ${isHouse?`<span class="os-badge" style="background:rgba(245,166,35,.1);color:var(--orange)">Seniority</span>`:'<span class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">First come</span>'}
       </div>
       <div class="os-deadline">${dlStr}</div>
@@ -2137,6 +2137,12 @@ async function respondOpenShift(id, response){
   if(!res?.ok){ showToast(res?.error || 'Failed to respond', true); return; }
   if(response === 'claimed' && res.assigned){
     showToast('Shift claimed and added to your schedule ✓');
+    // Refresh shifts so My Shifts / calendar / dash update immediately
+    const shiftsRes = await apiFetch('/api/shifts');
+    if(shiftsRes?.ok){ cache.shifts = shiftsRes.shifts.map(normalizeShift); }
+    renderAllShifts();
+    renderDash();
+    renderCalendar();
   } else if(response === 'claimed' && !res.assigned){
     showToast('Response recorded — assigned at deadline by seniority');
   } else {

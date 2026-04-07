@@ -420,8 +420,8 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
           </select>
         </div>
         <div class="form-group" id="os-specific-row" style="display:none">
-          <label>Select employees</label>
-          <div id="os-user-checkboxes" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding:8px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)"></div>
+          <label>Select employees <span style="color:var(--dim);font-size:9px">(hold Ctrl / ⌘ for multiple)</span></label>
+          <select id="os-user-select" multiple size="5" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:13px;padding:4px;appearance:none;outline:none;transition:border-color .15s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"></select>
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label>Notes <span style="color:var(--dim);font-size:9px">(optional)</span></label>
@@ -1623,15 +1623,12 @@ function populateOsForm(){
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
   const dateEl = document.getElementById('os-date');
   if(!dateEl.value) dateEl.value = tomorrow.toISOString().slice(0,10);
-  // User checkboxes for specific target
-  const box = document.getElementById('os-user-checkboxes');
-  box.innerHTML = allUsers.filter(u=>u.role==='user').map(u=>
-    `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-      <input type="checkbox" value="${u.id}" style="accent-color:var(--accent)"/>
-      <span>${u.name||u.email.split('@')[0]}</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${u.hire_date?u.hire_date.slice(0,10):''}</span>
-    </label>`
-  ).join('');
+  // Employee dropdown for specific target
+  const sel = document.getElementById('os-user-select');
+  sel.innerHTML = allUsers.filter(u=>u.role==='user').map(u=>{
+    const label = (u.name||u.email.split('@')[0]) + (u.hire_date ? '  ·  hired '+u.hire_date.slice(0,10) : '');
+    return `<option value="${u.id}">${label}</option>`;
+  }).join('');
 }
 
 function toggleOsTarget(){
@@ -1655,7 +1652,8 @@ async function postOpenShift(){
 
   let target_user_ids = [];
   if(target_type === 'specific'){
-    document.querySelectorAll('#os-user-checkboxes input:checked').forEach(cb=>target_user_ids.push(cb.value));
+    const sel = document.getElementById('os-user-select');
+    target_user_ids = Array.from(sel.selectedOptions).map(o=>o.value);
     if(!target_user_ids.length){ showToast('Select at least one employee',true); return; }
   }
 
@@ -1708,7 +1706,7 @@ function renderOpenShiftsList(shifts){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0"></div>
           <span style="font-weight:700">${s.location_name}</span>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${s.date} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${(s.date||'').slice(0,10)} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>
           <span style="font-size:10px;padding:2px 8px;border-radius:99px;font-family:var(--mono);background:${statusColor[s.status]}20;color:${statusColor[s.status]}">${statusLabel[s.status]}</span>
           <span style="font-size:10px;padding:2px 8px;border-radius:99px;font-family:var(--mono);background:var(--bg3);color:var(--muted)">${targetLabel[s.target_type]||s.target_type}</span>
         </div>
