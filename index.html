@@ -189,6 +189,7 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   #pdf-print thead th{background:#f0f0f0;padding:7px 10px;text-align:left;border-bottom:2px solid #ccc;font-size:11px;text-transform:uppercase;letter-spacing:.5px;}
   #pdf-print tbody td{padding:7px 10px;border-bottom:1px solid #e0e0e0;}
   #pdf-print .pdf-total{border-top:2px solid #111;font-weight:700;}
+  body{background:#fff!important;color:#111!important;}
 }
 /* ── Bell / Notification History ── */
 .bell-btn{position:relative;width:38px;height:38px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:18px;transition:background .15s;flex-shrink:0;}
@@ -650,7 +651,7 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   <div id="pdf-employee" style="margin-bottom:14px;font-size:13px;color:#444"></div>
   <table>
     <thead><tr>
-      <th>Date</th><th>Location</th><th>Hours</th><th>Type</th><th style="text-align:right">Pay</th>
+      <th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Total Hours</th><th style="text-align:right">Pay</th>
     </tr></thead>
     <tbody id="pdf-tbody"></tbody>
     <tfoot id="pdf-tfoot"></tfoot>
@@ -1889,21 +1890,20 @@ function downloadPayPDF(offset){
 
   document.getElementById('pdf-tbody').innerHTML=allRows.map(s=>{
     const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const type=s.isBase?'BASE':s.otH>=s.h?'OT':s.otH>0?'REG+OT':'REG';
     return `<tr>
       <td>${d}</td>
       <td>${s.loc?.name||'—'}</td>
-      <td>${s.h.toFixed(1)}h${s.otH>0&&!s.isBase?` (${s.otH.toFixed(1)}h OT)`:''}</td>
-      <td>${type}</td>
-      <td style="text-align:right">${s.isBase?'—':formatPay(s.p)}</td>
+      <td>${s.start}</td>
+      <td>${s.end}</td>
+      <td>${s.h.toFixed(1)}h${s.otH>0?` (${s.otH.toFixed(1)}h OT)`:''}</td>
+      <td style="text-align:right">${formatPay(s.p)}</td>
     </tr>`;
   }).join('');
 
   document.getElementById('pdf-tfoot').innerHTML=`
     <tr class="pdf-total">
-      <td colspan="2"><strong>Total</strong></td>
+      <td colspan="4"><strong>Total</strong></td>
       <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>
-      <td></td>
       <td style="text-align:right"><strong>${formatPay(totPay)}</strong></td>
     </tr>`;
 
