@@ -71,6 +71,29 @@ router.get('/status', auth, async (req, res) => {
   }
 });
 
+// DELETE /api/notifications/history — clear all notifications for the user
+router.delete('/history', auth, async (req, res) => {
+  try {
+    await db.query('DELETE FROM notification_log WHERE user_id=$1', [req.userId]);
+    res.json({ ok: true });
+  } catch(err) {
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// DELETE /api/notifications/history/:id — delete a single notification
+router.delete('/history/:id', auth, async (req, res) => {
+  try {
+    await db.query(
+      'DELETE FROM notification_log WHERE id=$1 AND user_id=$2',
+      [req.params.id, req.userId]
+    );
+    res.json({ ok: true });
+  } catch(err) {
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
 // GET /api/notifications/history — last 30 notifications for the logged-in user
 router.get('/history', auth, async (req, res) => {
   try {
