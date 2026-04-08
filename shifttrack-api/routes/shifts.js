@@ -45,6 +45,9 @@ router.post('/', auth, async (req, res) => {
 router.put('/:id', auth, async (req, res) => {
   const { location_id, date, start_time, end_time, notes } = req.body;
   try {
+    const check = await db.query('SELECT open_shift_id FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    if (!check.rows.length) return res.status(404).json({ ok: false, error: 'Shift not found' });
+    if (check.rows[0].open_shift_id) return res.status(403).json({ ok: false, error: 'Awarded shifts cannot be modified' });
     const result = await db.query(
       `UPDATE shifts SET location_id=$1, date=$2, start_time=$3, end_time=$4, notes=$5
        WHERE id=$6 AND user_id=$7 RETURNING *`,
@@ -62,6 +65,9 @@ router.put('/:id', auth, async (req, res) => {
 // DELETE /api/shifts/:id
 router.delete('/:id', auth, async (req, res) => {
   try {
+    const check = await db.query('SELECT open_shift_id FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    if (!check.rows.length) return res.json({ ok: true });
+    if (check.rows[0].open_shift_id) return res.status(403).json({ ok: false, error: 'Awarded shifts cannot be removed' });
     await db.query('DELETE FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
     res.json({ ok: true });
   } catch (err) {

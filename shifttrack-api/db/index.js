@@ -67,6 +67,11 @@ async function migrate(){
       )
     `);
 
+    // Claimed open shift tracking on shifts
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT ''`);
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS open_shift_id UUID REFERENCES open_shifts(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS awarded_by_name TEXT DEFAULT ''`);
+
     console.log('✅  Migrations applied');
   } catch(err){
     console.error('❌  Migration failed:', err.message);

@@ -641,7 +641,10 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
         <h3 id="udash-name" style="margin-bottom:3px;font-size:20px"></h3>
         <div id="udash-meta" style="font-size:11px;font-family:var(--mono);color:var(--muted)"></div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="closeUserDash()">✕ Close</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="exportPayrollPDF()">⬇ Export PDF</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeUserDash()">✕ Close</button>
+      </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius-sm)">
       <div style="font-size:11px;font-family:var(--mono);color:var(--muted)" id="udash-period-desc"></div>
@@ -659,7 +662,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     </div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Date</th><th>Location</th><th>Hours</th><th>Type</th><th>Est. Pay</th></tr></thead>
+        <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Est. Pay</th><th style="width:36px"></th></tr></thead>
         <tbody id="udash-tbody"><tr><td colspan="5" class="empty">No shifts</td></tr></tbody>
       </table>
     </div>
@@ -800,6 +803,7 @@ async function loadAll(){
 function normalizeShift(s){
   return { id:s.id, locationId:s.location_id, date:s.date.slice(0,10),
     start:s.start_time.slice(0,5), end:s.end_time.slice(0,5), notes:s.notes||'',
+    adminNotes:s.admin_notes||'', openShiftId:s.open_shift_id||null, awardedBy:s.awarded_by_name||'',
     location_name:s.location_name, rate:parseFloat(s.rate) };
 }
 function normalizeBase(b){
@@ -988,6 +992,7 @@ function userRowHTML(u){
 //  USER DASHBOARD MODAL
 // ══════════════════════════════
 let viewUserId='', viewUserPPOffset=0;
+let _udashRows=[], _udashTotHrs=0, _udashTotPay=0, _udashPPLabel='';
 
 function openUserDashboard(userId){
   viewUserId=userId; viewUserPPOffset=0;
@@ -1047,24 +1052,98 @@ function renderUserDashboard(){
   document.getElementById('udash-pay').textContent=formatPay(totPay);
   document.getElementById('udash-count').textContent=allRows.length;
 
+  // Store for PDF export
+  _udashRows=allRows; _udashTotHrs=totHrs; _udashTotPay=totPay;
+  _udashPPLabel=document.getElementById('udash-pp-label').textContent;
+
   const tbody=document.getElementById('udash-tbody');
-  if(!allRows.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">No shifts this period</td></tr>'; return; }
+  if(!allRows.length){ tbody.innerHTML='<tr><td colspan="7" class="empty">No shifts this period</td></tr>'; return; }
 
   tbody.innerHTML=allRows.map(s=>{
     const loc=allLocs.find(l=>l.id===s.locationId);
     const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const typeBadge=s.isBase?'<span class="badge dsp">BASE</span>':s.otH>=s.h?'<span class="badge ot">OT</span>':s.otH>0?'<span class="badge ot" style="background:rgba(245,166,35,.12)">REG+OT</span>':'<span style="color:var(--muted);font-family:var(--mono);font-size:11px">REG</span>';
+    const noteBtn=s.isBase?'':`<button title="${s.adminNotes?s.adminNotes.slice(0,40):'Add admin note'}" onclick="editShiftNote('${s.id}',event)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:${s.adminNotes?'var(--accent)':'var(--dim)'}">${s.adminNotes?'📝':'＋'}</button>`;
     return `<tr>
       <td class="mono" style="white-space:nowrap">${d}</td>
       <td><div style="display:flex;align-items:center;gap:6px"><div style="width:8px;height:8px;border-radius:2px;background:${loc?.color||'#888'};flex-shrink:0"></div>${loc?.name||'—'}</div></td>
+      <td class="mono">${s.isBase?'—':s.start}</td>
+      <td class="mono">${s.isBase?'—':s.end}</td>
       <td class="mono">${s.h.toFixed(1)}h${s.otH>0&&!s.isBase?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
-      <td>${typeBadge}</td>
-      <td class="mono" style="color:var(--green)">${formatPay(s.p)}</td>
+      <td class="mono" style="color:var(--green)">${s.isBase?'—':formatPay(s.p)}</td>
+      <td style="text-align:center">${noteBtn}</td>
     </tr>`;
   }).join('');
 }
 
 document.getElementById('user-dash-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('user-dash-modal')) closeUserDash(); });
+
+function exportPayrollPDF(){
+  const u=allUsers.find(u=>u.id===viewUserId);
+  const name=u?(u.name||u.email):'Employee';
+  const rows=_udashRows, totHrs=_udashTotHrs, totPay=_udashTotPay, label=_udashPPLabel;
+  if(!rows.length){ showToast('No shifts to export for this period',true); return; }
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payroll — ${name}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;color:#111;font-size:13px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
+    h2{font-size:22px;font-weight:700;margin-bottom:4px}
+    .sub{color:#666;font-size:12px}
+    .print-btn{padding:8px 18px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:4px}
+    th{text-align:left;padding:9px 12px;background:#f4f4f4;border-bottom:2px solid #ddd;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    td{padding:8px 12px;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums}
+    .mono{font-family:'SF Mono',Menlo,monospace;font-size:12px}
+    .green{color:#1a7f4b;font-weight:600}
+    .foot td{font-weight:700;background:#f9f9f9;border-top:2px solid #ccc;border-bottom:none}
+    .caption{margin-top:20px;font-size:11px;color:#aaa}
+    @media print{.print-btn{display:none}body{padding:16px}}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <h2>${name}</h2>
+      <div class="sub">Pay Period: ${label}</div>
+      <div class="sub" style="margin-top:2px">Generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+    </div>
+    <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Location</th><th>Start</th><th>End</th><th>Hours</th><th>Earnings</th></tr></thead>
+    <tbody>
+      ${rows.map(s=>`<tr>
+        <td class="mono">${new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</td>
+        <td>${s.location_name||'—'}</td>
+        <td class="mono">${s.isBase?'—':s.start}</td>
+        <td class="mono">${s.isBase?'—':s.end}</td>
+        <td class="mono">${s.h.toFixed(2)}h${s.otH>0&&!s.isBase?` <span style="color:#c07000">(${s.otH.toFixed(2)}h OT)</span>`:''}</td>
+        <td class="mono green">${s.isBase?'—':formatPay(s.p)}</td>
+      </tr>`).join('')}
+    </tbody>
+    <tfoot><tr class="foot">
+      <td colspan="4">Total</td>
+      <td class="mono">${totHrs.toFixed(2)}h</td>
+      <td class="mono green">${formatPay(totPay)}</td>
+    </tr></tfoot>
+  </table>
+  <div class="caption">ShiftTrack Payroll Export · Estimated earnings only</div>
+  </body></html>`);
+  win.document.close();
+}
+
+async function editShiftNote(shiftId, e){
+  e.stopPropagation();
+  const shift=Object.values(allShifts).flat().find(s=>s.id===shiftId);
+  const current=shift?.adminNotes||'';
+  const note=window.prompt('Admin note for this shift (visible to employee, not editable by them):', current);
+  if(note===null) return;
+  const data=await apiFetch(`/api/admin/shifts/${shiftId}/notes`,{method:'PATCH',body:{admin_notes:note.trim()}});
+  if(data?.ok){
+    if(shift) shift.adminNotes=note.trim();
+    renderUserDashboard();
+    showToast('Note saved');
+  } else showToast(data?.error||'Failed to save note',true);
+}
 
 // ══════════════════════════════
 //  MANAGE USERS (Accounts panel)
@@ -1806,40 +1885,93 @@ function renderOpenShiftsList(shifts){
   const el = document.getElementById('os-list');
   if(!shifts.length){ el.innerHTML='<div class="empty">No open shifts yet</div>'; return; }
 
-  const statusColor = { open:'var(--accent)', claimed:'var(--green)', expired:'var(--dim)' };
-  const statusLabel = { open:'Open', claimed:'Claimed', expired:'Expired' };
-  const targetLabel = { everyone:'Everyone', house:'House (seniority)', specific:'Specific' };
+  const targetLabel = { everyone:'Everyone', house:'House', specific:'Specific' };
 
-  el.innerHTML = shifts.map(s => {
-    const c    = s.location_color || '#888';
-    const dl   = new Date(s.deadline);
-    const dlStr= dl.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-    const isPast = dl < new Date();
-    const claimsHtml = s.claims.length
-      ? s.claims.map((c,i)=>`<div style="font-size:11px;font-family:var(--mono);padding:3px 0;color:${c.response==='claimed'?'var(--green)':'var(--dim)'}">
+  function shiftCard(s){
+    const dl=new Date(s.deadline);
+    const dlStr=dl.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const isPast=dl<new Date();
+    const claimsHtml=s.claims.length
+      ?s.claims.map((c,i)=>`<div style="font-size:11px;font-family:var(--mono);padding:2px 0;color:${c.response==='claimed'?'var(--green)':'var(--dim)'}">
           ${i===0&&s.target_type==='house'?'★ ':''}${c.name||c.email} · ${c.response} · hired ${c.hire_date?c.hire_date.slice(0,10):'?'}
         </div>`).join('')
-      : '<div style="font-size:11px;font-family:var(--mono);color:var(--dim)">No responses yet</div>';
-
-    return `<div class="card" style="margin-bottom:12px;padding:14px 16px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <div style="width:10px;height:10px;border-radius:2px;background:${c};flex-shrink:0"></div>
-          <span style="font-weight:700">${s.location_name}</span>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">${(s.date||'').slice(0,10)} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>
-          <span style="font-size:10px;padding:2px 8px;border-radius:99px;font-family:var(--mono);background:${statusColor[s.status]}20;color:${statusColor[s.status]}">${statusLabel[s.status]}</span>
-          <span style="font-size:10px;padding:2px 8px;border-radius:99px;font-family:var(--mono);background:var(--bg3);color:var(--muted)">${targetLabel[s.target_type]||s.target_type}</span>
+      :'<div style="font-size:11px;font-family:var(--mono);color:var(--dim)">No responses yet</div>';
+    return `<div class="card" style="margin-bottom:10px;padding:12px 14px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div>
+          <div style="font-family:var(--mono);font-size:13px;font-weight:600">${(s.date||'').slice(0,10)} &nbsp;${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</div>
+          <div style="font-size:11px;font-family:var(--mono);color:${isPast?'var(--dim)':'var(--muted)'};margin-top:3px">
+            Deadline: ${dlStr}${isPast?' (passed)':''}
+            ${s.claimed_by_name?` · <strong>${s.claimed_by_name}</strong>`:''}</div>
+          <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
+            <span style="font-size:10px;padding:2px 7px;border-radius:99px;font-family:var(--mono);background:var(--bg3);color:var(--muted)">${targetLabel[s.target_type]||s.target_type}</span>
+          </div>
+          ${s.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
         </div>
         ${s.status==='open'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}')">Cancel</button>`:''}
       </div>
-      <div style="font-size:11px;font-family:var(--mono);color:${isPast?'var(--dim)':'var(--muted)'};margin-top:6px">
-        Deadline: ${dlStr}${isPast?' (passed)':''}
-        ${s.claimed_by_name?` · Assigned to <strong>${s.claimed_by_name}</strong>`:''}
-      </div>
-      ${s.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
       <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${claimsHtml}</div>
     </div>`;
-  }).join('');
+  }
+
+  function groupByLocation(list){
+    const order=allLocs.map(l=>l.id);
+    const groups={};
+    for(const s of list){
+      const key=s.location_name||'Unassigned';
+      if(!groups[key]) groups[key]={color:s.location_color||'#888',locId:s.location_id,shifts:[]};
+      groups[key].shifts.push(s);
+    }
+    // Sort by allLocs order
+    return Object.entries(groups).sort(([,a],[,b])=>order.indexOf(a.locId)-order.indexOf(b.locId));
+  }
+
+  function renderGroups(list){
+    return groupByLocation(list).map(([locName,g])=>`
+      <div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <div style="width:9px;height:9px;border-radius:2px;background:${g.color}"></div>
+          <span style="font-weight:700;font-size:13px">${locName}</span>
+          <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">${g.shifts.length} shift${g.shifts.length>1?'s':''}</span>
+        </div>
+        ${g.shifts.map(shiftCard).join('')}
+      </div>`).join('');
+  }
+
+  const open=shifts.filter(s=>s.status==='open');
+  const claimed=shifts.filter(s=>s.status==='claimed');
+  const expired=shifts.filter(s=>s.status==='expired');
+
+  let html='';
+
+  // Open
+  html+=open.length?renderGroups(open):'<div class="empty" style="margin-bottom:20px">No open shifts pending</div>';
+
+  // Claimed (collapsible, open by default)
+  if(claimed.length) html+=`
+    <div style="margin-top:20px">
+      <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.os-chev').style.transform=this.nextElementSibling.style.display==='none'?'rotate(-90deg)':''"
+        style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:8px;user-select:none">
+        <span class="os-chev" style="font-size:10px;transition:transform .2s">▼</span>
+        <span style="font-weight:700;font-size:13px;color:var(--green)">Claimed</span>
+        <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">${claimed.length} shift${claimed.length>1?'s':''}</span>
+      </div>
+      <div>${renderGroups(claimed)}</div>
+    </div>`;
+
+  // Expired (collapsible, collapsed by default)
+  if(expired.length) html+=`
+    <div style="margin-top:16px">
+      <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.os-chev').style.transform=this.nextElementSibling.style.display==='none'?'rotate(-90deg)':''"
+        style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:8px;user-select:none">
+        <span class="os-chev" style="font-size:10px;transition:transform .2s;transform:rotate(-90deg)">▼</span>
+        <span style="font-weight:700;font-size:13px;color:var(--dim)">Expired</span>
+        <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">${expired.length} shift${expired.length>1?'s':''}</span>
+      </div>
+      <div style="display:none">${renderGroups(expired)}</div>
+    </div>`;
+
+  el.innerHTML=html;
 }
 
 async function cancelOpenShift(id){

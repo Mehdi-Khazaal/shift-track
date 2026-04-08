@@ -163,6 +163,21 @@ router.patch('/users/:id/password', auth, adminOnly, async (req, res) => {
   }
 });
 
+// PATCH /api/admin/shifts/:id/notes — set admin note on a logged shift
+router.patch('/shifts/:id/notes', auth, adminOnly, async (req, res) => {
+  const { admin_notes } = req.body;
+  try {
+    const result = await db.query(
+      `UPDATE shifts SET admin_notes=$1 WHERE id=$2 RETURNING id`,
+      [admin_notes || '', req.params.id]
+    );
+    if(!result.rows.length) return res.status(404).json({ ok:false, error:'Shift not found' });
+    res.json({ ok:true });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
 // POST /api/admin/schedule — add base shift for any user
 router.post('/schedule', auth, adminOnly, async (req, res) => {
   const { user_id, week, day_of_week, location_id, start_time, end_time } = req.body;

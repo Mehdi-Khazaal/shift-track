@@ -831,6 +831,10 @@ function normalizeShift(s){
     start:       s.start_time.slice(0,5),
     end:         s.end_time.slice(0,5),
     notes:       s.notes||'',
+    adminNotes:  s.admin_notes||'',
+    openShiftId: s.open_shift_id||null,
+    awardedBy:   s.awarded_by_name||'',
+    locked:      !!s.open_shift_id,
     isBase:      false,
   };
 }
@@ -1105,6 +1109,10 @@ async function deleteLocation(){
 //  SHIFT FORM
 // ═══════════════════════════════════════
 function openAddShift(id=null){
+  if(id){
+    const s=getShifts().find(x=>x.id===id);
+    if(s?.locked){ showToast(`Awarded by ${s.awardedBy||'Admin'} — contact your admin to make changes`,false); return; }
+  }
   const locs=getLocations();
   if(!locs.length){ showToast('Add a location first in Settings',true); switchScreen('settings',document.querySelector('[data-screen="settings"]')); return; }
   document.getElementById('edit-shift-id').value=id||'';
@@ -1448,6 +1456,8 @@ function shiftItemHTML(s,bd){
   const click=s.isBase?`showToast('Base shifts are set by your administrator',false)`:`openAddShift('${s.id}')`;
   const payStr=s.isBase?'—':formatPay(pay);
   const schedLabel=s.isBase?` <span style="font-size:10px;opacity:.6">(schedule)</span>`:'';
+  const awardedTag=s.locked&&s.awardedBy?`<div class="notes-chip" style="color:var(--accent)">Awarded by ${s.awardedBy}</div>`:'';
+  const adminNotesChip=s.adminNotes?`<div class="notes-chip">${s.adminNotes.slice(0,40)}${s.adminNotes.length>40?'…':''}</div>`:'';
 
   return `<div class="shift-item${s.isBase?' base-item':''}" onclick="${click}">
     <div class="shift-dot${s.isBase?' sq':''}" style="background:${color}"></div>
@@ -1455,7 +1465,9 @@ function shiftItemHTML(s,bd){
       <div class="name">${name}${schedLabel}</div>
       <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
       ${otNote}
+      ${awardedTag}
       ${s.notes?`<div class="notes-chip">${s.notes.slice(0,40)}${s.notes.length>40?'…':''}</div>`:''}
+      ${adminNotesChip}
     </div>
     <div class="shift-right">
       <div class="pay">${payStr}</div>

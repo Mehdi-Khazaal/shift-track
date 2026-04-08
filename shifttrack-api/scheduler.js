@@ -128,10 +128,12 @@ cron.schedule('* * * * *', async () => {
       if (claims.rows.length) {
         const winner = claims.rows[0];
         const dateStr = shift.date.toISOString ? shift.date.toISOString().slice(0,10) : String(shift.date).slice(0,10);
+        const adminRes = await db.query('SELECT name FROM users WHERE id=$1', [shift.created_by]);
+        const adminName = adminRes.rows[0]?.name || 'Admin';
         await db.query(
-          `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
-           VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
-          [winner.user_id, shift.location_id, shift.date, shift.start_time, shift.end_time, shift.notes || '']
+          `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes, open_shift_id, awarded_by_name)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+          [winner.user_id, shift.location_id, shift.date, shift.start_time, shift.end_time, shift.notes || '', shift.id, adminName]
         );
         await db.query(
           `UPDATE open_shifts SET status='claimed', claimed_by=$1 WHERE id=$2`,
