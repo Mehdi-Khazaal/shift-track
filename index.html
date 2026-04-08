@@ -372,6 +372,15 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
     <div class="icon-btn" onclick="openAddShift()">＋</div>
   </div>
 
+  <!-- Swap Requests -->
+  <div id="swap-requests-section" style="display:none">
+    <div class="section-hd" style="display:flex;align-items:center;justify-content:space-between">
+      <h2>Swap Requests</h2>
+      <button onclick="openSwapPropose()" style="font-size:11px;font-family:var(--mono);color:var(--accent);background:rgba(91,143,255,.1);border:1px solid rgba(91,143,255,.25);border-radius:6px;padding:4px 10px;cursor:pointer;letter-spacing:.3px">＋ Propose</button>
+    </div>
+    <div id="swap-requests-list" style="margin-bottom:8px"></div>
+  </div>
+
   <!-- Open Shifts -->
   <div id="open-shifts-section" style="display:none">
     <div class="section-hd"><h2>Open Shifts</h2></div>
@@ -683,6 +692,38 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   </div>
 </div>
 
+<!-- SHEET: PROPOSE SWAP -->
+<div class="sheet-overlay" id="sheet-swap">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Propose Shift Swap</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-swap')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:16px;line-height:1.5">
+        Pick your shift, select a coworker, and choose the date you'd like to take from them. Both of you must have a shift on those days.
+      </div>
+      <div class="form-group">
+        <label>Your shift</label>
+        <select id="swap-my-shift"></select>
+      </div>
+      <div class="form-group">
+        <label>Swap with</label>
+        <select id="swap-target-user"></select>
+      </div>
+      <div class="form-group">
+        <label>Their shift date</label>
+        <input type="date" id="swap-their-date"/>
+      </div>
+      <div id="swap-week-hint" style="display:none;font-size:11px;font-family:var(--mono);color:var(--orange);margin-bottom:12px;padding:8px 10px;background:rgba(245,166,35,.08);border-radius:6px;border:1px solid rgba(245,166,35,.2)">
+        ⚠ Both shifts must be in the same calendar week (Sun–Sat)
+      </div>
+      <button class="btn btn-primary" onclick="submitSwap()">Send Swap Request</button>
+    </div>
+  </div>
+</div>
+
 <!-- PDF PRINT LAYOUT (hidden — shown only when printing) -->
 <div id="pdf-print">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #111;padding-bottom:12px">
@@ -751,7 +792,8 @@ async function doLogin(){
 function doLogout(force=false){
   if(!force && !confirm('Sign out of ShiftTrack?')) return;
   clearAuth();
-  cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.loaded=false;
+  cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.suppressedBases=[]; cache.loaded=false;
+  swapsData=[];
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-email').value='';
   document.getElementById('login-password').value='';
@@ -787,7 +829,7 @@ const DEFAULT_ANCHOR = '2026-03-22';
 //  All data lives in Neon via the Render API.
 //  We keep an in-memory cache so renders are instant.
 // ═══════════════════════════════════════
-const cache = { locations:[], shifts:[], base:[], settings:null, unavailability:[], loaded:false };
+const cache = { locations:[], shifts:[], base:[], settings:null, unavailability:[], suppressedBases:[], loaded:false };
 
 function getLocations(){ return cache.locations; }
 function getShifts()   { return cache.shifts;    }
@@ -814,11 +856,12 @@ async function loadAllData(attempt=1){
       apiFetch('/api/settings'),
       apiFetch('/api/unavailability'),
     ]);
-    if(locsRes?.ok)     cache.locations     = locsRes.locations.map(normalizeLocation);
-    if(shiftsRes?.ok)   cache.shifts        = shiftsRes.shifts.map(normalizeShift);
-    if(baseRes?.ok)     cache.base          = baseRes.schedule.map(normalizeBase);
-    if(settingsRes?.ok) cache.settings      = settingsRes.settings;
-    if(unavailRes?.ok)  cache.unavailability= unavailRes.entries.map(normalizeUnavail);
+    if(locsRes?.ok)     cache.locations      = locsRes.locations.map(normalizeLocation);
+    if(shiftsRes?.ok){  cache.shifts         = shiftsRes.shifts.map(normalizeShift);
+                        cache.suppressedBases= shiftsRes.suppressed_bases||[]; }
+    if(baseRes?.ok)     cache.base           = baseRes.schedule.map(normalizeBase);
+    if(settingsRes?.ok) cache.settings       = settingsRes.settings;
+    if(unavailRes?.ok)  cache.unavailability = unavailRes.entries.map(normalizeUnavail);
     cache.loaded = true;
     showToast('Ready ✓');
     renderDash();
@@ -826,6 +869,7 @@ async function loadAllData(attempt=1){
     renderSchedule();
     renderSettings();
     renderCalendar();
+    loadSwaps();
   } catch(e) {
     console.error('Failed to load data (attempt '+attempt+'):', e);
     if(attempt < MAX){
@@ -976,6 +1020,7 @@ function payWeekOf(dateStr){
 }
 
 // ─── Resolve a base schedule entry to a concrete date within a given week ───
+// Returns null if the date is suppressed (e.g. due to a swap)
 function baseToDate(base, weekDates){
   if(!weekDates || !weekDates[0]) return null;
   const sundayStr=toYMD(weekDates[0]);
@@ -983,7 +1028,9 @@ function baseToDate(base, weekDates){
   if(payWeekOf(sundayStr)!==base.week) return null;
   const dayDate = weekDates[base.day];
   if(!dayDate) return null;
-  return toYMD(dayDate);
+  const dateStr = toYMD(dayDate);
+  if((cache.suppressedBases||[]).includes(dateStr)) return null;
+  return dateStr;
 }
 
 // ═══════════════════════════════════════
@@ -2159,6 +2206,8 @@ enterApp = function(user){
 //  OPEN SHIFTS
 // ═══════════════════════════════════════
 let openShiftsData = [];
+let swapsData      = [];
+let _swapUsers     = [];
 
 async function loadOpenShifts(){
   const res = await apiFetch('/api/open-shifts');
@@ -2233,6 +2282,163 @@ async function respondOpenShift(id, response){
     showToast('Shift declined');
   }
   await loadOpenShifts();
+}
+
+// ═══════════════════════════════════════
+//  SHIFT SWAPS
+// ═══════════════════════════════════════
+
+async function loadSwaps(){
+  const res = await apiFetch('/api/shift-swaps');
+  if(!res?.ok) return;
+  swapsData = res.swaps || [];
+  renderSwaps();
+}
+
+function renderSwaps(){
+  const section = document.getElementById('swap-requests-section');
+  const list    = document.getElementById('swap-requests-list');
+  const myId    = getUser()?.id;
+
+  // Only show pending swaps (and recently resolved ones from this session)
+  const active = swapsData.filter(s => s.status === 'pending');
+  if(!active.length){ section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  list.innerHTML = active.map(s => {
+    const iAmInitiator = s.initiator_id === myId;
+    const iDate = (s.initiator_date||'').slice(0,10);
+    const tDate = (s.target_date||'').slice(0,10);
+    const iColor = s.initiator_location_color || '#888';
+    const tColor = s.target_location_color    || '#888';
+
+    let actionsHtml;
+    if(iAmInitiator){
+      actionsHtml = `
+        <div class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">Awaiting ${s.target_name}</div>
+        <button class="btn btn-ghost btn-sm" onclick="cancelSwap('${s.id}')">Cancel</button>`;
+    } else {
+      actionsHtml = `
+        <button class="btn btn-primary btn-sm" onclick="respondSwap('${s.id}','accepted')">Accept</button>
+        <button class="btn btn-ghost btn-sm"   onclick="respondSwap('${s.id}','rejected')">Decline</button>`;
+    }
+
+    const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
+
+    return `<div class="os-card">
+      <div class="os-card-hd">
+        <div style="width:10px;height:10px;border-radius:2px;background:${iColor};flex-shrink:0"></div>
+        <div class="os-loc">${s.initiator_name}</div>
+        <span class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">Swap</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin:6px 0 4px;line-height:1.6">
+        <span style="color:var(--text)">${s.initiator_name}</span> · <span style="color:${iColor}">${s.initiator_location_name}</span> · ${fmtD(iDate)}<br>
+        <span style="color:var(--dim)">↕</span><br>
+        <span style="color:var(--text)">${s.target_name}</span> · <span style="color:${tColor}">${s.target_location_name}</span> · ${fmtD(tDate)}
+      </div>
+      <div class="os-actions">${actionsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+async function respondSwap(id, response){
+  const res = await apiFetch(`/api/shift-swaps/${id}/respond`, { method:'PATCH', body:{ response } });
+  if(!res?.ok){ showToast(res?.error || 'Failed to respond', true); return; }
+  if(response === 'accepted'){
+    showToast('Swap accepted — schedules updated ✓');
+    // Reload shifts so the swapped shift appears immediately
+    const shiftsRes = await apiFetch('/api/shifts');
+    if(shiftsRes?.ok){
+      cache.shifts         = shiftsRes.shifts.map(normalizeShift);
+      cache.suppressedBases= shiftsRes.suppressed_bases || [];
+    }
+    renderAllShifts();
+    renderDash();
+    renderCalendar();
+  } else {
+    showToast('Swap declined');
+  }
+  await loadSwaps();
+}
+
+async function cancelSwap(id){
+  const res = await apiFetch(`/api/shift-swaps/${id}`, { method:'DELETE' });
+  if(!res?.ok){ showToast(res?.error || 'Failed to cancel', true); return; }
+  showToast('Swap request cancelled');
+  await loadSwaps();
+}
+
+// ─── Propose swap sheet ───────────────────────────────────────────────────────
+
+async function openSwapPropose(){
+  // Populate my shifts dropdown
+  const myShiftSel = document.getElementById('swap-my-shift');
+  const myShifts = getShifts().filter(s => !s.locked).sort((a,b) => b.date.localeCompare(a.date));
+  if(!myShifts.length){
+    showToast('You have no shifts available to swap', true);
+    return;
+  }
+  const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
+  myShiftSel.innerHTML = myShifts.map(s => {
+    const loc = getLocById(s.locationId);
+    return `<option value="${s.id}" data-date="${s.date}">${fmtD(s.date)} · ${loc?.name||'?'} · ${fmtTime(s.start)}–${fmtTime(s.end)}</option>`;
+  }).join('');
+
+  // Populate employees dropdown
+  const targetSel = document.getElementById('swap-target-user');
+  if(!_swapUsers.length){
+    const r = await apiFetch('/api/shift-swaps/users');
+    _swapUsers = r?.users || [];
+  }
+  if(!_swapUsers.length){
+    showToast('No other employees found', true);
+    return;
+  }
+  targetSel.innerHTML = _swapUsers.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+
+  // Reset
+  document.getElementById('swap-their-date').value = '';
+  document.getElementById('swap-week-hint').style.display = 'none';
+
+  // Validation hint on date change
+  const updateHint = () => {
+    const myDate    = myShiftSel.selectedOptions[0]?.dataset?.date;
+    const theirDate = document.getElementById('swap-their-date').value;
+    const hint      = document.getElementById('swap-week-hint');
+    if(!myDate || !theirDate){ hint.style.display='none'; return; }
+    const sunOf = d => { const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()-x.getDay()); return x.toISOString().slice(0,10); };
+    hint.style.display = sunOf(myDate) !== sunOf(theirDate) ? '' : 'none';
+  };
+  myShiftSel.onchange   = updateHint;
+  document.getElementById('swap-their-date').onchange = updateHint;
+
+  openSheet('sheet-swap');
+}
+
+async function submitSwap(){
+  const myShiftSel  = document.getElementById('swap-my-shift');
+  const myDate      = myShiftSel.selectedOptions[0]?.dataset?.date;
+  const targetUserId= document.getElementById('swap-target-user').value;
+  const theirDate   = document.getElementById('swap-their-date').value;
+
+  if(!myDate || !targetUserId || !theirDate){
+    showToast('Please fill in all fields', true); return;
+  }
+
+  const sunOf = d => { const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()-x.getDay()); return x.toISOString().slice(0,10); };
+  if(sunOf(myDate) !== sunOf(theirDate)){
+    showToast('Both shifts must be in the same calendar week', true); return;
+  }
+
+  const res = await apiFetch('/api/shift-swaps', {
+    method:'POST',
+    body:{ my_date: myDate, target_user_id: targetUserId, their_date: theirDate }
+  });
+  if(!res?.ok){ showToast(res?.error || 'Failed to send swap request', true); return; }
+
+  closeSheet('sheet-swap');
+  showToast('Swap request sent ✓');
+  await loadSwaps();
 }
 
 // ═══════════════════════════════════════

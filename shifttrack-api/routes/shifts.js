@@ -3,18 +3,25 @@ const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
 
-// GET /api/shifts — get all shifts for logged-in user
+// GET /api/shifts — get all shifts for logged-in user + suppressed base dates
 router.get('/', auth, async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT s.*, l.name AS location_name, l.color, l.rate
-       FROM shifts s
-       JOIN locations l ON s.location_id = l.id
-       WHERE s.user_id = $1
-       ORDER BY s.date DESC, s.start_time DESC`,
-      [req.userId]
-    );
-    res.json({ ok: true, shifts: result.rows });
+    const [shiftsRes, suppressedRes] = await Promise.all([
+      db.query(
+        `SELECT s.*, l.name AS location_name, l.color, l.rate
+         FROM shifts s
+         JOIN locations l ON s.location_id = l.id
+         WHERE s.user_id = $1
+         ORDER BY s.date DESC, s.start_time DESC`,
+        [req.userId]
+      ),
+      db.query(
+        `SELECT date FROM base_suppressed_dates WHERE user_id=$1`,
+        [req.userId]
+      )
+    ]);
+    const suppressed = suppressedRes.rows.map(r => String(r.date).slice(0, 10));
+    res.json({ ok: true, shifts: shiftsRes.rows, suppressed_bases: suppressed });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: 'Server error' });

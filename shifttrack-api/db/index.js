@@ -72,6 +72,41 @@ async function migrate(){
     await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS open_shift_id UUID REFERENCES open_shifts(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS awarded_by_name TEXT DEFAULT ''`);
 
+    // Shift swap system
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS shift_swaps (
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        initiator_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        target_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        initiator_shift_id    UUID REFERENCES shifts(id) ON DELETE SET NULL,
+        initiator_date        DATE NOT NULL,
+        initiator_location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        initiator_start       TIME NOT NULL,
+        initiator_end         TIME NOT NULL,
+        target_shift_id       UUID REFERENCES shifts(id) ON DELETE SET NULL,
+        target_date           DATE NOT NULL,
+        target_location_id    UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        target_start          TIME NOT NULL,
+        target_end            TIME NOT NULL,
+        initiator_is_base     BOOLEAN NOT NULL DEFAULT FALSE,
+        target_is_base        BOOLEAN NOT NULL DEFAULT FALSE,
+        status                TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','accepted','rejected','cancelled')),
+        responded_at          TIMESTAMPTZ,
+        created_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Base schedule suppression (used when a swapped base-schedule shift is overridden)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS base_suppressed_dates (
+        id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date    DATE NOT NULL,
+        UNIQUE(user_id, date)
+      )
+    `);
+
     console.log('✅  Migrations applied');
   } catch(err){
     console.error('❌  Migration failed:', err.message);
