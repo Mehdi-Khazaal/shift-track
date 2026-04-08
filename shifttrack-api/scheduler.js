@@ -1,12 +1,6 @@
 const cron    = require('node-cron');
-const webpush = require('web-push');
+const webpush = require('./utils/webpush');
 const db      = require('./db/index');
-
-webpush.setVapidDetails(
-  'mailto:khazaalmahdi1@gmail.com',
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
 
 const ANCHOR = new Date('2026-03-22T00:00:00Z');
 
@@ -99,6 +93,8 @@ cron.schedule('* * * * *', async () => {
         } catch (e) {
           if (e.statusCode === 410) {
             await db.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
+          } else {
+            console.error(`[notify] Push failed for user ${sub.user_id}: ${e.statusCode || e.message}`);
           }
         }
       }
@@ -153,6 +149,8 @@ cron.schedule('* * * * *', async () => {
           } catch (e) {
             if (e.statusCode === 410)
               await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
+            else
+              console.error(`[scheduler] Push failed for user ${winner.user_id}: ${e.statusCode || e.message}`);
           }
         }
         await db.query(

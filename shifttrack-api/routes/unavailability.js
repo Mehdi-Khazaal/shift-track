@@ -24,6 +24,9 @@ router.post('/', auth, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'start_date and end_date are required' });
   if(end_date < start_date)
     return res.status(400).json({ ok: false, error: 'end_date must be on or after start_date' });
+  const today = new Date().toISOString().slice(0, 10);
+  if(end_date < today)
+    return res.status(400).json({ ok: false, error: 'Cannot mark unavailability for dates already in the past' });
   try {
     const result = await db.query(
       `INSERT INTO user_unavailability (user_id, start_date, end_date, start_time, end_time, note)

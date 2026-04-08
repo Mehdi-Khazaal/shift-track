@@ -3,6 +3,11 @@ const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
 
+function adminOnly(req, res, next){
+  if(req.role !== 'admin') return res.status(403).json({ ok: false, error: 'Admin access required' });
+  next();
+}
+
 // GET /api/locations
 router.get('/', auth, async (req, res) => {
   try {
@@ -32,7 +37,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // PUT /api/locations/:id
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   const { name, color, rate, address } = req.body;
   try {
     const result = await db.query(
@@ -48,7 +53,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // DELETE /api/locations/:id
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     await db.query('DELETE FROM locations WHERE id=$1', [req.params.id]);
     res.json({ ok: true });

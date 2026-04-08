@@ -101,6 +101,8 @@ router.post('/users', auth, adminOnly, async (req, res) => {
 // PATCH /api/admin/users/:id — update user info (name, email, role, position, location, hire_date, optional password)
 router.patch('/users/:id', auth, adminOnly, async (req, res) => {
   const { name, email, role, position, location_id, password, hire_date } = req.body;
+  if(!name || !email)
+    return res.status(400).json({ ok:false, error:'name and email are required' });
   if(!['admin','user'].includes(role))
     return res.status(400).json({ ok:false, error:'Invalid role' });
   try {
@@ -166,6 +168,11 @@ router.post('/schedule', auth, adminOnly, async (req, res) => {
   const { user_id, week, day_of_week, location_id, start_time, end_time } = req.body;
   if(!user_id||!week||day_of_week===undefined||!location_id||!start_time||!end_time)
     return res.status(400).json({ ok:false, error:'All fields required' });
+  if(![1,2].includes(Number(week)))
+    return res.status(400).json({ ok:false, error:'week must be 1 or 2' });
+  const dow = Number(day_of_week);
+  if(!Number.isInteger(dow) || dow < 0 || dow > 6)
+    return res.status(400).json({ ok:false, error:'day_of_week must be 0–6' });
   try {
     const result = await db.query(
       `INSERT INTO base_schedule (user_id,week,day_of_week,location_id,start_time,end_time)

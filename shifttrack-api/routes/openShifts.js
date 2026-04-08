@@ -2,13 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
-const webpush = require('web-push');
-
-webpush.setVapidDetails(
-  'mailto:khazaalmahdi1@gmail.com',
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+const webpush = require('../utils/webpush');
 
 function adminOnly(req, res, next){
   if(req.role !== 'admin') return res.status(403).json({ ok:false, error:'Admin access required' });
@@ -37,6 +31,8 @@ async function notifyUsers(userIds, title, body){
     } catch(e){
       if(e.statusCode === 410)
         await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
+      else
+        console.error(`[notify] Push failed for user ${sub.user_id}: ${e.statusCode || e.message}`);
     }
   }
 }
@@ -89,8 +85,13 @@ router.post('/admin', auth, adminOnly, async (req, res) => {
   const { location_id, date, start_time, end_time, notes, target_type, target_user_ids, deadline_hours } = req.body;
   if(!location_id || !date || !start_time || !end_time || !target_type || !deadline_hours)
     return res.status(400).json({ ok:false, error:'Missing required fields' });
+  if(!['specific','house','everyone'].includes(target_type))
+    return res.status(400).json({ ok:false, error:'Invalid target_type' });
+  const dh = Number(deadline_hours);
+  if(isNaN(dh) || dh < 0.5 || dh > 720)
+    return res.status(400).json({ ok:false, error:'deadline_hours must be between 0.5 and 720' });
 
-  const deadline = new Date(Date.now() + Number(deadline_hours) * 3600 * 1000);
+  const deadline = new Date(Date.now() + dh * 3600 * 1000);
 
   try {
     const result = await db.query(
@@ -267,16 +268,18 @@ router.post('/:id/respond', auth, async (req, res) => {
 
     let assigned = false;
 
-    // For specific/everyone: first claim wins immediately
+    // For specific/everyone: first claim wins immediately (atomic UPDATE prevents race condition)
     if(response === 'claimed' && shift.target_type !== 'house'){
+      const claimRes = await db.query(
+        `UPDATE open_shifts SET status='claimed', claimed_by=$1 WHERE id=$2 AND status='open' RETURNING id`,
+        [req.userId, req.params.id]
+      );
+      if(!claimRes.rows.length)
+        return res.status(409).json({ ok:false, error:'This shift was just claimed by someone else' });
       await db.query(
         `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
+         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
         [req.userId, shift.location_id, shift.date, shift.start_time, shift.end_time, shift.notes||'']
-      );
-      await db.query(
-        `UPDATE open_shifts SET status='claimed', claimed_by=$1 WHERE id=$2`,
-        [req.userId, req.params.id]
       );
       assigned = true;
 

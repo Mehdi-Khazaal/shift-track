@@ -41,6 +41,32 @@ async function migrate(){
       )
     `);
 
+    // Push notification subscriptions
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint        TEXT NOT NULL,
+        p256dh          TEXT NOT NULL,
+        auth            TEXT NOT NULL,
+        notify_minutes  INTEGER DEFAULT 60,
+        tz_offset       INTEGER DEFAULT 0,
+        created_at      TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, endpoint)
+      )
+    `);
+
+    // Notification history log
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notification_log (
+        id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title   TEXT NOT NULL,
+        body    TEXT NOT NULL,
+        sent_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     console.log('✅  Migrations applied');
   } catch(err){
     console.error('❌  Migration failed:', err.message);

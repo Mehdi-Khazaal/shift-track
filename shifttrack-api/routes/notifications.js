@@ -2,13 +2,7 @@ const express   = require('express');
 const router    = express.Router();
 const db        = require('../db/index');
 const auth      = require('../middleware/auth');
-const webpush   = require('web-push');
-
-webpush.setVapidDetails(
-  'mailto:khazaalmahdi1@gmail.com',
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+const webpush   = require('../utils/webpush');
 
 // ── Helper: write to notification_log ──────────────────────────────────────
 async function logNotification(userId, title, body) {
@@ -153,6 +147,8 @@ router.post('/broadcast', auth, async (req, res) => {
       } catch(e) {
         if(e.statusCode === 410) {
           await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
+        } else {
+          console.error(`[broadcast] Push failed for user ${sub.user_id}: ${e.statusCode || e.message}`);
         }
       }
     }
