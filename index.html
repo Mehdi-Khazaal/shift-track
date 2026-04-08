@@ -2371,18 +2371,45 @@ async function cancelSwap(id){
 // ─── Propose swap sheet ───────────────────────────────────────────────────────
 
 async function openSwapPropose(){
-  // Populate my shifts dropdown
   const myShiftSel = document.getElementById('swap-my-shift');
-  const myShifts = getShifts().filter(s => !s.locked).sort((a,b) => b.date.localeCompare(a.date));
-  if(!myShifts.length){
+  const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
+
+  // Build list of swappable shifts: concrete (non-locked) + base schedule for next 4 weeks
+  const entries = [];
+  const seenDates = new Set();
+
+  // Concrete logged shifts (skip locked/awarded)
+  getShifts().filter(s => !s.locked).forEach(s => {
+    seenDates.add(s.date);
+    const loc = getLocById(s.locationId);
+    entries.push({ date: s.date, label: `${fmtD(s.date)} · ${loc?.name||'?'} · ${fmtTime(s.start)}–${fmtTime(s.end)}` });
+  });
+
+  // Base schedule — resolve for current week + next 3 weeks
+  const today = new Date();
+  for(let w = 0; w < 4; w++){
+    const refDate = new Date(today);
+    refDate.setDate(today.getDate() + w * 7);
+    const weekDates = weekDatesForDate(toYMD(refDate));
+    getBase().forEach(b => {
+      const date = baseToDate(b, weekDates);
+      if(!date || seenDates.has(date)) return; // already have a concrete shift or suppressed
+      seenDates.add(date);
+      const loc = getLocById(b.locationId);
+      entries.push({ date, label: `${fmtD(date)} · ${loc?.name||'?'} · ${fmtTime(b.start)}–${fmtTime(b.end)} (schedule)` });
+    });
+  }
+
+  entries.sort((a,b) => b.date.localeCompare(a.date));
+
+  if(!entries.length){
     showToast('You have no shifts available to swap', true);
     return;
   }
-  const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
-  myShiftSel.innerHTML = myShifts.map(s => {
-    const loc = getLocById(s.locationId);
-    return `<option value="${s.id}" data-date="${s.date}">${fmtD(s.date)} · ${loc?.name||'?'} · ${fmtTime(s.start)}–${fmtTime(s.end)}</option>`;
-  }).join('');
+
+  myShiftSel.innerHTML = entries.map(e =>
+    `<option value="${e.date}" data-date="${e.date}">${e.label}</option>`
+  ).join('');
 
   // Populate employees dropdown
   const targetSel = document.getElementById('swap-target-user');
