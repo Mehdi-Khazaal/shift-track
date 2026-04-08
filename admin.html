@@ -1114,10 +1114,10 @@ function exportPayrollPDF(){
       ${rows.map(s=>`<tr>
         <td class="mono">${new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</td>
         <td>${s.location_name||'—'}</td>
-        <td class="mono">${s.isBase?'—':s.start}</td>
-        <td class="mono">${s.isBase?'—':s.end}</td>
-        <td class="mono">${s.h.toFixed(2)}h${s.otH>0&&!s.isBase?` <span style="color:#c07000">(${s.otH.toFixed(2)}h OT)</span>`:''}</td>
-        <td class="mono green">${s.isBase?'—':formatPay(s.p)}</td>
+        <td class="mono">${s.start}</td>
+        <td class="mono">${s.end}</td>
+        <td class="mono">${s.h.toFixed(2)}h${s.otH>0?` <span style="color:#c07000">(${s.otH.toFixed(2)}h OT)</span>`:''}</td>
+        <td class="mono green">${formatPay(s.p)}</td>
       </tr>`).join('')}
     </tbody>
     <tfoot><tr class="foot">
