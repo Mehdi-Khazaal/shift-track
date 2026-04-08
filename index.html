@@ -369,15 +369,15 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 <div id="screen-log" class="screen">
   <div class="top-bar">
     <h1>All Shifts</h1>
-    <div class="icon-btn" onclick="openAddShift()">＋</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div onclick="openSwapPropose()" style="font-size:11px;font-family:var(--mono);color:var(--accent);background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.3);border-radius:8px;padding:5px 11px;cursor:pointer;letter-spacing:.3px;font-weight:600">⇄ Swap</div>
+      <div class="icon-btn" onclick="openAddShift()">＋</div>
+    </div>
   </div>
 
   <!-- Swap Requests -->
   <div id="swap-requests-section" style="display:none">
-    <div class="section-hd" style="display:flex;align-items:center;justify-content:space-between">
-      <h2>Swap Requests</h2>
-      <button onclick="openSwapPropose()" style="font-size:11px;font-family:var(--mono);color:var(--accent);background:rgba(91,143,255,.1);border:1px solid rgba(91,143,255,.25);border-radius:6px;padding:4px 10px;cursor:pointer;letter-spacing:.3px">＋ Propose</button>
-    </div>
+    <div class="section-hd"><h2>Swap Requests</h2></div>
     <div id="swap-requests-list" style="margin-bottom:8px"></div>
   </div>
 
