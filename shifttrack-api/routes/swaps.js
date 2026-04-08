@@ -277,8 +277,8 @@ router.patch('/:id/respond', auth, async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: 'Server error' });
+    console.error('[swap respond]', err);
+    res.status(500).json({ ok: false, error: err.message || 'Server error' });
   }
 });
 

@@ -97,6 +97,10 @@ async function migrate(){
       )
     `);
 
+    // Ensure shift_swaps has the is_base columns (added after initial release)
+    await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS initiator_is_base BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS target_is_base BOOLEAN NOT NULL DEFAULT FALSE`);
+
     // Base schedule suppression (used when a swapped base-schedule shift is overridden)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS base_suppressed_dates (
