@@ -715,7 +715,7 @@ async function doLogin(){
   if(!email||!pass){ errEl.textContent='Enter email and password'; errEl.style.display='block'; return; }
   btn.textContent='Signing in…'; btn.disabled=true; errEl.style.display='none';
   try{
-    const data=await apiFetch('/api/auth/login',{method:'POST',body:{email,pass:undefined,password:pass}});
+    const data=await apiFetch('/api/auth/login',{method:'POST',body:{email,password:pass}});
     if(!data?.ok){ errEl.textContent=data?.error||'Invalid credentials'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false; return; }
     if(data.user.role!=='admin'){ errEl.textContent='This account does not have admin access.'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false; return; }
     setAuth(data.token,data.user);

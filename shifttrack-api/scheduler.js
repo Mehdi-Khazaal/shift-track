@@ -40,7 +40,7 @@ cron.schedule('* * * * *', async () => {
 
       // Logged shifts — date stored as user's local date, time as local time
       for (const s of shiftsRes.rows) {
-        const dateStr   = s.date.toISOString().slice(0, 10);
+        const dateStr   = String(s.date).slice(0, 10);
         // Create timestamp treating stored values as local, then convert to UTC
         const shiftTime = new Date(`${dateStr}T${s.start_time}`);
         shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);

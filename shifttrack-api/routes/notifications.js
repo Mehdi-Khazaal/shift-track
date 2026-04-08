@@ -192,7 +192,7 @@ router.post('/send-upcoming', auth, async (req, res) => {
 
       // Check logged shifts
       shiftsRes.rows.forEach(s => {
-        const shiftTime = new Date(`${s.date.toISOString().slice(0,10)}T${s.start_time}`);
+        const shiftTime = new Date(`${String(s.date).slice(0,10)}T${s.start_time}`);
         shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
         const notifTime = new Date(shiftTime.getTime() - notifyMs);
         if(notifTime > now && notifTime < new Date(now.getTime() + 60*60*1000)) {
