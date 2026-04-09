@@ -1102,12 +1102,12 @@ function renderUserDashboard(){
     const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     const noteBtn=s.isBase?'':`<button title="${s.adminNotes?s.adminNotes.slice(0,40):'Add admin note'}" onclick="editShiftNote('${s.id}',event)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:${s.adminNotes?'var(--accent)':'var(--dim)'}">${s.adminNotes?'📝':'＋'}</button>`;
     return `<tr>
-      <td class="mono" style="white-space:nowrap">${d}</td>
+      <td class="mono" style="white-space:nowrap">${d}${s.isBase?` <span style="font-size:9px;color:var(--dim);font-family:var(--mono);margin-left:4px">base</span>`:''}</td>
       <td><div style="display:flex;align-items:center;gap:6px"><div style="width:8px;height:8px;border-radius:2px;background:${loc?.color||'#888'};flex-shrink:0"></div>${loc?.name||'—'}</div></td>
-      <td class="mono">${s.isBase?'—':s.start}</td>
-      <td class="mono">${s.isBase?'—':s.end}</td>
-      <td class="mono">${s.h.toFixed(1)}h${s.otH>0&&!s.isBase?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
-      <td class="mono" style="color:var(--green)">${s.isBase?'—':formatPay(s.p)}</td>
+      <td class="mono">${s.start}</td>
+      <td class="mono">${s.end}</td>
+      <td class="mono">${s.h.toFixed(1)}h${s.otH>0?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
+      <td class="mono" style="color:var(--green)">${formatPay(s.p)}</td>
       <td style="text-align:center">${noteBtn}</td>
     </tr>`;
   }).join('');
