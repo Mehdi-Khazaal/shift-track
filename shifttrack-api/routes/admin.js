@@ -210,4 +210,109 @@ router.delete('/schedule/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
+// GET /api/admin/swaps — all swaps visible to admin
+router.get('/swaps', auth, adminOnly, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT ss.*,
+              u_i.name AS initiator_name,
+              u_t.name AS target_name,
+              l_i.name AS initiator_location_name,
+              l_t.name AS target_location_name
+       FROM shift_swaps ss
+       JOIN users u_i ON ss.initiator_id = u_i.id
+       JOIN users u_t ON ss.target_id    = u_t.id
+       JOIN locations l_i ON ss.initiator_location_id = l_i.id
+       JOIN locations l_t ON ss.target_location_id    = l_t.id
+       ORDER BY ss.created_at DESC
+       LIMIT 100`
+    );
+    res.json({ ok: true, swaps: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// PATCH /api/admin/swaps/:id/reject — admin rejects/undoes any swap
+router.patch('/swaps/:id/reject', auth, adminOnly, async (req, res) => {
+  try {
+    const swapRes = await db.query(
+      `SELECT ss.*, u_i.name AS initiator_name, u_t.name AS target_name
+       FROM shift_swaps ss
+       JOIN users u_i ON ss.initiator_id = u_i.id
+       JOIN users u_t ON ss.target_id    = u_t.id
+       WHERE ss.id = $1`,
+      [req.params.id]
+    );
+    if (!swapRes.rows.length)
+      return res.status(404).json({ ok: false, error: 'Swap not found' });
+    const swap = swapRes.rows[0];
+
+    if (swap.status === 'cancelled')
+      return res.status(409).json({ ok: false, error: 'Swap already cancelled' });
+
+    // If accepted we need to undo the shift changes
+    if (swap.status === 'accepted') {
+      const iDate = swap.initiator_date;
+      const tDate = swap.target_date;
+
+      // Remove the concrete swapped shifts that were created
+      await db.query(
+        `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
+        [swap.initiator_id, swap.target_location_id, tDate]
+      );
+      await db.query(
+        `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
+        [swap.target_id, swap.initiator_location_id, iDate]
+      );
+
+      // Restore initiator's original slot
+      if (swap.initiator_is_base) {
+        await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
+          [swap.initiator_id, iDate]);
+      } else if (swap.initiator_shift_id) {
+        await db.query(
+          `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
+          [swap.initiator_shift_id, swap.initiator_id, swap.initiator_location_id, iDate,
+           swap.initiator_start, swap.initiator_end]
+        );
+      }
+
+      // Restore target's original slot
+      if (swap.target_is_base) {
+        await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
+          [swap.target_id, tDate]);
+      } else if (swap.target_shift_id) {
+        await db.query(
+          `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
+          [swap.target_shift_id, swap.target_id, swap.target_location_id, tDate,
+           swap.target_start, swap.target_end]
+        );
+      }
+    }
+
+    await db.query(
+      `UPDATE shift_swaps SET status='cancelled', responded_at=NOW() WHERE id=$1`,
+      [req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin swap reject]', err);
+    res.status(500).json({ ok: false, error: err.message || 'Server error' });
+  }
+});
+
+// GET /api/admin/suppressed-dates — all base schedule suppression entries
+router.get('/suppressed-dates', auth, adminOnly, async (req, res) => {
+  try {
+    const result = await db.query('SELECT user_id, date FROM base_suppressed_dates');
+    res.json({ ok: true, suppressed: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
 module.exports = router;

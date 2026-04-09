@@ -161,6 +161,16 @@ router.post('/', auth, async (req, res) => {
       `${initiatorName} wants to swap: their ${myShift.location_name} on ${my_date} ↔ your ${theirShift.location_name} on ${their_date}`
     );
 
+    // Notify admins of new swap proposal
+    const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
+    if (admins.rows.length) {
+      await notifyUsers(
+        admins.rows.map(u => u.id),
+        'New Swap Request',
+        `${initiatorName} ↔ ${targetName}: ${myShift.location_name} ${my_date} / ${theirShift.location_name} ${their_date}`
+      );
+    }
+
     res.json({ ok: true, swap: swap.rows[0] });
   } catch (err) {
     console.error(err);

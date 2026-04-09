@@ -202,7 +202,11 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 @media print{
   @page{margin:12mm 10mm;size:auto;}
   html,body{height:auto!important;min-height:0!important;overflow:visible!important;background:#fff!important;color:#111!important;margin:0!important;padding:0!important;}
+  /* Hide the fixed radial-gradient overlay — not a child element so needs its own rule */
+  body::before,body::after{display:none!important;}
   body>*:not(#pdf-print){display:none!important;}
+  /* Safari renders gradient-clipped text as black rectangles in print — reset it */
+  *{-webkit-text-fill-color:initial!important;-webkit-background-clip:initial!important;background-clip:initial!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
   #pdf-print{display:block!important;font-family:sans-serif;color:#111;background:#fff;padding:0;font-size:12px;}
   #pdf-print table{width:100%;border-collapse:collapse;font-size:11px;}
   #pdf-print thead th{background:#f0f0f0;padding:6px 8px;text-align:left;border-bottom:2px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
@@ -1517,11 +1521,11 @@ function shiftItemHTML(s,bd){
   else if(otHrs>0)      badge='<span class="badge mix">REG+OT</span>';
   else                  badge='<span class="badge reg">REG</span>';
 
-  const otNote=otHrs>0&&!s.isBase
+  const otNote=otHrs>0
     ?`<div class="ot-note">${(hrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
 
   const click=s.isBase?`showToast('Base shifts are set by your administrator',false)`:`openAddShift('${s.id}')`;
-  const payStr=s.isBase?'—':formatPay(pay);
+  const payStr=formatPay(pay);
   const schedLabel=s.isBase?` <span style="font-size:10px;opacity:.6">(schedule)</span>`:'';
   const awardedTag=s.locked&&s.awardedBy?`<div class="notes-chip" style="color:var(--accent)">Awarded by ${s.awardedBy}</div>`:'';
   const adminNotesChip=s.adminNotes?`<div class="notes-chip">${s.adminNotes.slice(0,40)}${s.adminNotes.length>40?'…':''}</div>`:'';

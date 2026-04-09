@@ -311,6 +311,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
     <div class="tab" onclick="switchTab('accounts',this)">Accounts</div>
     <div class="tab" onclick="switchTab('openshifts',this)">Open Shifts</div>
     <div class="tab" onclick="switchTab('notify',this)">Notify</div>
+    <div class="tab" onclick="switchTab('swaps',this)">Swaps</div>
   </div>
 
   <div class="content">
@@ -495,6 +496,15 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
       <!-- Active open shifts list -->
       <div class="section-label" style="margin-bottom:12px">Active &amp; Recent</div>
       <div id="os-list"><div class="empty">No open shifts posted yet</div></div>
+    </div>
+
+    <!-- SWAPS -->
+    <div class="panel" id="panel-swaps">
+      <div class="sec-hd">
+        <div><h2>Shift Swaps</h2><p>All swap requests — admin can reject or undo at any time</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="loadAdminSwaps()">↻ Refresh</button>
+      </div>
+      <div id="admin-swaps-list"><div class="empty">Loading…</div></div>
     </div>
 
     <!-- ACCOUNTS -->
@@ -779,12 +789,13 @@ function switchTab(name,el){
   if(name==='staffing')    renderStaffing();
   if(name==='notify')      toggleBcFilter();
   if(name==='openshifts')  { populateOsForm(); loadOpenShifts(); }
+  if(name==='swaps')       loadAdminSwaps();
 }
 
 // ══════════════════════════════
 //  DATA
 // ══════════════════════════════
-let allUsers=[], allShifts={}, allSchedules={}, allLocs=[];
+let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allSuppressed={};
 
 async function loadAll(){
   showToast('Loading data…');
@@ -796,7 +807,16 @@ async function loadAll(){
     if(usersRes?.ok) allUsers=usersRes.users;
     if(locsRes?.ok)  allLocs=locsRes.locations;
 
-    // Load shifts + schedule for every user
+    // Load shifts + schedule for every user, and suppressed dates
+    const suppRes = await apiFetch('/api/admin/suppressed-dates');
+    allSuppressed = {};
+    if(suppRes?.ok) {
+      for(const row of suppRes.suppressed){
+        if(!allSuppressed[row.user_id]) allSuppressed[row.user_id] = new Set();
+        allSuppressed[row.user_id].add(row.date);
+      }
+    }
+
     await Promise.all(allUsers.map(async u=>{
       const [sr,scr]=await Promise.all([
         apiFetch(`/api/admin/users/${u.id}/shifts`),
@@ -875,14 +895,15 @@ function baseToDate(base,weekDates){
   return toYMD(dd);
 }
 
-function computePayForShifts(shifts,schedules,ymds){
+function computePayForShifts(shifts,schedules,ymds,userId){
   // Combine logged + base shifts for a given set of dates (two weeks = two separate OT windows)
+  const suppressed = allSuppressed[userId] || new Set();
   function weekShifts(wkYMDs){
     const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
     const logged=shifts.filter(s=>wkYMDs.includes(s.date));
     const base=schedules
       .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
-      .filter(b=>b.date&&wkYMDs.includes(b.date));
+      .filter(b=>b.date&&wkYMDs.includes(b.date)&&!suppressed.has(b.date));
     const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     let regRun=0,pay=0,hrs=0,ot=0;
     for(const s of all){
@@ -934,7 +955,7 @@ function renderOverview(){
   const rows=allUsers.map(u=>{
     const shifts=allShifts[u.id]||[];
     const sched=allSchedules[u.id]||[];
-    const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,ymds);
+    const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,ymds,u.id);
     return `<tr>
       <td><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></td>
       <td class="mono">${hrs.toFixed(1)} hrs</td>
@@ -1507,7 +1528,7 @@ function getDetailedStaffingForDate(dateStr){
     }
     for(const b of sched){
       const bDate = baseToDate(b, wkDates);
-      if(bDate === dateStr && !seenLocs.has(b.locationId)){
+      if(bDate === dateStr && !seenLocs.has(b.locationId) && !allSuppressed[u.id]?.has(dateStr)){
         seenLocs.add(b.locationId);
         (byLoc[b.locationId] = byLoc[b.locationId] || []).push({ user:u, start:b.start, end:b.end, isBase:true });
       }
@@ -1996,6 +2017,62 @@ async function cancelOpenShift(id){
   const data = await apiFetch(`/api/open-shifts/admin/${id}`,{method:'DELETE'});
   if(data?.ok){ showToast('Open shift cancelled'); loadOpenShifts(); }
   else showToast(data?.error||'Failed to cancel',true);
+}
+
+// ══════════════════════════════
+//  ADMIN SWAPS
+// ══════════════════════════════
+async function loadAdminSwaps(){
+  const el = document.getElementById('admin-swaps-list');
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  const res = await apiFetch('/api/admin/swaps');
+  if(!res?.ok){ el.innerHTML='<div class="empty">Failed to load swaps</div>'; return; }
+  const swaps = res.swaps;
+  if(!swaps.length){ el.innerHTML='<div class="empty">No swap requests yet</div>'; return; }
+
+  const STATUS_COLOR = { pending:'var(--orange)', accepted:'var(--green)', rejected:'var(--red)', cancelled:'var(--muted)' };
+
+  el.innerHTML = swaps.map(s => {
+    const iDate = s.initiator_date;
+    const tDate = s.target_date;
+    const color = STATUS_COLOR[s.status] || 'var(--muted)';
+    const canReject = s.status === 'pending' || s.status === 'accepted';
+    const created = new Date(s.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    return `<div class="card" style="margin-bottom:10px;padding:16px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="font-weight:600">${s.initiator_name}</span>
+          <span style="color:var(--muted);font-size:12px;font-family:var(--mono);margin:0 6px">↔</span>
+          <span style="font-weight:600">${s.target_name}</span>
+          <span style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-left:10px">${created}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;font-family:var(--mono);color:${color};border:1px solid ${color}33;padding:2px 8px;border-radius:99px">${s.status}</span>
+          ${canReject ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red)33" onclick="rejectAdminSwap('${s.id}',this)">Reject${s.status==='accepted'?' & Undo':''}</button>` : ''}
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;font-family:var(--mono);color:var(--muted)">
+        <span>${s.initiator_name}: <strong style="color:var(--text)">${s.initiator_location_name}</strong> on ${iDate}</span>
+        <span>→ works</span>
+        <span>${s.target_name}: <strong style="color:var(--text)">${s.target_location_name}</strong> on ${tDate}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function rejectAdminSwap(id, btn){
+  const label = btn.textContent;
+  if(!confirm(`${label} this swap? This cannot be undone.`)) return;
+  btn.disabled = true;
+  const res = await apiFetch(`/api/admin/swaps/${id}/reject`, { method:'PATCH' });
+  if(res?.ok){
+    showToast('Swap rejected');
+    await loadAll();   // refresh shifts/suppressed so staffing view updates
+    loadAdminSwaps();
+  } else {
+    showToast(res?.error || 'Failed to reject', true);
+    btn.disabled = false;
+  }
 }
 
 // Hook renderStaffing into loadAll (re-render when data changes)
