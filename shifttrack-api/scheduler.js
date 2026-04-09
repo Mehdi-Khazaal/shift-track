@@ -21,7 +21,7 @@ cron.schedule('* * * * *', async () => {
       // local time = UTC - tz_offset minutes  →  UTC = local + tz_offset minutes
       const tzOffset  = Number(sub.tz_offset || 0); // minutes
 
-      const [shiftsRes, baseRes] = await Promise.all([
+      const [shiftsRes, baseRes, suppressedRes] = await Promise.all([
         db.query(
           `SELECT s.*, l.name as location_name
            FROM shifts s JOIN locations l ON s.location_id = l.id
@@ -34,7 +34,12 @@ cron.schedule('* * * * *', async () => {
            WHERE b.user_id = $1`,
           [sub.user_id]
         ),
+        db.query(
+          `SELECT date FROM base_suppressed_dates WHERE user_id = $1`,
+          [sub.user_id]
+        ),
       ]);
+      const suppressedDates = new Set(suppressedRes.rows.map(r => r.date));
 
       const toSend = [];
 
@@ -61,7 +66,7 @@ cron.schedule('* * * * *', async () => {
         const weekNum   = inPeriod < 7 ? 1 : 2;
 
         for (const b of baseRes.rows) {
-          if (Number(b.week) === weekNum && b.day_of_week === dayOfWeek) {
+          if (Number(b.week) === weekNum && b.day_of_week === dayOfWeek && !suppressedDates.has(dayStr)) {
             const shiftTime = new Date(`${dayStr}T${b.start_time}`);
             shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
             const notifTime = new Date(shiftTime.getTime() - notifyMs);

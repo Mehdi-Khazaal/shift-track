@@ -1,5 +1,11 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 require('dotenv').config();
+
+// Return DATE columns as plain "YYYY-MM-DD" strings instead of JS Date objects.
+// The pg library delegates DATE (OID 1082) to postgres-date which returns Date
+// objects; String(dateObj).slice(0,10) then yields "Thu Apr 09" — invalid for
+// any subsequent SQL DATE parameter.
+types.setTypeParser(1082, val => val);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
