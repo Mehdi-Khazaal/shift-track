@@ -1065,10 +1065,11 @@ function renderUserDashboard(){
   const shifts=allShifts[viewUserId]||[];
   const sched=allSchedules[viewUserId]||[];
 
+  const suppressed=allSuppressed[viewUserId]||new Set();
   function weekRows(wkYMDs){
     const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
     const logged=shifts.filter(s=>wkYMDs.includes(s.date));
-    const base=sched.map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkYMDs.includes(b.date));
+    const base=sched.map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkYMDs.includes(b.date)&&!suppressed.has(b.date));
     const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     let regRun=0,totPay=0,totHrs=0,totOt=0;
     const rows=all.map(s=>{
