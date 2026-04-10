@@ -292,10 +292,19 @@ router.patch('/:id/respond', auth, async (req, res) => {
   }
 });
 
-// ─── DELETE /api/shift-swaps/:id — cancel (initiator only, while pending) ─────
+// ─── DELETE /api/shift-swaps/:id — cancel pending (initiator only) ────────────
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const r = await db.query('SELECT initiator_id, status FROM shift_swaps WHERE id=$1', [req.params.id]);
+    const r = await db.query(
+      `SELECT ss.initiator_id, ss.target_id, ss.status,
+              u_i.name AS initiator_name, u_t.name AS target_name,
+              ss.initiator_date, ss.target_date
+       FROM shift_swaps ss
+       JOIN users u_i ON ss.initiator_id = u_i.id
+       JOIN users u_t ON ss.target_id    = u_t.id
+       WHERE ss.id=$1`,
+      [req.params.id]
+    );
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'Swap not found' });
     const swap = r.rows[0];
     if (swap.initiator_id !== req.userId)
@@ -303,10 +312,95 @@ router.delete('/:id', auth, async (req, res) => {
     if (swap.status !== 'pending')
       return res.status(409).json({ ok: false, error: 'Can only cancel pending swaps' });
     await db.query(`UPDATE shift_swaps SET status='cancelled' WHERE id=$1`, [req.params.id]);
+    const iDate = String(swap.initiator_date).slice(0, 10);
+    const tDate = String(swap.target_date).slice(0, 10);
+    await notifyUsers([swap.target_id], 'Swap Request Cancelled',
+      `${swap.initiator_name} cancelled the swap request (${iDate} ↔ ${tDate})`);
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// ─── PATCH /api/shift-swaps/:id/cancel — undo an accepted swap (either party) ─
+router.patch('/:id/cancel', auth, async (req, res) => {
+  try {
+    const swapRes = await db.query(
+      `SELECT ss.*, u_i.name AS initiator_name, u_t.name AS target_name
+       FROM shift_swaps ss
+       JOIN users u_i ON ss.initiator_id = u_i.id
+       JOIN users u_t ON ss.target_id    = u_t.id
+       WHERE ss.id = $1`,
+      [req.params.id]
+    );
+    if (!swapRes.rows.length)
+      return res.status(404).json({ ok: false, error: 'Swap not found' });
+    const swap = swapRes.rows[0];
+
+    if (swap.initiator_id !== req.userId && swap.target_id !== req.userId)
+      return res.status(403).json({ ok: false, error: 'Not your swap' });
+    if (swap.status !== 'accepted')
+      return res.status(409).json({ ok: false, error: 'Can only cancel accepted swaps this way' });
+
+    const iDate = String(swap.initiator_date).slice(0, 10);
+    const tDate = String(swap.target_date).slice(0, 10);
+
+    // Remove the swapped concrete shifts
+    await db.query(
+      `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
+      [swap.initiator_id, swap.target_location_id, tDate]
+    );
+    await db.query(
+      `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
+      [swap.target_id, swap.initiator_location_id, iDate]
+    );
+
+    // Restore initiator's original slot
+    if (swap.initiator_is_base) {
+      await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
+        [swap.initiator_id, iDate]);
+    } else if (swap.initiator_shift_id) {
+      await db.query(
+        `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
+        [swap.initiator_shift_id, swap.initiator_id, swap.initiator_location_id, iDate,
+         swap.initiator_start, swap.initiator_end]
+      );
+    }
+
+    // Restore target's original slot
+    if (swap.target_is_base) {
+      await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
+        [swap.target_id, tDate]);
+    } else if (swap.target_shift_id) {
+      await db.query(
+        `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
+        [swap.target_shift_id, swap.target_id, swap.target_location_id, tDate,
+         swap.target_start, swap.target_end]
+      );
+    }
+
+    await db.query(`UPDATE shift_swaps SET status='cancelled', responded_at=NOW() WHERE id=$1`, [req.params.id]);
+
+    // Notify the other party
+    const cancellerName = swap.initiator_id === req.userId ? swap.initiator_name : swap.target_name;
+    const otherId       = swap.initiator_id === req.userId ? swap.target_id      : swap.initiator_id;
+    await notifyUsers([otherId], 'Swap Cancelled',
+      `${cancellerName} cancelled the accepted swap (${iDate} ↔ ${tDate}). Your original shift has been restored.`);
+
+    // Notify admins
+    const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
+    if (admins.rows.length) {
+      await notifyUsers(admins.rows.map(u => u.id), 'Swap Undone by Employee',
+        `${cancellerName} cancelled: ${swap.initiator_name} ↔ ${swap.target_name} (${iDate} / ${tDate})`);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[swap cancel]', err);
+    res.status(500).json({ ok: false, error: err.message || 'Server error' });
   }
 });
 

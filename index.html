@@ -1281,8 +1281,10 @@ async function saveShift(){
 
 async function deleteShift(){
   const id=document.getElementById('edit-shift-id').value;
+  const s=getShifts().find(x=>x.id===id);
+  if(s?.locked){ showToast(`Awarded shift — contact your admin to remove it`,false); return; }
   const res=await apiFetch(`/api/shifts/${id}`,{method:'DELETE'});
-  if(!res?.ok){ showToast('Failed to delete',true); return; }
+  if(!res?.ok){ showToast(res?.error||'Failed to delete',true); return; }
   cache.shifts=cache.shifts.filter(s=>s.id!==id);
   closeSheet('sheet-shift'); renderDash(); renderAllShifts();
   if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
@@ -2220,7 +2222,13 @@ async function loadOpenShifts(){
   renderOpenShifts();
 }
 
+let _openShiftDeadlineTimers = [];
+
 function renderOpenShifts(){
+  // Clear any previously scheduled deadline timers
+  _openShiftDeadlineTimers.forEach(t => clearTimeout(t));
+  _openShiftDeadlineTimers = [];
+
   const section = document.getElementById('open-shifts-section');
   const list    = document.getElementById('open-shifts-list');
   if(!openShiftsData.length){ section.style.display='none'; return; }
@@ -2231,6 +2239,12 @@ function renderOpenShifts(){
     const dl  = new Date(s.deadline);
     const now = new Date();
     const minsLeft = Math.round((dl - now) / 60000);
+
+    // For house shifts where the user is waiting: auto-refresh when the deadline arrives
+    if(s.target_type === 'house' && s.my_response === 'claimed' && dl > now){
+      const msUntil = dl - now;
+      _openShiftDeadlineTimers.push(setTimeout(() => loadOpenShifts(), msUntil + 3000));
+    }
     let dlStr;
     if(minsLeft < 0) dlStr = 'Deadline passed';
     else if(minsLeft < 60) dlStr = `Respond within ${minsLeft}m`;
@@ -2304,10 +2318,11 @@ function renderSwaps(){
   const list    = document.getElementById('swap-requests-list');
   const myId    = getUser()?.id;
 
-  // Only show pending swaps (and recently resolved ones from this session)
-  const active = swapsData.filter(s => s.status === 'pending');
+  const active = swapsData.filter(s => s.status === 'pending' || s.status === 'accepted');
   if(!active.length){ section.style.display = 'none'; return; }
   section.style.display = '';
+
+  const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
 
   list.innerHTML = active.map(s => {
     const iAmInitiator = s.initiator_id === myId;
@@ -2317,7 +2332,11 @@ function renderSwaps(){
     const tColor = s.target_location_color    || '#888';
 
     let actionsHtml;
-    if(iAmInitiator){
+    if(s.status === 'accepted'){
+      actionsHtml = `
+        <div class="os-badge" style="background:rgba(46,204,138,.12);color:var(--green)">✓ Accepted</div>
+        <button class="btn btn-ghost btn-sm" onclick="cancelAcceptedSwap('${s.id}')">Cancel Swap</button>`;
+    } else if(iAmInitiator){
       actionsHtml = `
         <div class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">Awaiting ${s.target_name}</div>
         <button class="btn btn-ghost btn-sm" onclick="cancelSwap('${s.id}')">Cancel</button>`;
@@ -2326,8 +2345,6 @@ function renderSwaps(){
         <button class="btn btn-primary btn-sm" onclick="respondSwap('${s.id}','accepted')">Accept</button>
         <button class="btn btn-ghost btn-sm"   onclick="respondSwap('${s.id}','rejected')">Decline</button>`;
     }
-
-    const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
 
     return `<div class="os-card">
       <div class="os-card-hd">
@@ -2343,6 +2360,20 @@ function renderSwaps(){
       <div class="os-actions">${actionsHtml}</div>
     </div>`;
   }).join('');
+}
+
+async function cancelAcceptedSwap(id){
+  if(!confirm('Cancel this swap? Both schedules will be restored to their original shifts.')) return;
+  const res = await apiFetch(`/api/shift-swaps/${id}/cancel`, { method:'PATCH' });
+  if(!res?.ok){ showToast(res?.error || 'Failed to cancel swap', true); return; }
+  showToast('Swap cancelled — schedules restored ✓');
+  const shiftsRes = await apiFetch('/api/shifts');
+  if(shiftsRes?.ok){
+    cache.shifts          = shiftsRes.shifts.map(normalizeShift);
+    cache.suppressedBases = shiftsRes.suppressed_bases || [];
+  }
+  renderAllShifts(); renderDash(); renderCalendar();
+  await loadSwaps();
 }
 
 async function respondSwap(id, response){

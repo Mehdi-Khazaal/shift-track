@@ -79,6 +79,10 @@ router.post('/users', auth, adminOnly, async (req, res) => {
   const { email, name, password, position, location_id } = req.body;
   if(!email || !password)
     return res.status(400).json({ ok:false, error:'email and password required' });
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return res.status(400).json({ ok:false, error:'Invalid email address' });
+  if(password.length < 8)
+    return res.status(400).json({ ok:false, error:'Password must be at least 8 characters' });
   try {
     const existing = await db.query('SELECT id FROM users WHERE email=$1', [email]);
     if(existing.rows.length)
@@ -107,7 +111,7 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
     return res.status(400).json({ ok:false, error:'Invalid role' });
   try {
     let result;
-    if(password && password.length >= 4) {
+    if(password && password.length >= 8) {
       const hash = await bcrypt.hash(password, 10);
       result = await db.query(
         `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6, hire_date=$7
@@ -147,8 +151,8 @@ router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
 // PATCH /api/admin/users/:id/password — reset a user's password
 router.patch('/users/:id/password', auth, adminOnly, async (req, res) => {
   const { password } = req.body;
-  if(!password || password.length < 4)
-    return res.status(400).json({ ok:false, error:'Password must be at least 4 characters' });
+  if(!password || password.length < 8)
+    return res.status(400).json({ ok:false, error:'Password must be at least 8 characters' });
   try {
     const hash = await bcrypt.hash(password, 10);
     const result = await db.query(

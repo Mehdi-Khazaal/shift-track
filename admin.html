@@ -1245,8 +1245,9 @@ async function saveEditUser(){
   const hire_date=document.getElementById('edit-hire-date').value;
   if(!name){ showToast('Enter a name',true); return; }
   if(!email){ showToast('Enter an email',true); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('Enter a valid email address',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
-  if(password&&password.length<4){ showToast('Password must be at least 4 characters',true); return; }
+  if(password&&password.length<8){ showToast('Password must be at least 8 characters',true); return; }
   const body={name,email,position,location_id,role,hire_date};
   if(password) body.password=password;
   const res=await apiFetch(`/api/admin/users/${id}`,{method:'PATCH',body});
@@ -1350,6 +1351,8 @@ async function createAccount(){
 
   const hire_date=document.getElementById('new-hire-date').value;
   if(!email||!password){ showToast('Email and password required',true); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('Enter a valid email address',true); return; }
+  if(password.length<8){ showToast('Password must be at least 8 characters',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
 
   const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date}});
