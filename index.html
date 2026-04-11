@@ -2390,11 +2390,11 @@ function renderSwaps(){
     let actionsHtml;
     if(s.status === 'accepted'){
       actionsHtml = `
-        <div class="os-badge" style="background:rgba(46,204,138,.12);color:var(--green)">✓ Accepted</div>
+        <span class="badge" style="background:rgba(46,204,138,.12);color:var(--green);border:1px solid rgba(46,204,138,.3)">✓ Accepted</span>
         <button class="btn btn-ghost btn-sm" onclick="cancelAcceptedSwap('${s.id}')">Cancel Swap</button>`;
     } else if(iAmInitiator){
       actionsHtml = `
-        <div class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">Awaiting ${s.target_name}</div>
+        <span class="badge" style="background:rgba(91,143,255,.1);color:var(--accent);border:1px solid rgba(91,143,255,.3)">Awaiting ${s.target_name}</span>
         <button class="btn btn-ghost btn-sm" onclick="cancelSwap('${s.id}')">Cancel</button>`;
     } else {
       actionsHtml = `
