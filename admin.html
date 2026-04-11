@@ -1067,7 +1067,8 @@ function userRowHTML(u){
       ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openUserDashboard('${u.id}')">View</button>`:''}
       ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${safeName}')">Schedule</button>`:''}
       ${inactive
-        ?`<button class="btn btn-ghost btn-sm" onclick="reactivateUser('${u.id}','${safeName}')">Reactivate</button>`
+        ?`<button class="btn btn-ghost btn-sm" onclick="reactivateUser('${u.id}','${safeName}')">Reactivate</button>
+           <button class="btn btn-danger btn-sm" onclick="permanentDeleteUser('${u.id}','${safeName}')">Delete</button>`
         :`<button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.id}','${safeName}')">Deactivate</button>`
       }
     </div>
@@ -1322,6 +1323,14 @@ async function reactivateUser(id,name){
   const res=await apiFetch(`/api/admin/users/${id}/reactivate`,{method:'PATCH'});
   if(res?.ok){ await loadAll(); showToast('User reactivated'); }
   else showToast(res?.error||'Failed to reactivate',true);
+}
+
+async function permanentDeleteUser(id,name){
+  if(!confirm(`Permanently delete ${name}?\n\nThis will remove their account and ALL shift history. This cannot be undone.`)) return;
+  if(!confirm(`Are you sure? This is irreversible.\n\nType OK to confirm deletion of ${name}.`)) return;
+  const res=await apiFetch(`/api/admin/users/${id}`,{method:'DELETE'});
+  if(res?.ok){ await loadAll(); showToast(`${name} permanently deleted`); }
+  else showToast(res?.error||'Failed to delete',true);
 }
 
 // ══════════════════════════════
@@ -2090,12 +2099,16 @@ async function loadAdminSwaps(){
   const swaps = res.swaps;
   if(!swaps.length){ el.innerHTML='<div class="empty">No swap requests yet</div>'; return; }
 
-  const STATUS_COLOR = { pending:'var(--orange)', accepted:'var(--green)', rejected:'var(--red)', cancelled:'var(--muted)' };
+  const STATUS_BADGE = {
+    pending:   `<span class="badge" style="background:rgba(245,166,35,.12);color:var(--orange);border:1px solid rgba(245,166,35,.3)">Pending</span>`,
+    accepted:  `<span class="badge" style="background:rgba(46,204,138,.12);color:var(--green);border:1px solid rgba(46,204,138,.3)">Accepted</span>`,
+    rejected:  `<span class="badge" style="background:rgba(255,95,109,.12);color:var(--red);border:1px solid rgba(255,95,109,.3)">Rejected</span>`,
+    cancelled: `<span class="badge" style="background:var(--bg4);color:var(--muted);border:1px solid var(--border)">Cancelled</span>`,
+  };
 
   el.innerHTML = swaps.map(s => {
     const iDate = s.initiator_date;
     const tDate = s.target_date;
-    const color = STATUS_COLOR[s.status] || 'var(--muted)';
     const canReject = s.status === 'pending' || s.status === 'accepted';
     const created = new Date(s.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
     return `<div class="card" style="margin-bottom:10px;padding:16px 20px">
@@ -2107,8 +2120,8 @@ async function loadAdminSwaps(){
           <span style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-left:10px">${created}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:10px;font-family:var(--mono);color:${color};border:1px solid ${color}33;padding:2px 8px;border-radius:99px">${s.status}</span>
-          ${canReject ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red)33" onclick="rejectAdminSwap('${s.id}',this)">Reject${s.status==='accepted'?' & Undo':''}</button>` : ''}
+          ${STATUS_BADGE[s.status] || STATUS_BADGE.cancelled}
+          ${canReject ? `<button class="btn btn-danger btn-sm" onclick="rejectAdminSwap('${s.id}',this)">Reject${s.status==='accepted'?' & Undo':''}</button>` : ''}
         </div>
       </div>
       <div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;font-family:var(--mono);color:var(--muted)">

@@ -62,6 +62,23 @@ router.get('/users/:id/schedule', auth, adminOnly, async (req, res) => {
   }
 });
 
+// DELETE /api/admin/users/:id — permanent hard delete (only allowed on inactive users)
+router.delete('/users/:id', auth, adminOnly, async (req, res) => {
+  if(req.params.id === req.userId)
+    return res.status(400).json({ ok:false, error:"Can't delete your own account" });
+  try {
+    // Only allow deleting inactive users as a safety guard
+    const check = await db.query('SELECT is_active FROM users WHERE id=$1', [req.params.id]);
+    if(!check.rows.length) return res.status(404).json({ ok:false, error:'User not found' });
+    if(check.rows[0].is_active)
+      return res.status(400).json({ ok:false, error:'Deactivate the user before permanently deleting them' });
+    await db.query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    res.json({ ok:true });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
 // PATCH /api/admin/users/:id/deactivate — soft-delete (preserves all history)
 router.patch('/users/:id/deactivate', auth, adminOnly, async (req, res) => {
   if(req.params.id === req.userId)
