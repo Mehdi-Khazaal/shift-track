@@ -164,6 +164,32 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 .arr-btn{width:28px;height:28px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--muted);user-select:none;transition:all .15s;}
 .arr-btn:hover{color:var(--text);border-color:var(--border2);}
 
+/* ── UPGRADES ── */
+/* Count-up */
+@keyframes valPop{0%{transform:scale(.75);opacity:.2}65%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+.val-pop{animation:valPop .45s cubic-bezier(.34,1.56,.64,1);}
+/* Tab sliding indicator */
+.tabs{position:relative;}
+#tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent-gradient);border-radius:2px 2px 0 0;transition:left .28s cubic-bezier(.4,0,.2,1),width .28s cubic-bezier(.4,0,.2,1);pointer-events:none;box-shadow:0 0 8px rgba(91,143,255,.5);}
+/* User avatars */
+.u-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;font-family:var(--mono);box-shadow:0 2px 8px rgba(0,0,0,.3);}
+/* Ripple */
+.ripple-host{position:relative!important;overflow:hidden!important;}
+.ripple-ring{position:absolute;border-radius:50%;background:rgba(255,255,255,.15);transform:scale(0);animation:ripOut .6s linear;pointer-events:none;}
+@keyframes ripOut{to{transform:scale(5);opacity:0;}}
+/* Stat hover lift */
+.stat-box{transition:transform .15s,box-shadow .2s;}
+.stat-box:hover{transform:translateY(-2px);}
+.stat-box.accent:hover{box-shadow:0 6px 36px rgba(91,143,255,.25);}
+.stat-box.green:hover{box-shadow:0 6px 36px rgba(46,204,138,.2);}
+/* Row entrance */
+tbody tr{animation:rowIn .2s ease both;}
+@keyframes rowIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* Confetti */
+#confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;}
+/* Modal scale-in */
+.modal-overlay.open .modal{animation:modalIn .22s cubic-bezier(.34,1.56,.64,1);}
+@keyframes modalIn{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
 /* ── Mobile ── */
 /* ── Staffing View ── */
 .stf-vtog{padding:5px 12px;font-size:11px;font-family:var(--mono);color:var(--muted);cursor:pointer;letter-spacing:.3px;transition:all .15s;user-select:none;}
@@ -304,6 +330,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
   </div>
 
   <div class="tabs">
+    <div id="tab-indicator"></div>
     <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
     <div class="tab" onclick="switchTab('users',this)">Users</div>
     <div class="tab" onclick="switchTab('staffing',this)">Staffing</div>
@@ -708,6 +735,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 </div>
 
 <div id="toast"></div>
+<canvas id="confetti-canvas"></canvas>
 
 <script>
 // ══════════════════════════════
@@ -786,6 +814,7 @@ function switchTab(name,el){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-'+name).classList.add('active');
+  updateTabIndicator();
   if(name==='staffing')    renderStaffing();
   if(name==='notify')      toggleBcFilter();
   if(name==='openshifts')  { populateOsForm(); loadOpenShifts(); }
@@ -839,6 +868,14 @@ async function loadAll(){
   }catch(e){
     showToast('Failed to load data',true);
   }
+}
+
+// ── Avatar helper (used in render functions) ──
+function makeAvatar(name) {
+  const initials = (name || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+  const colors = ['#5b8fff','#2ecc8a','#f5a623','#ff5f6d','#c77dff','#38bdf8','#fb923c','#f472b6'];
+  const color = colors[(name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length];
+  return `<div class="u-avatar" style="background:${color}">${initials}</div>`;
 }
 
 // ── Normalize ──
@@ -962,7 +999,7 @@ function renderOverview(){
     const sched=allSchedules[u.id]||[];
     const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,ymds,u.id);
     return `<tr>
-      <td><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></td>
+      <td><div style="display:flex;align-items:center;gap:10px">${makeAvatar(u.name||u.email.split('@')[0])}<div><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></div></div></td>
       <td class="mono">${hrs.toFixed(1)} hrs</td>
       <td class="mono" style="color:${ot>0?'var(--orange)':'var(--muted)'}">${ot.toFixed(1)} hrs</td>
       <td class="mono" style="color:var(--green);font-weight:700">${formatPay(pay)}</td>
@@ -970,7 +1007,7 @@ function renderOverview(){
     </tr>`;
   });
 
-  document.getElementById('ov-users').textContent=allUsers.length;
+  adminCountUp(document.getElementById('ov-users'), allUsers.length, 400, 'int');
   document.getElementById('overview-tbody').innerHTML=rows.join('')||'<tr><td colspan="5" class="empty">No employees yet</td></tr>';
 }
 
@@ -1016,6 +1053,7 @@ function userRowHTML(u){
   const safeName=(u.name||u.email.split('@')[0]).replace(/'/g,"\\'");
   const inactive = u.is_active === false;
   return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);${inactive?'opacity:.5':''}">
+    ${makeAvatar(u.name||u.email.split('@')[0])}
     <div style="flex:1;min-width:0">
       <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         ${u.name||'—'}
@@ -1378,6 +1416,7 @@ async function createAccount(){
     if(role==='admin') await apiFetch(`/api/admin/users/${data.user.id}/role`,{method:'PATCH',body:{role:'admin'}});
     res.style.color='var(--green)';
     res.textContent=`✓ Account created for ${email}`;
+    adminFireConfetti();
     clearCreateForm();
     await loadAll();
     showToast('Account created ✓');
@@ -2104,7 +2143,105 @@ loadAll = async function(){
   await _origLoadAll();
   renderStaffing();
   toggleBcFilter(); // populate filter dropdown with fresh loc data
+  adminInitRipples();
+  requestAnimationFrame(updateTabIndicator);
 };
+
+// ══════════════════════════════
+//  UI UPGRADES
+// ══════════════════════════════
+
+// ─── Count-up ───
+function adminCountUp(el, target, dur=600, fmt='int') {
+  if (!el) return;
+  const startT = performance.now();
+  el.classList.remove('val-pop');
+  void el.offsetWidth;
+  el.classList.add('val-pop');
+  el.addEventListener('animationend', () => el.classList.remove('val-pop'), { once: true });
+  function tick(now) {
+    const t = Math.min((now - startT) / dur, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    const val = target * ease;
+    if (fmt === 'currency') el.textContent = '$' + val.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    else if (fmt === 'float1') el.textContent = val.toFixed(1);
+    else el.textContent = Math.round(val);
+    if (t < 1) requestAnimationFrame(tick);
+    else {
+      if (fmt === 'currency') el.textContent = '$' + target.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      else if (fmt === 'float1') el.textContent = target.toFixed(1);
+      else el.textContent = Math.round(target);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+// ─── Confetti ───
+function adminFireConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+  const cols = ['#5b8fff','#a78bfa','#2ecc8a','#f5a623','#f472b6','#38bdf8','#ff5f6d'];
+  const ps = Array.from({ length: 90 }, () => ({
+    x: Math.random() * canvas.width, y: -20 - Math.random() * 60,
+    vx: (Math.random() - .5) * 5, vy: Math.random() * 3 + 1.5,
+    color: cols[Math.floor(Math.random() * cols.length)],
+    w: Math.random() * 9 + 4, h: Math.random() * 5 + 3,
+    rot: Math.random() * Math.PI * 2, vrot: (Math.random() - .5) * .18, life: 1,
+  }));
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+    for (const p of ps) {
+      p.x += p.vx; p.y += p.vy; p.vy += .07; p.rot += p.vrot; p.life -= .007;
+      if (p.y < canvas.height && p.life > 0) {
+        alive = true;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 2));
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+    }
+    if (alive) requestAnimationFrame(draw);
+    else { ctx.clearRect(0, 0, canvas.width, canvas.height); canvas.style.display = 'none'; }
+  }
+  requestAnimationFrame(draw);
+}
+
+// ─── Ripple ───
+function adminAddRipple(e) {
+  const el = e.currentTarget;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height) * 2.5;
+  const r = document.createElement('span');
+  r.className = 'ripple-ring';
+  r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px`;
+  el.appendChild(r);
+  r.addEventListener('animationend', () => r.remove(), { once: true });
+}
+function adminInitRipples() {
+  document.querySelectorAll('.btn').forEach(el => {
+    el.classList.add('ripple-host');
+    el.addEventListener('click', adminAddRipple);
+  });
+}
+
+// ─── Sliding tab indicator ───
+function updateTabIndicator() {
+  const active = document.querySelector('.tabs .tab.active');
+  const ind = document.getElementById('tab-indicator');
+  const tabs = document.querySelector('.tabs');
+  if (!active || !ind || !tabs) return;
+  const tabsRect = tabs.getBoundingClientRect();
+  const rect = active.getBoundingClientRect();
+  ind.style.left = (rect.left - tabsRect.left + tabs.scrollLeft) + 'px';
+  ind.style.width = rect.width + 'px';
+}
+
 </script>
 </body>
 </html>
