@@ -355,6 +355,10 @@ tbody tr{animation:rowIn .2s ease both;}
       </div>
       <div class="stat-row" id="overview-stats">
         <div class="stat-box accent"><div class="val" id="ov-users">—</div><div class="lbl">employees</div></div>
+        <div class="stat-box orange" style="cursor:pointer" onclick="switchTab('openshifts',document.querySelector('[onclick*=openshifts]'))" title="Go to Open Shifts">
+          <div class="val" id="ov-open-shifts">—</div>
+          <div class="lbl">open shifts pending</div>
+        </div>
       </div>
       <div class="tbl-wrap">
         <table>
@@ -824,7 +828,7 @@ function switchTab(name,el){
 // ══════════════════════════════
 //  DATA
 // ══════════════════════════════
-let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allSuppressed={};
+let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allSuppressed={}, openShiftsPendingCount=0;
 
 async function loadAll(){
   showToast('Loading data…');
@@ -859,6 +863,9 @@ async function loadAll(){
       if(sr?.ok)  allShifts[u.id]   = sr.shifts.map(normalizeShift);
       if(scr?.ok) allSchedules[u.id]= scr.schedule.map(normalizeBase);
     }));
+
+    const osRes = await apiFetch('/api/open-shifts/admin');
+    openShiftsPendingCount = osRes?.ok ? osRes.shifts.filter(s=>s.status==='open').length : 0;
 
     renderOverview();
     renderUsers();
@@ -1008,6 +1015,7 @@ function renderOverview(){
   });
 
   adminCountUp(document.getElementById('ov-users'), allUsers.length, 400, 'int');
+  adminCountUp(document.getElementById('ov-open-shifts'), openShiftsPendingCount, 400, 'int');
   document.getElementById('overview-tbody').innerHTML=rows.join('')||'<tr><td colspan="5" class="empty">No employees yet</td></tr>';
 }
 
