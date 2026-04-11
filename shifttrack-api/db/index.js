@@ -107,6 +107,13 @@ async function migrate(){
     await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS initiator_is_base BOOLEAN NOT NULL DEFAULT FALSE`);
     await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS target_is_base BOOLEAN NOT NULL DEFAULT FALSE`);
 
+    // Store the concrete shift IDs created when a swap is executed so undo is exact
+    await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS swapped_initiator_shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS swapped_target_shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL`);
+
+    // Soft-delete: deactivated employees are hidden from pickers but their history is preserved
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+
     // Base schedule suppression (used when a swapped base-schedule shift is overridden)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS base_suppressed_dates (

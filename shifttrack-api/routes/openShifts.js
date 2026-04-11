@@ -107,10 +107,10 @@ router.post('/admin', auth, adminOnly, async (req, res) => {
     // Resolve who to notify
     let notifyIds = [];
     if(target_type === 'everyone'){
-      const r = await db.query(`SELECT id FROM users WHERE role='user'`);
+      const r = await db.query(`SELECT id FROM users WHERE role='user' AND is_active=TRUE`);
       notifyIds = r.rows.map(u => u.id);
     } else if(target_type === 'house'){
-      const r = await db.query('SELECT id FROM users WHERE location_id=$1', [location_id]);
+      const r = await db.query('SELECT id FROM users WHERE location_id=$1 AND is_active=TRUE', [location_id]);
       notifyIds = r.rows.map(u => u.id);
     } else if(target_type === 'specific'){
       notifyIds = target_user_ids || [];

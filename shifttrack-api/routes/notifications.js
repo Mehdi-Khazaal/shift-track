@@ -3,6 +3,7 @@ const router    = express.Router();
 const db        = require('../db/index');
 const auth      = require('../middleware/auth');
 const webpush   = require('../utils/webpush');
+const { getUserAnchor } = require('../utils/ppAnchor');
 
 // ── Helper: write to notification_log ──────────────────────────────────────
 async function logNotification(userId, title, body) {
@@ -114,11 +115,11 @@ router.post('/broadcast', auth, async (req, res) => {
     // Resolve target user IDs
     let usersRes;
     if(filter_type === 'location' && filter_value) {
-      usersRes = await db.query('SELECT id FROM users WHERE location_id=$1', [filter_value]);
+      usersRes = await db.query('SELECT id FROM users WHERE location_id=$1 AND is_active=TRUE', [filter_value]);
     } else if(filter_type === 'position' && filter_value) {
-      usersRes = await db.query('SELECT id FROM users WHERE position=$1', [filter_value]);
+      usersRes = await db.query('SELECT id FROM users WHERE position=$1 AND is_active=TRUE', [filter_value]);
     } else {
-      usersRes = await db.query('SELECT id FROM users');
+      usersRes = await db.query('SELECT id FROM users WHERE is_active=TRUE');
     }
     const userIds = usersRes.rows.map(u => u.id);
     if(!userIds.length) return res.json({ ok: true, sent: 0, total: 0 });
@@ -181,7 +182,8 @@ router.post('/send-upcoming', auth, async (req, res) => {
     );
 
     const now = new Date();
-    const anchor = new Date('2026-03-22T00:00:00');
+    const anchorStr = await getUserAnchor(req.userId);
+    const anchor = new Date(anchorStr + 'T00:00:00');
     let sent = 0;
     const logged = new Set(); // deduplicate log entries across multiple devices
 

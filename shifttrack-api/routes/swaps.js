@@ -3,8 +3,7 @@ const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
 const webpush = require('../utils/webpush');
-
-const PP_ANCHOR = '2026-03-22'; // fallback pay-period anchor
+const { getUserAnchor, payWeekOf } = require('../utils/ppAnchor');
 
 async function notifyUsers(userIds, title, body) {
   if (!userIds?.length) return;
@@ -31,14 +30,6 @@ async function notifyUsers(userIds, title, body) {
   }
 }
 
-// Compute pay-period week (1 or 2) for a date string
-function payWeekOf(dateStr) {
-  const anchor = new Date(PP_ANCHOR + 'T00:00:00');
-  const d      = new Date(dateStr + 'T00:00:00');
-  const diff   = Math.round((d - anchor) / 86400000);
-  return (((diff % 14) + 14) % 14) < 7 ? 1 : 2;
-}
-
 // Return the Sunday (YYYY-MM-DD) of the week containing dateStr
 function sunOf(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
@@ -46,9 +37,10 @@ function sunOf(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
-// Resolve a user's shift on a given date (concrete first, then base schedule)
+// Resolve a user's shift on a given date (concrete first, then base schedule).
+// anchorStr is that user's personal pay-period anchor (YYYY-MM-DD).
 // Returns { shift_id, date, location_id, start_time, end_time, location_name, is_base }
-async function resolveShift(userId, dateStr) {
+async function resolveShift(userId, dateStr, anchorStr) {
   // 1. Check concrete shifts
   const concrete = await db.query(
     `SELECT s.id, s.date, s.location_id, s.start_time, s.end_time, l.name AS location_name
@@ -78,9 +70,9 @@ async function resolveShift(userId, dateStr) {
   );
   if (suppressed.rows.length) return null;
 
-  // 3. Check base schedule
+  // 3. Check base schedule using this user's personal anchor
   const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
-  const weekNum   = payWeekOf(dateStr);
+  const weekNum   = payWeekOf(dateStr, anchorStr);
   const base = await db.query(
     `SELECT s.id, s.location_id, s.start_time, s.end_time, l.name AS location_name
      FROM base_schedule s
@@ -115,13 +107,18 @@ router.post('/', auth, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Both shifts must be in the same calendar week' });
 
   try {
-    const targetRes = await db.query('SELECT id, name FROM users WHERE id=$1 AND role=$2', [target_user_id, 'user']);
+    const targetRes = await db.query('SELECT id, name FROM users WHERE id=$1 AND role=$2 AND is_active=TRUE', [target_user_id, 'user']);
     if (!targetRes.rows.length)
       return res.status(404).json({ ok: false, error: 'Target employee not found' });
     const targetName = targetRes.rows[0].name;
 
-    const myShift   = await resolveShift(req.userId,     my_date);
-    const theirShift = await resolveShift(target_user_id, their_date);
+    const [myAnchor, theirAnchor] = await Promise.all([
+      getUserAnchor(req.userId),
+      getUserAnchor(target_user_id),
+    ]);
+
+    const myShift    = await resolveShift(req.userId,     my_date,    myAnchor);
+    const theirShift = await resolveShift(target_user_id, their_date, theirAnchor);
 
     if (!myShift)
       return res.status(404).json({ ok: false, error: 'You have no shift on that date' });
@@ -258,21 +255,27 @@ router.patch('/:id/respond', auth, async (req, res) => {
       await db.query('DELETE FROM shifts WHERE id=$1', [swap.target_shift_id]);
     }
 
-    // Create swapped shifts
+    // Create swapped shifts and capture their IDs for exact undo later
     // Initiator now works target's slot
-    await db.query(
+    const iSwap = await db.query(
       `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
-       VALUES ($1,$2,$3,$4,$5,'Swapped shift')`,
+       VALUES ($1,$2,$3,$4,$5,'Swapped shift') RETURNING id`,
       [swap.initiator_id, swap.target_location_id, tDate, swap.target_start, swap.target_end]
     );
     // Target now works initiator's slot
-    await db.query(
+    const tSwap = await db.query(
       `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
-       VALUES ($1,$2,$3,$4,$5,'Swapped shift')`,
+       VALUES ($1,$2,$3,$4,$5,'Swapped shift') RETURNING id`,
       [swap.target_id, swap.initiator_location_id, iDate, swap.initiator_start, swap.initiator_end]
     );
 
-    await db.query(`UPDATE shift_swaps SET status='accepted', responded_at=NOW() WHERE id=$1`, [req.params.id]);
+    await db.query(
+      `UPDATE shift_swaps
+       SET status='accepted', responded_at=NOW(),
+           swapped_initiator_shift_id=$2, swapped_target_shift_id=$3
+       WHERE id=$1`,
+      [req.params.id, iSwap.rows[0].id, tSwap.rows[0].id]
+    );
 
     // Notify initiator
     await notifyUsers([swap.initiator_id], 'Swap Accepted!',
@@ -346,15 +349,11 @@ router.patch('/:id/cancel', auth, async (req, res) => {
     const iDate = String(swap.initiator_date).slice(0, 10);
     const tDate = String(swap.target_date).slice(0, 10);
 
-    // Remove the swapped concrete shifts
-    await db.query(
-      `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
-      [swap.initiator_id, swap.target_location_id, tDate]
-    );
-    await db.query(
-      `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
-      [swap.target_id, swap.initiator_location_id, iDate]
-    );
+    // Remove the swapped concrete shifts by their stored IDs (exact, no string matching)
+    if (swap.swapped_initiator_shift_id)
+      await db.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_initiator_shift_id]);
+    if (swap.swapped_target_shift_id)
+      await db.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_target_shift_id]);
 
     // Restore initiator's original slot
     if (swap.initiator_is_base) {
@@ -408,7 +407,7 @@ router.patch('/:id/cancel', auth, async (req, res) => {
 router.get('/users', auth, async (req, res) => {
   try {
     const r = await db.query(
-      `SELECT id, name FROM users WHERE role='user' AND id!=$1 ORDER BY name ASC`,
+      `SELECT id, name FROM users WHERE role='user' AND is_active=TRUE AND id!=$1 ORDER BY name ASC`,
       [req.userId]
     );
     res.json({ ok: true, users: r.rows });

@@ -1,7 +1,8 @@
 const express = require('express');
-const router  = express.Router();
+const router  = require('express').Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
+const { DEFAULT_ANCHOR } = require('../utils/ppAnchor');
 
 // GET /api/settings
 router.get('/', auth, async (req, res) => {
@@ -10,7 +11,7 @@ router.get('/', auth, async (req, res) => {
       'SELECT * FROM user_settings WHERE user_id=$1', [req.userId]
     );
     if(!result.rows.length)
-      return res.json({ ok:true, settings:{ ot_threshold:40, pp_anchor:'2026-03-22' } });
+      return res.json({ ok:true, settings:{ ot_threshold:40, pp_anchor:DEFAULT_ANCHOR } });
     res.json({ ok: true, settings: result.rows[0] });
   } catch(err) {
     res.status(500).json({ ok: false, error: 'Server error' });
@@ -27,7 +28,7 @@ router.put('/', auth, async (req, res) => {
        ON CONFLICT (user_id) DO UPDATE
        SET ot_threshold=$2, pp_anchor=$3
        RETURNING *`,
-      [req.userId, ot_threshold||40, pp_anchor||'2026-03-22']
+      [req.userId, ot_threshold||40, pp_anchor||DEFAULT_ANCHOR]
     );
     res.json({ ok: true, settings: result.rows[0] });
   } catch(err) {

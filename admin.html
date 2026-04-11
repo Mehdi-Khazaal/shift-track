@@ -714,7 +714,7 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 //  CONFIG
 // ══════════════════════════════
 const API = 'https://shifttrack-api.onrender.com';
-const PP_ANCHOR = '2026-03-22';
+let PP_ANCHOR = '2026-03-22'; // overwritten after login from /api/settings
 const OT_THRESH = 40;
 
 // ══════════════════════════════
@@ -806,6 +806,11 @@ async function loadAll(){
     ]);
     if(usersRes?.ok) allUsers=usersRes.users;
     if(locsRes?.ok)  allLocs=locsRes.locations;
+
+    // Keep admin's pay-period anchor in sync with their personal settings
+    const settingsRes = await apiFetch('/api/settings');
+    if(settingsRes?.ok && settingsRes.settings?.pp_anchor)
+      PP_ANCHOR = settingsRes.settings.pp_anchor.slice(0,10);
 
     // Load shifts + schedule for every user, and suppressed dates
     const suppRes = await apiFetch('/api/admin/suppressed-dates');
@@ -1009,19 +1014,24 @@ function renderUsers(){
 
 function userRowHTML(u){
   const safeName=(u.name||u.email.split('@')[0]).replace(/'/g,"\\'");
-  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)">
+  const inactive = u.is_active === false;
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);${inactive?'opacity:.5':''}">
     <div style="flex:1;min-width:0">
       <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         ${u.name||'—'}
         ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
         ${u.role==='admin'?'<span class="badge admin">admin</span>':''}
+        ${inactive?'<span class="badge" style="background:rgba(255,95,109,.15);color:var(--red);border:1px solid rgba(255,95,109,.3)">inactive</span>':''}
       </div>
       <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
     </div>
     <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-      <button class="btn btn-ghost btn-sm" onclick="openUserDashboard('${u.id}')">View</button>
-      <button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${safeName}')">Schedule</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.email}')">Delete</button>
+      ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openUserDashboard('${u.id}')">View</button>`:''}
+      ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${safeName}')">Schedule</button>`:''}
+      ${inactive
+        ?`<button class="btn btn-ghost btn-sm" onclick="reactivateUser('${u.id}','${safeName}')">Reactivate</button>`
+        :`<button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.id}','${safeName}')">Deactivate</button>`
+      }
     </div>
   </div>`;
 }
@@ -1262,11 +1272,18 @@ function toggleUserDetail(id){
   if(el) el.classList.toggle('open');
 }
 
-async function deleteUser(id,email){
-  if(!confirm(`Delete account for ${email}?\nThis will remove all their shifts and data.`)) return;
-  const res=await apiFetch(`/api/admin/users/${id}`,{method:'DELETE'});
-  if(res?.ok){ await loadAll(); showToast('User deleted'); }
-  else showToast(res?.error||'Failed to delete',true);
+async function deactivateUser(id,name){
+  if(!confirm(`Deactivate ${name}?\n\nThey will no longer be able to log in, but all their shift history will be preserved.`)) return;
+  const res=await apiFetch(`/api/admin/users/${id}/deactivate`,{method:'PATCH'});
+  if(res?.ok){ await loadAll(); showToast('User deactivated'); }
+  else showToast(res?.error||'Failed to deactivate',true);
+}
+
+async function reactivateUser(id,name){
+  if(!confirm(`Reactivate ${name}? They will be able to log in again.`)) return;
+  const res=await apiFetch(`/api/admin/users/${id}/reactivate`,{method:'PATCH'});
+  if(res?.ok){ await loadAll(); showToast('User reactivated'); }
+  else showToast(res?.error||'Failed to reactivate',true);
 }
 
 // ══════════════════════════════

@@ -51,6 +51,9 @@ router.post('/login', async (req, res) => {
     if (!match)
       return res.status(401).json({ ok: false, error: 'Invalid email or password' });
 
+    if (user.is_active === false)
+      return res.status(403).json({ ok: false, error: 'This account has been deactivated. Contact your administrator.' });
+
     const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
     res.json({ ok: true, token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });

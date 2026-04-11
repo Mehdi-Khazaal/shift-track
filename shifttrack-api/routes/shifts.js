@@ -35,6 +35,15 @@ router.post('/', auth, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'location_id, date, start_time, end_time are required' });
 
   try {
+    const overlap = await db.query(
+      `SELECT id FROM shifts
+       WHERE user_id=$1 AND date=$2
+         AND start_time < $4::time AND end_time > $3::time`,
+      [req.userId, date, start_time, end_time]
+    );
+    if (overlap.rows.length)
+      return res.status(409).json({ ok: false, error: 'This shift overlaps an existing one on the same day' });
+
     const result = await db.query(
       `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -55,6 +64,17 @@ router.put('/:id', auth, async (req, res) => {
     const check = await db.query('SELECT open_shift_id FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
     if (!check.rows.length) return res.status(404).json({ ok: false, error: 'Shift not found' });
     if (check.rows[0].open_shift_id) return res.status(403).json({ ok: false, error: 'Awarded shifts cannot be modified' });
+
+    const overlap = await db.query(
+      `SELECT id FROM shifts
+       WHERE user_id=$1 AND date=$2
+         AND start_time < $4::time AND end_time > $3::time
+         AND id != $5`,
+      [req.userId, date, start_time, end_time, req.params.id]
+    );
+    if (overlap.rows.length)
+      return res.status(409).json({ ok: false, error: 'This shift overlaps an existing one on the same day' });
+
     const result = await db.query(
       `UPDATE shifts SET location_id=$1, date=$2, start_time=$3, end_time=$4, notes=$5
        WHERE id=$6 AND user_id=$7 RETURNING *`,

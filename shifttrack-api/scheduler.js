@@ -1,8 +1,7 @@
 const cron    = require('node-cron');
 const webpush = require('./utils/webpush');
 const db      = require('./db/index');
-
-const ANCHOR = new Date('2026-03-22T00:00:00Z');
+const { getUserAnchor, payWeekOf } = require('./utils/ppAnchor');
 
 // Runs every minute — sends push notifications when it's time
 cron.schedule('* * * * *', async () => {
@@ -21,7 +20,7 @@ cron.schedule('* * * * *', async () => {
       // local time = UTC - tz_offset minutes  →  UTC = local + tz_offset minutes
       const tzOffset  = Number(sub.tz_offset || 0); // minutes
 
-      const [shiftsRes, baseRes, suppressedRes] = await Promise.all([
+      const [shiftsRes, baseRes, suppressedRes, anchorStr] = await Promise.all([
         db.query(
           `SELECT s.*, l.name as location_name
            FROM shifts s JOIN locations l ON s.location_id = l.id
@@ -38,6 +37,7 @@ cron.schedule('* * * * *', async () => {
           `SELECT date FROM base_suppressed_dates WHERE user_id = $1`,
           [sub.user_id]
         ),
+        getUserAnchor(sub.user_id),
       ]);
       const suppressedDates = new Set(suppressedRes.rows.map(r => r.date));
 
@@ -61,9 +61,7 @@ cron.schedule('* * * * *', async () => {
         const localD    = new Date(localNowMs + offset * 86400000);
         const dayStr    = localD.toISOString().slice(0, 10); // local date
         const dayOfWeek = localD.getUTCDay();                // local day-of-week
-        const diffDays  = Math.round((localD - ANCHOR) / 86400000);
-        const inPeriod  = ((diffDays % 14) + 14) % 14;
-        const weekNum   = inPeriod < 7 ? 1 : 2;
+        const weekNum   = payWeekOf(dayStr, anchorStr);
 
         for (const b of baseRes.rows) {
           if (Number(b.week) === weekNum && b.day_of_week === dayOfWeek && !suppressedDates.has(dayStr)) {

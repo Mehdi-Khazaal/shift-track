@@ -12,15 +12,15 @@ function adminOnly(req, res, next){
   next();
 }
 
-// GET /api/admin/users — all users with basic info
+// GET /api/admin/users — all users (active and inactive) with basic info
 router.get('/users', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id, u.email, u.name, u.role, u.position, u.location_id, u.hire_date, u.created_at,
+      `SELECT u.id, u.email, u.name, u.role, u.position, u.location_id, u.hire_date, u.is_active, u.created_at,
               l.name AS location_name, l.color AS location_color
        FROM users u
        LEFT JOIN locations l ON u.location_id = l.id
-       ORDER BY u.created_at ASC`
+       ORDER BY u.is_active DESC, u.created_at ASC`
     );
     res.json({ ok:true, users: result.rows });
   } catch(err) {
@@ -62,12 +62,30 @@ router.get('/users/:id/schedule', auth, adminOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/users/:id
-router.delete('/users/:id', auth, adminOnly, async (req, res) => {
+// PATCH /api/admin/users/:id/deactivate — soft-delete (preserves all history)
+router.patch('/users/:id/deactivate', auth, adminOnly, async (req, res) => {
   if(req.params.id === req.userId)
-    return res.status(400).json({ ok:false, error:"Can't delete yourself" });
+    return res.status(400).json({ ok:false, error:"Can't deactivate your own account" });
   try {
-    await db.query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    const result = await db.query(
+      `UPDATE users SET is_active=FALSE WHERE id=$1 RETURNING id`,
+      [req.params.id]
+    );
+    if(!result.rows.length) return res.status(404).json({ ok:false, error:'User not found' });
+    res.json({ ok:true });
+  } catch(err) {
+    res.status(500).json({ ok:false, error:'Server error' });
+  }
+});
+
+// PATCH /api/admin/users/:id/reactivate
+router.patch('/users/:id/reactivate', auth, adminOnly, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users SET is_active=TRUE WHERE id=$1 RETURNING id`,
+      [req.params.id]
+    );
+    if(!result.rows.length) return res.status(404).json({ ok:false, error:'User not found' });
     res.json({ ok:true });
   } catch(err) {
     res.status(500).json({ ok:false, error:'Server error' });
@@ -261,15 +279,11 @@ router.patch('/swaps/:id/reject', auth, adminOnly, async (req, res) => {
       const iDate = swap.initiator_date;
       const tDate = swap.target_date;
 
-      // Remove the concrete swapped shifts that were created
-      await db.query(
-        `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
-        [swap.initiator_id, swap.target_location_id, tDate]
-      );
-      await db.query(
-        `DELETE FROM shifts WHERE user_id=$1 AND location_id=$2 AND date=$3 AND notes='Swapped shift'`,
-        [swap.target_id, swap.initiator_location_id, iDate]
-      );
+      // Remove the concrete swapped shifts by their stored IDs (exact, no string matching)
+      if (swap.swapped_initiator_shift_id)
+        await db.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_initiator_shift_id]);
+      if (swap.swapped_target_shift_id)
+        await db.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_target_shift_id]);
 
       // Restore initiator's original slot
       if (swap.initiator_is_base) {
