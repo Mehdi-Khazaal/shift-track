@@ -2635,18 +2635,33 @@ function updateLiveTicker() {
   if (!card || !cache.loaded) return;
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+  const yesterdayStr = `${yest.getFullYear()}-${String(yest.getMonth()+1).padStart(2,'0')}-${String(yest.getDate()).padStart(2,'0')}`;
   const nowMins = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  // Regular active check: shift started today and is currently in progress (handles overnight spans before midnight too)
   function isActive(s) {
     const st = parseTimeString(s.start), en = parseTimeString(s.end);
     if (!st || !en) return false;
     let em = en.total; if (em <= st.total) em += 1440;
     return nowMins >= st.total && nowMins < em;
   }
-  const activeLogged = getShifts().filter(s => s.date === todayStr && isActive(s));
+  // Overnight check: shift started yesterday and wraps past midnight — we're in the post-midnight portion
+  function isOvernightCarryover(s) {
+    const st = parseTimeString(s.start), en = parseTimeString(s.end);
+    if (!st || !en) return false;
+    if (en.total >= st.total) return false; // not an overnight shift
+    return nowMins < en.total; // currently in the post-midnight window
+  }
+  const activeLogged = getShifts().filter(s =>
+    (s.date === todayStr && isActive(s)) ||
+    (s.date === yesterdayStr && isOvernightCarryover(s))
+  );
   const wkD = weekDatesForDate(todayStr);
-  const activeBase = getBase()
-    .map(b => ({ ...b, date: baseToDate(b, wkD) }))
-    .filter(b => b.date === todayStr && isActive(b));
+  const wkDYest = weekDatesForDate(yesterdayStr);
+  const activeBase = [
+    ...getBase().map(b => ({ ...b, date: baseToDate(b, wkD) })).filter(b => b.date === todayStr && isActive(b)),
+    ...getBase().map(b => ({ ...b, date: baseToDate(b, wkDYest) })).filter(b => b.date === yesterdayStr && isOvernightCarryover(b)),
+  ];
   const all = [...activeLogged, ...activeBase];
   if (!all.length) { card.style.display = 'none'; return; }
 
@@ -2658,10 +2673,21 @@ function updateLiveTicker() {
   const weekShifts = [...allWeekLogged, ...allWeekBase]
     .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
 
+  // Compute elapsed hours correctly for overnight shifts that carry into today
+  function elapsedHoursForActive(active) {
+    const st = parseTimeString(active.start);
+    if (!st) return 0;
+    if (active.date === yesterdayStr && nowMins < st.total) {
+      // Post-midnight portion of an overnight shift: time since midnight + time from start to midnight
+      return (1440 - st.total + nowMins) / 60;
+    }
+    return Math.max(0, nowMins - st.total) / 60;
+  }
+
   let earned = 0;
   for (const active of all) {
     const rate = getLocById(active.locationId)?.rate || 0;
-    const elapsedHrs = Math.max(0, nowMins - parseTimeString(active.start).total) / 60;
+    const elapsedHrs = elapsedHoursForActive(active);
 
     // Sum reg hours from all shifts that started strictly before this active shift
     let regBefore = 0;
@@ -2680,7 +2706,7 @@ function updateLiveTicker() {
   const otActive = all.some(s => {
     const rate = getLocById(s.locationId)?.rate || 0;
     if (!rate) return false;
-    const elapsedHrs = Math.max(0, nowMins - parseTimeString(s.start).total) / 60;
+    const elapsedHrs = elapsedHoursForActive(s);
     let regBefore = 0;
     for (const w of weekShifts) {
       if (w.date > s.date || (w.date === s.date && w.start >= s.start)) continue;
