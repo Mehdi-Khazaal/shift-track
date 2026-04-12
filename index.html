@@ -86,6 +86,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .badge.reg{background:var(--bg4);color:var(--muted);}
 .badge.mix{background:rgba(245,166,35,.1);color:var(--orange);border:1px solid rgba(245,166,35,.2);}
 .badge.live{background:rgba(46,204,138,.15);color:var(--green);border:1px solid rgba(46,204,138,.3);animation:livepulse 1.8s ease-in-out infinite;}
+.badge.swap{background:rgba(91,143,255,.12);color:var(--accent);border:1px solid rgba(91,143,255,.3);}
+.cancel-swap-btn{margin-top:6px;display:inline-block;font-size:11px;font-family:var(--mono);color:var(--red,#ff5f6d);background:rgba(255,95,109,.08);border:1px solid rgba(255,95,109,.25);border-radius:6px;padding:3px 10px;cursor:pointer;letter-spacing:.3px;}
 @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.5}}
 .shift-item.done{opacity:.45;}
 .shift-item.done .shift-right .pay{color:var(--muted);}
@@ -1495,9 +1497,15 @@ function renderDash(){
     listEl.innerHTML='<div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>';
     return;
   }
+  const myId=getUser()?.id;
+  const dashSwapDateMap={};
+  swapsData.filter(sw=>sw.status==='accepted').forEach(sw=>{
+    const myDate=sw.initiator_id===myId?(sw.target_date||'').slice(0,10):(sw.initiator_date||'').slice(0,10);
+    dashSwapDateMap[myDate]=sw.id;
+  });
   listEl.innerHTML=sorted.map(s=>{
     const key=s.id+(s.isBase?'_b':'');
-    return shiftItemHTML(s,bdMap[key]);
+    return shiftItemHTML(s,bdMap[key],(!s.isBase&&dashSwapDateMap[s.date])||null);
   }).join('');
 }
 
@@ -1540,9 +1548,15 @@ function renderAllShifts(){
 
     const isCurrentWk=key===currentWkKey;
     const weekLabel=`${fmt(wkD[0])} – ${fmt(wkD[6])}`;
+    const myId=getUser()?.id;
+    const acceptedSwapDateMap={};
+    swapsData.filter(sw=>sw.status==='accepted').forEach(sw=>{
+      const myDate=sw.initiator_id===myId?(sw.target_date||'').slice(0,10):(sw.initiator_date||'').slice(0,10);
+      acceptedSwapDateMap[myDate]=sw.id;
+    });
     const shiftsHtml=wkShifts.map(s=>{
       const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
-      return shiftItemHTML({...s,isBase:false},bd);
+      return shiftItemHTML({...s,isBase:false},bd,acceptedSwapDateMap[s.date]||null);
     }).join('');
 
     return `<div class="wk-group" id="wkg-${key}">
@@ -1568,7 +1582,7 @@ function toggleWeek(key){
 // ═══════════════════════════════════════
 //  SHIFT ITEM HTML
 // ═══════════════════════════════════════
-function shiftItemHTML(s,bd){
+function shiftItemHTML(s,bd,swapId=null){
   const loc  =getLocById(s.locationId);
   const color=loc?.color||'#888';
   const name =loc?.name||'Unknown';
@@ -1595,6 +1609,7 @@ function shiftItemHTML(s,bd){
 
   let badge='';
   if(shiftState==='active')     badge='<span class="badge live">● LIVE</span>';
+  else if(swapId)               badge='<span class="badge swap">⇄ SWAPPED</span>';
   else if(s.isBase)             badge='<span class="badge base">BASE</span>';
   else if(otHrs>=hrs)           badge='<span class="badge ot">OT</span>';
   else if(otHrs>0)              badge='<span class="badge mix">REG+OT</span>';
@@ -1611,6 +1626,10 @@ function shiftItemHTML(s,bd){
 
   const itemClass=`shift-item${s.isBase?' base-item':''}${shiftState==='done'?' done':''}${shiftState==='active'?' active-shift':''}`;
 
+  const cancelSwapBtn = swapId
+    ? `<button class="cancel-swap-btn" onclick="event.stopPropagation();cancelAcceptedSwap('${swapId}')">Cancel swap</button>`
+    : '';
+
   return `<div class="${itemClass}" onclick="${click}">
     <div class="shift-dot${s.isBase?' sq':''}" style="background:${color}"></div>
     <div class="shift-info">
@@ -1620,6 +1639,7 @@ function shiftItemHTML(s,bd){
       ${awardedTag}
       ${s.notes?`<div class="notes-chip">${s.notes.slice(0,40)}${s.notes.length>40?'…':''}</div>`:''}
       ${adminNotesChip}
+      ${cancelSwapBtn}
     </div>
     <div class="shift-right">
       <div class="pay">${payStr}</div>
@@ -2397,7 +2417,7 @@ function renderSwaps(){
   const list    = document.getElementById('swap-requests-list');
   const myId    = getUser()?.id;
 
-  const active = swapsData.filter(s => s.status === 'pending' || s.status === 'accepted');
+  const active = swapsData.filter(s => s.status === 'pending');
   if(!active.length){ section.style.display = 'none'; return; }
   section.style.display = '';
 
@@ -2411,11 +2431,7 @@ function renderSwaps(){
     const tColor = s.target_location_color    || '#888';
 
     let actionsHtml;
-    if(s.status === 'accepted'){
-      actionsHtml = `
-        <span class="badge" style="background:rgba(46,204,138,.12);color:var(--green);border:1px solid rgba(46,204,138,.3)">✓ Accepted</span>
-        <button class="btn btn-ghost btn-sm" onclick="cancelAcceptedSwap('${s.id}')">Cancel Swap</button>`;
-    } else if(iAmInitiator){
+    if(iAmInitiator){
       actionsHtml = `
         <span class="badge" style="background:rgba(91,143,255,.1);color:var(--accent);border:1px solid rgba(91,143,255,.3)">Awaiting ${s.target_name}</span>
         <button class="btn btn-ghost btn-sm" onclick="cancelSwap('${s.id}')">Cancel</button>`;
