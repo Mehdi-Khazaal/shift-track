@@ -2633,13 +2633,48 @@ function updateLiveTicker() {
     .filter(b => b.date === todayStr && isActive(b));
   const all = [...activeLogged, ...activeBase];
   if (!all.length) { card.style.display = 'none'; return; }
+
+  // Build full week shift list to correctly compute how many reg hours were
+  // already consumed before the active shift started (for OT calculation)
+  const thresh = getSettings().otThreshold;
+  const allWeekLogged = getShifts().filter(s => wkD.map(d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`).includes(s.date));
+  const allWeekBase = getBase().map(b => ({ ...b, date: baseToDate(b, wkD), isBase: true })).filter(b => b.date !== null);
+  const weekShifts = [...allWeekLogged, ...allWeekBase]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+
   let earned = 0;
-  for (const s of all) {
-    const rate = getLocById(s.locationId)?.rate || 0;
-    const elapsed = Math.max(0, nowMins - parseTimeString(s.start).total) / 60;
-    earned += elapsed * rate;
+  for (const active of all) {
+    const rate = getLocById(active.locationId)?.rate || 0;
+    const elapsedHrs = Math.max(0, nowMins - parseTimeString(active.start).total) / 60;
+
+    // Sum reg hours from all shifts that started strictly before this active shift
+    let regBefore = 0;
+    for (const s of weekShifts) {
+      if (s.date > active.date || (s.date === active.date && s.start >= active.start)) continue;
+      const hrs = shiftHours(s.start, s.end);
+      regBefore = Math.min(thresh, regBefore + hrs);
+    }
+
+    const regRemaining = Math.max(0, thresh - regBefore);
+    const regElapsed = Math.min(elapsedHrs, regRemaining);
+    const otElapsed  = Math.max(0, elapsedHrs - regElapsed);
+    earned += regElapsed * rate + otElapsed * rate * 1.5;
   }
-  const sub = all.map(s => { const loc = getLocById(s.locationId); return `${loc?.name||'?'} · ${fmtTime(s.start)} – ${fmtTime(s.end)}`; }).join(' / ');
+
+  const otActive = all.some(s => {
+    const rate = getLocById(s.locationId)?.rate || 0;
+    if (!rate) return false;
+    const elapsedHrs = Math.max(0, nowMins - parseTimeString(s.start).total) / 60;
+    let regBefore = 0;
+    for (const w of weekShifts) {
+      if (w.date > s.date || (w.date === s.date && w.start >= s.start)) continue;
+      regBefore = Math.min(thresh, regBefore + shiftHours(w.start, w.end));
+    }
+    return elapsedHrs > Math.max(0, thresh - regBefore);
+  });
+
+  const sub = all.map(s => { const loc = getLocById(s.locationId); return `${loc?.name||'?'} · ${fmtTime(s.start)} – ${fmtTime(s.end)}`; }).join(' / ')
+    + (otActive ? ' · OT rate active' : '');
   card.style.display = 'block';
   document.getElementById('ticker-amount').textContent = '$' + earned.toFixed(2);
   document.getElementById('ticker-sub').textContent = sub;
