@@ -885,10 +885,20 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
           <option value="">— select a shift —</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Hours Requested</label>
-        <input type="number" id="lr-hours" min="0.5" max="24" step="0.5" value="8" placeholder="8" onchange="updateLeaveCalc()"/>
+      <div id="lr-time-group" style="display:none;margin-bottom:14px">
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1;margin-bottom:8px">
+            <label>From</label>
+            <input type="time" id="lr-from" onchange="onLeaveTimeChange()"/>
+          </div>
+          <div class="form-group" style="flex:1;margin-bottom:8px">
+            <label>To</label>
+            <input type="time" id="lr-to" onchange="onLeaveTimeChange()"/>
+          </div>
+        </div>
+        <div id="lr-hrs-display" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted);padding:6px 0 2px">—</div>
       </div>
+      <input type="hidden" id="lr-hours" value=""/>
       <div id="lr-balance-preview" style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:var(--mono);font-size:12px;margin-bottom:14px;display:none">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--muted)">Available balance</span><span id="lr-avail">—</span></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">After request</span><span id="lr-after">—</span></div>
@@ -1745,17 +1755,20 @@ function shiftItemHTML(s,bd,swapId=null){
   const ptoLeave    =leaves.find(r=>r.type_name==='pto');
   const sickLeave   =leaves.find(r=>r.type_name==='sick_time');
 
-  // Leave note row
+  // Leave note row — show time range if partial, otherwise just hours
+  function leaveRange(r){
+    const h=parseFloat(r.hours_requested).toFixed(1);
+    return r.start_time&&r.end_time
+      ?`${fmtTime(String(r.start_time).slice(0,5))}–${fmtTime(String(r.end_time).slice(0,5))} (${h}h)`
+      :`${h}h`;
+  }
   let leaveNote='';
   if(callOffLeave){
-    const coH=parseFloat(callOffLeave.hours_requested).toFixed(1);
-    leaveNote=`<div class="ot-note" style="color:#f87171">✗ Call Off · ${coH}h unpaid</div>`;
+    leaveNote=`<div class="ot-note" style="color:#f87171">✗ Call Off · ${leaveRange(callOffLeave)} unpaid</div>`;
   } else if(ptoLeave){
-    const pH=parseFloat(ptoLeave.hours_requested).toFixed(1);
-    leaveNote=`<div class="ot-note" style="color:#60a5fa">🌴 PTO · ${pH}h</div>`;
+    leaveNote=`<div class="ot-note" style="color:#60a5fa">🌴 PTO · ${leaveRange(ptoLeave)}</div>`;
   } else if(sickLeave){
-    const sH=parseFloat(sickLeave.hours_requested).toFixed(1);
-    leaveNote=`<div class="ot-note" style="color:#a78bfa">🤒 Sick · ${sH}h</div>`;
+    leaveNote=`<div class="ot-note" style="color:#a78bfa">🤒 Sick · ${leaveRange(sickLeave)}</div>`;
   }
 
   // Hours display: "3.0/8.0 hrs" for partial call-off, "0.0 hrs" for full
@@ -3075,11 +3088,15 @@ function renderLeaveRequests() {
     if (r.status === 'pending')
       cancelBtn = `<button onclick="cancelLeaveRequest('${r.id}')" style="margin-top:6px;font-size:10px;font-family:var(--mono);color:var(--red);background:rgba(255,95,109,.07);border:1px solid rgba(255,95,109,.25);border-radius:5px;padding:2px 9px;cursor:pointer">Cancel</button>`;
 
+    const timeRange = r.start_time && r.end_time
+      ? `<div style="font-size:10px;color:var(--dim);font-family:var(--mono);margin-top:2px">${fmtTime(String(r.start_time).slice(0,5))} – ${fmtTime(String(r.end_time).slice(0,5))}</div>`
+      : '';
     return `<div class="leave-req-item">
       <div class="leave-req-dot" style="background:${color}"></div>
       <div class="leave-req-info">
         <div class="leave-req-type">${r.type_label}</div>
         <div class="leave-req-meta">${fmtDate}${r.notes ? ' · ' + r.notes : ''}</div>
+        ${timeRange}
         ${extra}
         ${cancelBtn}
       </div>
@@ -3100,6 +3117,16 @@ function getLeaveForDate(dateStr) {
 
 // ── Open leave request sheet ──────────────────────────────────────────────────
 function openLeaveRequest(prefillDate = '') {
+  // Reset form state first
+  document.getElementById('lr-time-group').style.display = 'none';
+  document.getElementById('lr-hrs-display').textContent = '—';
+  document.getElementById('lr-hrs-display').style.color = 'var(--muted)';
+  document.getElementById('lr-hours').value = '';
+  document.getElementById('lr-notes').value = '';
+  document.getElementById('leave-req-error').style.display = 'none';
+  document.getElementById('lr-submit-btn').disabled = false;
+  document.getElementById('lr-submit-btn').textContent = 'Submit Request';
+
   // Build shift selector from logged + base schedule (upcoming only)
   const sel = document.getElementById('lr-shift');
   const today = toYMD(new Date());
@@ -3139,11 +3166,6 @@ function openLeaveRequest(prefillDate = '') {
     if (opt) { sel.value = prefillDate; onLeaveShiftSelect(); }
   }
 
-  document.getElementById('lr-hours').value = '8';
-  document.getElementById('lr-notes').value = '';
-  document.getElementById('leave-req-error').style.display = 'none';
-  document.getElementById('lr-submit-btn').disabled = false;
-  document.getElementById('lr-submit-btn').textContent = 'Submit Request';
   updateLeaveCalc();
   openSheet('sheet-leave-request');
 }
@@ -3151,13 +3173,54 @@ function openLeaveRequest(prefillDate = '') {
 function onLeaveShiftSelect() {
   const sel = document.getElementById('lr-shift');
   const opt = sel.options[sel.selectedIndex];
-  if (!opt || !opt.value) return;
+  const grp = document.getElementById('lr-time-group');
+
+  if (!opt || !opt.value) {
+    grp.style.display = 'none';
+    document.getElementById('lr-hours').value = '';
+    updateLeaveCalc();
+    return;
+  }
+
   const start = opt.dataset.start;
   const end   = opt.dataset.end;
   if (start && end) {
-    const hrs = shiftHours(start, end);
-    document.getElementById('lr-hours').value = hrs > 0 ? hrs.toFixed(1) : '8';
+    document.getElementById('lr-from').value = start;
+    document.getElementById('lr-to').value   = end;
+    grp.style.display = 'block';
+    onLeaveTimeChange(); // computes hours + calls updateLeaveCalc
+  } else {
+    grp.style.display = 'none';
+    updateLeaveCalc();
   }
+}
+
+function onLeaveTimeChange() {
+  const from  = document.getElementById('lr-from').value;
+  const to    = document.getElementById('lr-to').value;
+  const disp  = document.getElementById('lr-hrs-display');
+  const hrsEl = document.getElementById('lr-hours');
+
+  if (!from || !to) {
+    disp.textContent = '—';
+    disp.style.color = 'var(--muted)';
+    hrsEl.value = '';
+    updateLeaveCalc();
+    return;
+  }
+
+  const hrs = shiftHours(from, to);
+  if (hrs <= 0) {
+    disp.textContent = 'End time must be after start time';
+    disp.style.color = 'var(--red)';
+    hrsEl.value = '';
+    updateLeaveCalc();
+    return;
+  }
+
+  disp.textContent = `${fmtTime(from)} – ${fmtTime(to)} · ${hrs.toFixed(1)} hrs`;
+  disp.style.color = 'var(--muted)';
+  hrsEl.value = hrs;
   updateLeaveCalc();
 }
 
@@ -3189,20 +3252,22 @@ async function submitLeaveRequest() {
   const type  = document.getElementById('lr-type').value;
   const date  = document.getElementById('lr-shift').value;
   const hrs   = parseFloat(document.getElementById('lr-hours').value);
+  const from  = document.getElementById('lr-from').value || null;
+  const to    = document.getElementById('lr-to').value   || null;
   const notes = document.getElementById('lr-notes').value.trim();
   const errEl = document.getElementById('leave-req-error');
   const btn   = document.getElementById('lr-submit-btn');
 
   errEl.style.display = 'none';
   if (!date) { errEl.textContent = 'Please select a shift.'; errEl.style.display = 'block'; return; }
-  if (!hrs || hrs <= 0) { errEl.textContent = 'Please enter valid hours.'; errEl.style.display = 'block'; return; }
+  if (!hrs || hrs <= 0) { errEl.textContent = 'Select a valid time range.'; errEl.style.display = 'block'; return; }
 
   btn.disabled = true;
   btn.textContent = 'Submitting…';
 
   const res = await apiFetch('/api/leave/requests', {
     method: 'POST',
-    body: { leave_type_name: type, date, hours_requested: hrs, notes }
+    body: { leave_type_name: type, date, hours_requested: hrs, notes, start_time: from, end_time: to }
   });
 
   btn.disabled = false;

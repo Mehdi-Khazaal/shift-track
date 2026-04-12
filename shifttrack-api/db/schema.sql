@@ -144,8 +144,13 @@ CREATE TABLE IF NOT EXISTS leave_requests (
   reviewed_by       UUID REFERENCES users(id) ON DELETE SET NULL,
   reviewed_at       TIMESTAMPTZ,
   sick_hours_applied NUMERIC(5,2) NOT NULL DEFAULT 0,  -- for call_offs partially covered by sick time
+  start_time        TIME,                              -- partial-shift leave window start (null = full shift)
+  end_time          TIME,                              -- partial-shift leave window end
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
+-- Migration for existing deployments:
+-- ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS start_time TIME;
+-- ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS end_time TIME;
 
 -- Sick time payout audit log (auto-triggered on anniversary)
 CREATE TABLE IF NOT EXISTS sick_time_payouts (

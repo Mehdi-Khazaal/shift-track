@@ -182,7 +182,7 @@ router.get('/requests', auth, async (req, res) => {
 
 // ── POST /api/leave/requests ── employee submits leave request ───────────────
 router.post('/requests', auth, async (req, res) => {
-  const { leave_type_name, date, hours_requested, notes } = req.body;
+  const { leave_type_name, date, hours_requested, notes, start_time, end_time } = req.body;
   if (!leave_type_name || !date || !hours_requested)
     return res.status(400).json({ ok: false, error: 'leave_type_name, date, hours_requested required' });
 
@@ -230,17 +230,19 @@ router.post('/requests', auth, async (req, res) => {
       return res.status(409).json({ ok: false, error: 'A request for that date already exists' });
 
     const result = await db.query(
-      `INSERT INTO leave_requests (user_id, leave_type_id, date, hours_requested, notes, submitted_by)
-       VALUES ($1,$2,$3,$4,$5,$1) RETURNING *`,
-      [req.userId, lt.id, date, hrs, notes || '']
+      `INSERT INTO leave_requests
+         (user_id, leave_type_id, date, hours_requested, notes, submitted_by, start_time, end_time)
+       VALUES ($1,$2,$3,$4,$5,$1,$6,$7) RETURNING *`,
+      [req.userId, lt.id, date, hrs, notes || '', start_time || null, end_time || null]
     );
 
     // Notify all admins
     const empRes = await db.query('SELECT name FROM users WHERE id=$1', [req.userId]);
     const empName = empRes.rows[0]?.name || 'An employee';
+    const timeStr = start_time && end_time ? ` (${start_time}–${end_time})` : '';
     await sendPushToAllAdmins(
       'Leave Request Submitted',
-      `${empName} requested ${hrs} hrs of ${lt.label} on ${date}`
+      `${empName} requested ${hrs} hrs of ${lt.label} on ${date}${timeStr}`
     );
 
     res.status(201).json({ ok: true, request: result.rows[0] });
