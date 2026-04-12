@@ -875,11 +875,14 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
         <select id="lr-type" onchange="updateLeaveCalc()">
           <option value="pto">PTO</option>
           <option value="sick_time">Sick Time</option>
+          <option value="call_off">Call Off</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Date</label>
-        <input type="date" id="lr-date" onchange="updateLeaveCalc()"/>
+        <label>Shift</label>
+        <select id="lr-shift" onchange="onLeaveShiftSelect()">
+          <option value="">— select a shift —</option>
+        </select>
       </div>
       <div class="form-group">
         <label>Hours Requested</label>
@@ -3052,7 +3055,45 @@ function getLeaveForDate(dateStr) {
 
 // ── Open leave request sheet ──────────────────────────────────────────────────
 function openLeaveRequest(prefillDate = '') {
-  document.getElementById('lr-date').value = prefillDate || new Date().toISOString().slice(0,10);
+  // Build shift selector from logged + base schedule (upcoming only)
+  const sel = document.getElementById('lr-shift');
+  const today = toYMD(new Date());
+  const fmtD = d => { const x = new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
+  const entries = [];
+  const seenDates = new Set();
+
+  // Logged shifts — future or today
+  getShifts().filter(s => s.date >= today).forEach(s => {
+    seenDates.add(s.date);
+    const loc = getLocById(s.locationId);
+    entries.push({ date: s.date, start: s.start, end: s.end, label: `${fmtD(s.date)} · ${loc?.name||'?'} · ${fmtTime(s.start)}–${fmtTime(s.end)}` });
+  });
+
+  // Base schedule — current week + next 5 weeks
+  for (let w = 0; w < 6; w++) {
+    const refDate = new Date();
+    refDate.setDate(refDate.getDate() + w * 7);
+    const weekDates = weekDatesForDate(toYMD(refDate));
+    getBase().forEach(b => {
+      const date = baseToDate(b, weekDates);
+      if (!date || date < today || seenDates.has(date)) return;
+      seenDates.add(date);
+      const loc = getLocById(b.locationId);
+      entries.push({ date, start: b.start, end: b.end, label: `${fmtD(date)} · ${loc?.name||'?'} · ${fmtTime(b.start)}–${fmtTime(b.end)} (schedule)` });
+    });
+  }
+
+  entries.sort((a, b) => a.date.localeCompare(b.date));
+
+  sel.innerHTML = '<option value="">— select a shift —</option>' +
+    entries.map(e => `<option value="${e.date}" data-start="${e.start}" data-end="${e.end}">${e.label}</option>`).join('');
+
+  // Pre-select if a date was passed (e.g. from day sheet)
+  if (prefillDate) {
+    const opt = [...sel.options].find(o => o.value === prefillDate);
+    if (opt) { sel.value = prefillDate; onLeaveShiftSelect(); }
+  }
+
   document.getElementById('lr-hours').value = '8';
   document.getElementById('lr-notes').value = '';
   document.getElementById('leave-req-error').style.display = 'none';
@@ -3060,6 +3101,19 @@ function openLeaveRequest(prefillDate = '') {
   document.getElementById('lr-submit-btn').textContent = 'Submit Request';
   updateLeaveCalc();
   openSheet('sheet-leave-request');
+}
+
+function onLeaveShiftSelect() {
+  const sel = document.getElementById('lr-shift');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  const start = opt.dataset.start;
+  const end   = opt.dataset.end;
+  if (start && end) {
+    const hrs = shiftHours(start, end);
+    document.getElementById('lr-hours').value = hrs > 0 ? hrs.toFixed(1) : '8';
+  }
+  updateLeaveCalc();
 }
 
 function openLeaveRequestForDay() {
@@ -3071,6 +3125,9 @@ function updateLeaveCalc() {
   const type  = document.getElementById('lr-type').value;
   const hrs   = parseFloat(document.getElementById('lr-hours').value) || 0;
   const prev  = document.getElementById('lr-balance-preview');
+
+  // Call-off: no balance to preview — admin decides sick time later
+  if (type === 'call_off') { prev.style.display = 'none'; return; }
 
   const bal = leaveCache.balances.find(b => b.type_name === type);
   if (!bal || !hrs) { prev.style.display = 'none'; return; }
@@ -3085,14 +3142,15 @@ function updateLeaveCalc() {
 
 async function submitLeaveRequest() {
   const type  = document.getElementById('lr-type').value;
-  const date  = document.getElementById('lr-date').value;
+  const date  = document.getElementById('lr-shift').value;
   const hrs   = parseFloat(document.getElementById('lr-hours').value);
   const notes = document.getElementById('lr-notes').value.trim();
   const errEl = document.getElementById('leave-req-error');
   const btn   = document.getElementById('lr-submit-btn');
 
   errEl.style.display = 'none';
-  if (!date || !hrs || hrs <= 0) { errEl.textContent = 'Please fill in all fields.'; errEl.style.display = 'block'; return; }
+  if (!date) { errEl.textContent = 'Please select a shift.'; errEl.style.display = 'block'; return; }
+  if (!hrs || hrs <= 0) { errEl.textContent = 'Please enter valid hours.'; errEl.style.display = 'block'; return; }
 
   btn.disabled = true;
   btn.textContent = 'Submitting…';

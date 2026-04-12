@@ -190,42 +190,34 @@ router.post('/requests', auth, async (req, res) => {
   if (isNaN(hrs) || hrs <= 0)
     return res.status(400).json({ ok: false, error: 'Invalid hours_requested' });
 
-  if (leave_type_name === 'call_off')
-    return res.status(400).json({ ok: false, error: 'Call offs are submitted differently' });
-
   try {
     // Get leave type
     const ltRes = await db.query('SELECT * FROM leave_types WHERE name=$1', [leave_type_name]);
     if (!ltRes.rows.length) return res.status(400).json({ ok: false, error: 'Invalid leave type' });
     const lt = ltRes.rows[0];
 
-    // Verify user has a shift on that date
-    const shiftCheck = await db.query(
-      'SELECT id FROM shifts WHERE user_id=$1 AND date=$2 LIMIT 1',
-      [req.userId, date]
-    );
-    if (!shiftCheck.rows.length)
-      return res.status(400).json({ ok: false, error: 'You must have a logged shift on that date to request leave' });
-
     // Ensure balance exists
     const userRes = await db.query('SELECT hire_date FROM users WHERE id=$1', [req.userId]);
     if (userRes.rows[0].hire_date)
       await initUserLeaveBalances(req.userId, userRes.rows[0].hire_date);
 
-    // Check balance
-    const balRes = await db.query(
-      'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
-      [req.userId, lt.id]
-    );
-    if (!balRes.rows.length)
-      return res.status(400).json({ ok: false, error: 'No leave balance found' });
+    // For call_off, no balance check — admin handles sick time deduction later
+    if (leave_type_name !== 'call_off') {
+      // Check balance
+      const balRes = await db.query(
+        'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
+        [req.userId, lt.id]
+      );
+      if (!balRes.rows.length)
+        return res.status(400).json({ ok: false, error: 'No leave balance found' });
 
-    const available = availableHours(balRes.rows[0]);
-    if (hrs > available)
-      return res.status(400).json({
-        ok: false,
-        error: `Insufficient ${lt.label} balance. Available: ${available.toFixed(2)} hrs`
-      });
+      const available = availableHours(balRes.rows[0]);
+      if (hrs > available)
+        return res.status(400).json({
+          ok: false,
+          error: `Insufficient ${lt.label} balance. Available: ${available.toFixed(2)} hrs`
+        });
+    }
 
     // Check no duplicate pending/approved request on same date for same type
     const dupCheck = await db.query(
