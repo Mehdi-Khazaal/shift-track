@@ -2594,8 +2594,8 @@ let _tickerInterval = null;
 function updateLiveTicker() {
   const card = document.getElementById('live-ticker-card');
   if (!card || !cache.loaded) return;
-  const todayStr = toYMD(new Date());
   const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const nowMins = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
   function isActive(s) {
     const st = parseTimeString(s.start), en = parseTimeString(s.end);
