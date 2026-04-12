@@ -2,6 +2,7 @@ const cron    = require('node-cron');
 const webpush = require('./utils/webpush');
 const db      = require('./db/index');
 const { getUserAnchor, payWeekOf } = require('./utils/ppAnchor');
+const { getPtoAnnualHours, availableHours } = require('./routes/leave');
 
 // Runs every minute — sends push notifications when it's time
 cron.schedule('* * * * *', async () => {
@@ -174,3 +175,151 @@ cron.schedule('* * * * *', async () => {
 });
 
 console.log('[scheduler] Notification cron started (every minute)');
+
+// ── Daily at 00:05 — PTO accrual + anniversary processing ────────────────────
+cron.schedule('5 0 * * *', async () => {
+  try {
+    const typesRes = await db.query('SELECT * FROM leave_types');
+    const ptoType  = typesRes.rows.find(t => t.name === 'pto');
+    const sickType = typesRes.rows.find(t => t.name === 'sick_time');
+    if (!ptoType || !sickType) return;
+
+    // Get all active users with a hire_date
+    const users = await db.query(
+      `SELECT id, hire_date, name, location_id FROM users
+       WHERE is_active=TRUE AND hire_date IS NOT NULL`
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10);
+
+    for (const user of users.rows) {
+      try {
+        const hire = new Date(user.hire_date);
+        hire.setHours(0, 0, 0, 0);
+
+        // ── Anniversary detection ─────────────────────────────────────────
+        // An anniversary occurs when today's month/day matches hire month/day
+        const isAnniversary = (
+          today.getMonth()  === hire.getMonth() &&
+          today.getDate()   === hire.getDate()  &&
+          today.getFullYear() > hire.getFullYear()
+        );
+
+        if (isAnniversary) {
+          const completedYears = today.getFullYear() - hire.getFullYear();
+
+          // ── PTO anniversary reset ─────────────────────────────────────
+          const ptoBal = await db.query(
+            'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
+            [user.id, ptoType.id]
+          );
+
+          if (ptoBal.rows.length) {
+            const old = ptoBal.rows[0];
+            const currentAvailable = availableHours(old);
+            const carryover = Math.min(currentAvailable, 40);
+
+            // Reset: carryover ≤40, accrued=0, used=0 for new year
+            await db.query(
+              `UPDATE leave_balances
+               SET accrued_hours=0, used_hours=0, carried_over_hours=$1,
+                   anniversary_year_start=$2
+               WHERE user_id=$3 AND leave_type_id=$4`,
+              [carryover, todayStr, user.id, ptoType.id]
+            );
+          } else {
+            // First balance record
+            await db.query(
+              `INSERT INTO leave_balances
+                 (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
+               VALUES ($1,$2,0,0,0,$3)
+               ON CONFLICT (user_id, leave_type_id) DO NOTHING`,
+              [user.id, ptoType.id, todayStr]
+            );
+          }
+
+          // ── Sick time anniversary: payout unused + reset ──────────────
+          const sickBal = await db.query(
+            'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
+            [user.id, sickType.id]
+          );
+
+          if (sickBal.rows.length) {
+            const sickAvail = availableHours(sickBal.rows[0]);
+            if (sickAvail > 0) {
+              // Determine hourly rate from user's location
+              let rate = 0;
+              if (user.location_id) {
+                const locRes = await db.query('SELECT rate FROM locations WHERE id=$1', [user.location_id]);
+                if (locRes.rows.length) rate = parseFloat(locRes.rows[0].rate);
+              }
+              const payout = sickAvail * rate;
+
+              await db.query(
+                `INSERT INTO sick_time_payouts (user_id, hours_paid, hourly_rate, total_amount)
+                 VALUES ($1,$2,$3,$4)`,
+                [user.id, sickAvail, rate, payout]
+              );
+              console.log(`[scheduler] Sick payout: ${user.name} — ${sickAvail} hrs @ $${rate} = $${payout.toFixed(2)}`);
+            }
+
+            // Reset sick balance for new year
+            await db.query(
+              `UPDATE leave_balances
+               SET accrued_hours=40, used_hours=0, carried_over_hours=0,
+                   anniversary_year_start=$1
+               WHERE user_id=$2 AND leave_type_id=$3`,
+              [todayStr, user.id, sickType.id]
+            );
+          } else {
+            // First sick balance
+            await db.query(
+              `INSERT INTO leave_balances
+                 (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
+               VALUES ($1,$2,40,0,0,$3)
+               ON CONFLICT (user_id, leave_type_id) DO NOTHING`,
+              [user.id, sickType.id, todayStr]
+            );
+          }
+
+          console.log(`[scheduler] Anniversary processed for ${user.name} (year ${completedYears})`);
+        }
+
+        // ── Daily PTO accrual (skip year-0 employees) ─────────────────────
+        const msPerYear = 365.25 * 86400000;
+        const totalYears = (today - hire) / msPerYear;
+        if (totalYears < 1) continue; // no PTO in first year
+
+        // Find which anniversary year we're in right now
+        let anniversaryYearStart = new Date(hire);
+        while (true) {
+          const next = new Date(anniversaryYearStart);
+          next.setFullYear(next.getFullYear() + 1);
+          if (next > today) break;
+          anniversaryYearStart = next;
+        }
+        const completedYearsAtAy = Math.floor((anniversaryYearStart - hire) / msPerYear);
+        const annualHours = getPtoAnnualHours(completedYearsAtAy);
+        const dailyAccrual = annualHours / 365;
+
+        if (dailyAccrual > 0) {
+          await db.query(
+            `UPDATE leave_balances
+             SET accrued_hours = accrued_hours + $1
+             WHERE user_id=$2 AND leave_type_id=$3`,
+            [Math.round(dailyAccrual * 100) / 100, user.id, ptoType.id]
+          );
+        }
+
+      } catch (userErr) {
+        console.error(`[scheduler] Leave processing error for user ${user.id}:`, userErr.message);
+      }
+    }
+    console.log(`[scheduler] Daily leave accrual complete — ${users.rows.length} users processed`);
+  } catch (err) {
+    console.error('[scheduler] Daily leave cron error:', err.message);
+  }
+});
+console.log('[scheduler] Daily leave accrual cron started (00:05 daily)');

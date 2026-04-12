@@ -99,3 +99,60 @@ CREATE TABLE IF NOT EXISTS notification_log (
   body     TEXT NOT NULL,
   sent_at  TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Leave Management ─────────────────────────────────────────────────────────
+
+-- Leave type catalog (seeded: pto, sick_time, call_off)
+CREATE TABLE IF NOT EXISTS leave_types (
+  id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name  TEXT NOT NULL UNIQUE,  -- 'pto' | 'sick_time' | 'call_off'
+  label TEXT NOT NULL,         -- display label
+  color TEXT NOT NULL DEFAULT '#5b8fff'
+);
+
+-- Seed leave types (idempotent)
+INSERT INTO leave_types (name, label, color) VALUES
+  ('pto',       'PTO',       '#a78bfa'),
+  ('sick_time', 'Sick Time', '#2ecc8a'),
+  ('call_off',  'Call Off',  '#ff5f6d')
+ON CONFLICT (name) DO NOTHING;
+
+-- Per-user leave balance (one row per user per type, rolling anniversary year)
+CREATE TABLE IF NOT EXISTS leave_balances (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  leave_type_id          UUID NOT NULL REFERENCES leave_types(id) ON DELETE CASCADE,
+  accrued_hours          NUMERIC(8,2) NOT NULL DEFAULT 0,   -- earned this anniversary year
+  used_hours             NUMERIC(8,2) NOT NULL DEFAULT 0,   -- consumed by approved requests
+  carried_over_hours     NUMERIC(8,2) NOT NULL DEFAULT 0,   -- brought from last year (PTO only, max 40)
+  anniversary_year_start DATE NOT NULL,                     -- start of current anniversary year
+  UNIQUE(user_id, leave_type_id)
+);
+
+-- Leave requests (employee-submitted or admin-assigned)
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  leave_type_id     UUID NOT NULL REFERENCES leave_types(id) ON DELETE CASCADE,
+  date              DATE NOT NULL,
+  hours_requested   NUMERIC(5,2) NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','approved','denied','cancelled')),
+  denial_reason     TEXT DEFAULT '',
+  notes             TEXT DEFAULT '',
+  submitted_by      UUID REFERENCES users(id) ON DELETE SET NULL, -- null=employee; admin_id=admin-created
+  reviewed_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at       TIMESTAMPTZ,
+  sick_hours_applied NUMERIC(5,2) NOT NULL DEFAULT 0,  -- for call_offs partially covered by sick time
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Sick time payout audit log (auto-triggered on anniversary)
+CREATE TABLE IF NOT EXISTS sick_time_payouts (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  hours_paid   NUMERIC(8,2) NOT NULL,
+  hourly_rate  NUMERIC(10,2) NOT NULL,
+  total_amount NUMERIC(10,2) NOT NULL,
+  paid_at      TIMESTAMPTZ DEFAULT NOW()
+);

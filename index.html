@@ -309,6 +309,50 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 .login-footer{font-size:11px;font-family:var(--mono);color:var(--dim);margin-top:28px;text-align:center;line-height:1.8;}
 .user-chip{display:flex;align-items:center;gap:6px;}
 .user-name{font-size:12px;font-family:var(--mono);color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ── Time Off / Leave ── */
+.leave-tabs{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:0 12px 12px;}
+.leave-tab{flex:1;text-align:center;padding:7px 0;font-size:11px;font-family:var(--mono);font-weight:600;letter-spacing:.4px;color:var(--muted);cursor:pointer;transition:all .15s;}
+.leave-tab.active{background:var(--accent);color:#fff;}
+.leave-panel{display:none;}
+.leave-panel.active{display:block;}
+.balance-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin:0 16px 12px;position:relative;overflow:hidden;}
+.balance-card::before{content:'';position:absolute;inset:0;background:linear-gradient(145deg,rgba(255,255,255,.02) 0%,transparent 60%);pointer-events:none;}
+.balance-card.pto{border-color:rgba(167,139,250,.3);background:linear-gradient(145deg,rgba(167,139,250,.07),rgba(91,143,255,.03));}
+.balance-card.sick{border-color:rgba(46,204,138,.3);background:linear-gradient(145deg,rgba(46,204,138,.07),rgba(29,233,182,.02));}
+.balance-card.calloff{border-color:rgba(255,95,109,.3);background:linear-gradient(145deg,rgba(255,95,109,.07),transparent);}
+.bal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.bal-type{font-size:11px;font-family:var(--mono);font-weight:600;letter-spacing:1px;text-transform:uppercase;}
+.bal-type.pto{color:#a78bfa;}
+.bal-type.sick{color:var(--green);}
+.bal-type.calloff{color:var(--red);}
+.bal-available{font-size:28px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;line-height:1;}
+.bal-available.pto{background:linear-gradient(135deg,#a78bfa,#5b8fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.bal-available.sick{color:var(--green);}
+.bal-sub{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px;}
+.bal-bar-wrap{background:var(--bg4);border-radius:99px;height:5px;overflow:hidden;margin-top:12px;}
+.bal-bar-fill{height:100%;border-radius:99px;transition:width .6s cubic-bezier(.4,0,.2,1);}
+.bal-bar-fill.pto{background:linear-gradient(90deg,#a78bfa,#5b8fff);}
+.bal-bar-fill.sick{background:linear-gradient(90deg,var(--green),#1de9b6);}
+.leave-req-item{display:flex;align-items:flex-start;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);}
+.leave-req-item:last-child{border-bottom:none;}
+.leave-req-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px;}
+.leave-req-info{flex:1;min-width:0;}
+.leave-req-type{font-size:13px;font-weight:600;}
+.leave-req-meta{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
+.leave-req-right{text-align:right;flex-shrink:0;}
+.leave-req-hrs{font-size:13px;font-weight:700;font-family:var(--mono);}
+.leave-req-status{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:99px;margin-top:3px;display:inline-block;}
+.leave-req-status.pending{background:rgba(245,166,35,.12);color:var(--orange);}
+.leave-req-status.approved{background:rgba(46,204,138,.12);color:var(--green);}
+.leave-req-status.denied{background:rgba(255,95,109,.12);color:var(--red);}
+.leave-req-status.cancelled{background:var(--bg4);color:var(--dim);}
+.badge.leave-pto{background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.3);}
+.badge.leave-sick{background:rgba(46,204,138,.12);color:var(--green);border:1px solid rgba(46,204,138,.3);}
+.badge.leave-calloff{background:rgba(255,95,109,.12);color:var(--red);border:1px solid rgba(255,95,109,.3);}
+.cal-cell.leave-pto{background:rgba(167,139,250,.1)!important;}
+.cal-cell.leave-sick{background:rgba(46,204,138,.08)!important;}
+.cal-cell.leave-calloff{background:rgba(255,95,109,.08)!important;}
 </style>
 </head>
 <body>
@@ -510,11 +554,11 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   </div>
 </div>
 
-<!-- CALENDAR -->
+<!-- CALENDAR / TIME OFF -->
 <div id="screen-calendar" class="screen">
   <div class="top-bar">
     <h1 id="cal-title">April 2026</h1>
-    <div style="display:flex;align-items:center;gap:8px">
+    <div id="cal-controls" style="display:flex;align-items:center;gap:8px">
       <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">
         <div id="btn-month" class="view-tog active" onclick="setCalView('month')">Mo</div>
         <div id="btn-week"  class="view-tog"        onclick="setCalView('week')">Wk</div>
@@ -525,9 +569,40 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
       </div>
     </div>
   </div>
-  <div class="cal-dow-row"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
-  <div id="cal-month-view"><div id="cal-month-grid" class="cal-month-grid"></div></div>
-  <div id="cal-week-view" style="display:none"><div id="cal-week-grid"></div></div>
+
+  <!-- Sub-tabs -->
+  <div class="leave-tabs">
+    <div class="leave-tab active" id="subtab-cal" onclick="switchLeaveSubtab('cal')">Calendar</div>
+    <div class="leave-tab" id="subtab-timeoff" onclick="switchLeaveSubtab('timeoff')">Time Off</div>
+  </div>
+
+  <!-- Calendar sub-panel -->
+  <div id="lp-cal" class="leave-panel active">
+    <div class="cal-dow-row"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+    <div id="cal-month-view"><div id="cal-month-grid" class="cal-month-grid"></div></div>
+    <div id="cal-week-view" style="display:none"><div id="cal-week-grid"></div></div>
+  </div>
+
+  <!-- Time Off sub-panel -->
+  <div id="lp-timeoff" class="leave-panel">
+    <div style="padding:0 16px 12px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;color:var(--muted);font-family:var(--mono)">Your leave balances &amp; requests</div>
+      <button onclick="openLeaveRequest()" style="font-size:11px;font-family:var(--mono);font-weight:600;color:#fff;background:var(--accent-gradient);border:none;border-radius:8px;padding:6px 14px;cursor:pointer;letter-spacing:.3px">＋ Request Leave</button>
+    </div>
+
+    <!-- Balance cards -->
+    <div id="leave-balances-wrap">
+      <div class="empty-state" style="padding:20px 0"><div style="font-size:12px">Loading balances…</div></div>
+    </div>
+
+    <!-- Request history -->
+    <div class="section-hd" style="margin-top:4px"><h2>My Requests</h2></div>
+    <div class="card" style="padding:0">
+      <div id="leave-requests-list">
+        <div class="empty-state"><div class="icon" style="font-size:28px">🌴</div>No leave requests yet.</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- HISTORY -->
@@ -551,8 +626,8 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
     Shifts
   </div>
   <div class="nav-item" data-screen="calendar" onclick="switchScreen('calendar',this)">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-    Calendar
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M8 6H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4M8 6h8"/><circle cx="12" cy="14" r="3"/><path d="M12 11v3l2 1"/></svg>
+    Time Off
   </div>
   <div class="nav-item" data-screen="history" onclick="switchScreen('history',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -686,9 +761,10 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
     </div>
     <div class="sheet-body" style="padding-top:8px">
       <div id="day-shift-list"></div>
-      <div style="margin-top:14px;display:flex;gap:8px">
-        <button class="btn btn-primary" id="day-add-btn" onclick="openAddShiftForDay()" style="flex:1">＋ Log shift</button>
-        <button class="btn btn-ghost" onclick="openMarkUnavail()" style="flex:1">✗ Mark unavailable</button>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="day-add-btn" onclick="openAddShiftForDay()" style="flex:1;min-width:120px">＋ Log shift</button>
+        <button class="btn btn-ghost" onclick="openMarkUnavail()" style="flex:1;min-width:120px">✗ Unavailable</button>
+        <button class="btn btn-ghost" id="day-leave-btn" onclick="openLeaveRequestForDay()" style="flex:1;min-width:120px;border-color:rgba(167,139,250,.4);color:#a78bfa">🌴 Request Leave</button>
       </div>
       <div id="day-summary" style="margin-top:14px;background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-family:var(--mono);font-size:13px;display:none">
         <div class="calc-row"><span style="color:var(--muted)">Total hours</span><span id="day-total-hrs">—</span></div>
@@ -784,6 +860,44 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
   </div>
 </div>
 
+<!-- SHEET: REQUEST LEAVE -->
+<div class="sheet-overlay" id="sheet-leave-request">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Request Time Off</h2>
+      <button class="close-btn" onclick="closeSheet('sheet-leave-request')">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div id="leave-req-error" style="display:none;background:var(--red-bg);border:1px solid rgba(255,95,109,.4);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;font-family:var(--mono);color:var(--red);margin-bottom:14px;line-height:1.5"></div>
+      <div class="form-group">
+        <label>Leave Type</label>
+        <select id="lr-type" onchange="updateLeaveCalc()">
+          <option value="pto">PTO</option>
+          <option value="sick_time">Sick Time</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="lr-date" onchange="updateLeaveCalc()"/>
+      </div>
+      <div class="form-group">
+        <label>Hours Requested</label>
+        <input type="number" id="lr-hours" min="0.5" max="24" step="0.5" value="8" placeholder="8" onchange="updateLeaveCalc()"/>
+      </div>
+      <div id="lr-balance-preview" style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:var(--mono);font-size:12px;margin-bottom:14px;display:none">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--muted)">Available balance</span><span id="lr-avail">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">After request</span><span id="lr-after">—</span></div>
+      </div>
+      <div class="form-group">
+        <label>Note <span style="color:var(--dim);font-size:10px">(optional)</span></label>
+        <textarea id="lr-notes" placeholder="Reason or additional details…" style="min-height:60px"></textarea>
+      </div>
+      <button class="btn btn-primary" id="lr-submit-btn" onclick="submitLeaveRequest()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
 <!-- PDF PRINT LAYOUT (hidden — shown only when printing) -->
 <div id="pdf-print">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;border-bottom:2px solid #111;padding-bottom:12px">
@@ -871,6 +985,8 @@ function enterApp(user){
   const av=document.getElementById('dash-user-avatar');
   if(av) av.textContent=(user.name||user.email).split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase().slice(0,2);
   loadAllData();
+  // Pre-warm leave cache in background (runs after login regardless of retry state)
+  setTimeout(()=>{ loadLeaveData().catch(()=>{}); }, 2000);
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1179,7 +1295,10 @@ function switchScreen(name,el){
   updateNavIndicator();
   if(name==='dash')     renderDash();
   if(name==='log')      { renderAllShifts(); loadOpenShifts(); }
-  if(name==='calendar') renderCalendar();
+  if(name==='calendar') {
+    if(activeLeaveSubtab === 'cal') renderCalendar();
+    else loadLeaveData();
+  }
   if(name==='history')  renderHistory();
   if(name==='settings'){ renderSettings(); loadNotifStatus(); }
 }
@@ -2796,6 +2915,234 @@ function updateNavIndicator() {
   ind.style.left = (rect.left - navRect.left) + 'px';
   ind.style.width = rect.width + 'px';
 }
+
+// ═══════════════════════════════════════
+//  LEAVE / TIME OFF
+// ═══════════════════════════════════════
+const leaveCache = { balances: [], requests: [], loaded: false };
+
+// ── Sub-tab switcher ─────────────────────────────────────────────────────────
+let activeLeaveSubtab = 'cal';
+function switchLeaveSubtab(tab) {
+  activeLeaveSubtab = tab;
+  document.getElementById('subtab-cal').classList.toggle('active', tab === 'cal');
+  document.getElementById('subtab-timeoff').classList.toggle('active', tab === 'timeoff');
+  document.getElementById('lp-cal').classList.toggle('active', tab === 'cal');
+  document.getElementById('lp-timeoff').classList.toggle('active', tab === 'timeoff');
+  // Show/hide calendar nav controls
+  document.getElementById('cal-controls').style.display = tab === 'cal' ? 'flex' : 'none';
+  document.getElementById('cal-title').style.display    = tab === 'cal' ? ''     : 'none';
+  if (tab === 'cal') {
+    renderCalendar();
+  } else {
+    loadLeaveData();
+  }
+}
+
+// ── Load leave data from API ─────────────────────────────────────────────────
+async function loadLeaveData() {
+  const [balRes, reqRes] = await Promise.all([
+    apiFetch('/api/leave/balances'),
+    apiFetch('/api/leave/requests'),
+  ]);
+  if (balRes?.ok) leaveCache.balances  = balRes.balances;
+  if (reqRes?.ok) leaveCache.requests  = reqRes.requests;
+  leaveCache.loaded = true;
+  renderLeaveTab();
+}
+
+// ── Render leave dashboard ────────────────────────────────────────────────────
+function renderLeaveTab() {
+  renderLeaveBalances();
+  renderLeaveRequests();
+}
+
+function renderLeaveBalances() {
+  const wrap = document.getElementById('leave-balances-wrap');
+  if (!wrap) return;
+  const bals = leaveCache.balances.filter(b => b.type_name !== 'call_off');
+  if (!bals.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:20px 0"><div style="font-size:12px">No balances found — contact your admin.</div></div>';
+    return;
+  }
+
+  wrap.innerHTML = bals.map(b => {
+    const avail   = parseFloat(b.available_hours) || 0;
+    const accrued = parseFloat(b.accrued_hours)   || 0;
+    const carryover = parseFloat(b.carried_over_hours) || 0;
+    const used    = parseFloat(b.used_hours)       || 0;
+    const total   = b.type_name === 'sick_time' ? 40 : (accrued + carryover);
+    const pct     = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+    const typeCls = b.type_name === 'pto' ? 'pto' : 'sick';
+
+    let subText = '';
+    if (b.type_name === 'pto') {
+      subText = `${accrued.toFixed(2)} accrued`;
+      if (carryover > 0) subText += ` · ${carryover.toFixed(2)} carried over`;
+      subText += ` · ${used.toFixed(2)} used`;
+    } else {
+      subText = `${used.toFixed(2)} hrs used of 40 this anniversary year`;
+    }
+
+    return `<div class="balance-card ${typeCls}">
+      <div class="bal-header">
+        <div class="bal-type ${typeCls}">${b.type_label}</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--muted)">${b.anniversary_year_start ? 'Since ' + b.anniversary_year_start.slice(0,10) : ''}</div>
+      </div>
+      <div class="bal-available ${typeCls}">${avail.toFixed(2)}</div>
+      <div class="bal-sub">hrs available ${b.type_name === 'sick_time' ? '· Unused hrs paid out on anniversary' : ''}</div>
+      <div style="font-size:10px;color:var(--dim);font-family:var(--mono);margin-top:3px">${subText}</div>
+      <div class="bal-bar-wrap">
+        <div class="bal-bar-fill ${typeCls}" style="width:${pct.toFixed(1)}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderLeaveRequests() {
+  const listEl = document.getElementById('leave-requests-list');
+  if (!listEl) return;
+  const reqs = leaveCache.requests;
+  if (!reqs.length) {
+    listEl.innerHTML = '<div class="empty-state"><div class="icon" style="font-size:28px">🌴</div>No leave requests yet.</div>';
+    return;
+  }
+
+  listEl.innerHTML = reqs.map(r => {
+    const dateStr = r.date ? String(r.date).slice(0,10) : '—';
+    const d = new Date(dateStr + 'T12:00:00');
+    const fmtDate = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+    const color = r.type_color || '#888';
+    let extra = '';
+    if (r.status === 'denied' && r.denial_reason)
+      extra = `<div style="font-size:10px;color:var(--red);font-family:var(--mono);margin-top:3px">Reason: ${r.denial_reason}</div>`;
+    if (r.status === 'approved' && r.type_name === 'call_off' && parseFloat(r.sick_hours_applied) > 0)
+      extra = `<div style="font-size:10px;color:var(--green);font-family:var(--mono);margin-top:3px">${parseFloat(r.sick_hours_applied).toFixed(2)} hrs sick time applied</div>`;
+
+    let cancelBtn = '';
+    if (r.status === 'pending')
+      cancelBtn = `<button onclick="cancelLeaveRequest('${r.id}')" style="margin-top:6px;font-size:10px;font-family:var(--mono);color:var(--red);background:rgba(255,95,109,.07);border:1px solid rgba(255,95,109,.25);border-radius:5px;padding:2px 9px;cursor:pointer">Cancel</button>`;
+
+    return `<div class="leave-req-item">
+      <div class="leave-req-dot" style="background:${color}"></div>
+      <div class="leave-req-info">
+        <div class="leave-req-type">${r.type_label}</div>
+        <div class="leave-req-meta">${fmtDate}${r.notes ? ' · ' + r.notes : ''}</div>
+        ${extra}
+        ${cancelBtn}
+      </div>
+      <div class="leave-req-right">
+        <div class="leave-req-hrs">${parseFloat(r.hours_requested).toFixed(1)} hrs</div>
+        <div class="leave-req-status ${r.status}">${r.status}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Get approved leave for a date (for calendar + shift badges) ───────────────
+function getLeaveForDate(dateStr) {
+  return leaveCache.requests.filter(r =>
+    r.status === 'approved' && r.date && String(r.date).slice(0,10) === dateStr
+  );
+}
+
+// ── Open leave request sheet ──────────────────────────────────────────────────
+function openLeaveRequest(prefillDate = '') {
+  document.getElementById('lr-date').value = prefillDate || new Date().toISOString().slice(0,10);
+  document.getElementById('lr-hours').value = '8';
+  document.getElementById('lr-notes').value = '';
+  document.getElementById('leave-req-error').style.display = 'none';
+  document.getElementById('lr-submit-btn').disabled = false;
+  document.getElementById('lr-submit-btn').textContent = 'Submit Request';
+  updateLeaveCalc();
+  openSheet('sheet-leave-request');
+}
+
+function openLeaveRequestForDay() {
+  closeSheet('sheet-day');
+  setTimeout(() => openLeaveRequest(daySheetDate), 200);
+}
+
+function updateLeaveCalc() {
+  const type  = document.getElementById('lr-type').value;
+  const hrs   = parseFloat(document.getElementById('lr-hours').value) || 0;
+  const prev  = document.getElementById('lr-balance-preview');
+
+  const bal = leaveCache.balances.find(b => b.type_name === type);
+  if (!bal || !hrs) { prev.style.display = 'none'; return; }
+
+  const avail = parseFloat(bal.available_hours) || 0;
+  const after  = avail - hrs;
+  document.getElementById('lr-avail').textContent = avail.toFixed(2) + ' hrs';
+  document.getElementById('lr-after').textContent = after.toFixed(2) + ' hrs';
+  document.getElementById('lr-after').style.color = after < 0 ? 'var(--red)' : 'var(--green)';
+  prev.style.display = 'block';
+}
+
+async function submitLeaveRequest() {
+  const type  = document.getElementById('lr-type').value;
+  const date  = document.getElementById('lr-date').value;
+  const hrs   = parseFloat(document.getElementById('lr-hours').value);
+  const notes = document.getElementById('lr-notes').value.trim();
+  const errEl = document.getElementById('leave-req-error');
+  const btn   = document.getElementById('lr-submit-btn');
+
+  errEl.style.display = 'none';
+  if (!date || !hrs || hrs <= 0) { errEl.textContent = 'Please fill in all fields.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const res = await apiFetch('/api/leave/requests', {
+    method: 'POST',
+    body: { leave_type_name: type, date, hours_requested: hrs, notes }
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Submit Request';
+
+  if (!res?.ok) {
+    errEl.textContent = res?.error || 'Failed to submit request.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  closeSheet('sheet-leave-request');
+  showToast('Leave request submitted ✓');
+  await loadLeaveData();
+  renderCalendar(); // refresh calendar leave indicators
+}
+
+async function cancelLeaveRequest(id) {
+  const res = await apiFetch(`/api/leave/requests/${id}/cancel`, { method: 'PATCH' });
+  if (!res?.ok) { showToast(res?.error || 'Failed to cancel', true); return; }
+  showToast('Request cancelled');
+  await loadLeaveData();
+  renderCalendar();
+}
+
+// ── Patch renderCalendar to add leave indicators ──────────────────────────────
+// Patch renderCalMonth to show leave overlay on cells
+const _origRenderCalMonth = renderCalMonth;
+function renderCalMonth() {
+  // call original first, then patch in leave classes
+  _origRenderCalMonth();
+  document.querySelectorAll('.cal-month-grid .cal-cell').forEach(cell => {
+    const onclick = cell.getAttribute('onclick') || '';
+    const match = onclick.match(/'(\d{4}-\d{2}-\d{2})'/);
+    if (!match) return;
+    const dateStr = match[1];
+    const leaves = getLeaveForDate(dateStr);
+    if (leaves.length) {
+      const lt = leaves[0];
+      const cls = lt.type_name === 'pto' ? 'leave-pto' : lt.type_name === 'sick_time' ? 'leave-sick' : 'leave-calloff';
+      cell.classList.add(cls);
+    }
+  });
+}
+
+// leave data is loaded lazily when the Time Off subtab is opened,
+// and pre-warmed in the background after login via enterApp().
 
 // ═══════════════════════════════════════
 //  INIT

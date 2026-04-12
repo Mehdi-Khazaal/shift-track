@@ -339,6 +339,7 @@ tbody tr{animation:rowIn .2s ease both;}
     <div class="tab" onclick="switchTab('openshifts',this)">Open Shifts</div>
     <div class="tab" onclick="switchTab('notify',this)">Notify</div>
     <div class="tab" onclick="switchTab('swaps',this)">Swaps</div>
+    <div class="tab" id="tab-leave-btn" onclick="switchTab('leave',this)">Leave <span id="leave-pending-badge" style="display:none;background:var(--red);color:#fff;border-radius:99px;font-size:9px;padding:1px 5px;margin-left:4px;font-family:var(--mono);vertical-align:middle"></span></div>
   </div>
 
   <div class="content">
@@ -527,6 +528,78 @@ tbody tr{animation:rowIn .2s ease both;}
       <!-- Active open shifts list -->
       <div class="section-label" style="margin-bottom:12px">Active &amp; Recent</div>
       <div id="os-list"><div class="empty">No open shifts posted yet</div></div>
+    </div>
+
+    <!-- LEAVE -->
+    <div class="panel" id="panel-leave">
+      <div class="sec-hd">
+        <div><h2>Leave Management</h2><p>Approve or deny requests · assign call-offs · view employee balances</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="loadLeavePanel()">↻ Refresh</button>
+      </div>
+
+      <!-- Pending requests queue -->
+      <div class="section-label">Pending Requests</div>
+      <div id="leave-pending-list" style="margin-bottom:28px"><div class="empty">Loading…</div></div>
+
+      <!-- Deny modal trigger is handled inline — denial reason modal below -->
+
+      <!-- Create Call-Off -->
+      <div class="section-label">Record a Call-Off</div>
+      <div class="card" style="max-width:540px;margin-bottom:28px">
+        <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:14px;line-height:1.5">
+          Use this when an employee calls in by phone. You can optionally apply available sick time.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:2;min-width:160px">
+            <label>Employee</label>
+            <select id="co-user"></select>
+          </div>
+          <div class="form-group" style="flex:1;min-width:120px">
+            <label>Date</label>
+            <input type="date" id="co-date"/>
+          </div>
+          <div class="form-group" style="flex:1;min-width:90px">
+            <label>Hours</label>
+            <input type="number" id="co-hours" min="0.5" max="24" step="0.5" value="8"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;justify-content:space-between">
+            <span>Apply Sick Time (if available)</span>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="co-sick" style="width:16px;height:16px;accent-color:var(--accent)"/>
+              <span style="font-size:11px;font-family:var(--mono);color:var(--muted)">Yes — deduct from sick balance</span>
+            </label>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Note <span style="color:var(--dim);font-size:9px">(optional)</span></label>
+          <input type="text" id="co-notes" placeholder="Called in sick, no show, etc." maxlength="200"/>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="submitCallOff()">Record Call-Off</button>
+        <div id="co-result" style="margin-top:10px;font-size:12px;font-family:var(--mono);display:none"></div>
+      </div>
+
+      <!-- All requests (filterable) -->
+      <div class="section-label">All Leave Requests</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <select id="leave-filter-status" onchange="loadLeaveAll()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 12px;outline:none">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="denied">Denied</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select id="leave-filter-user" onchange="loadLeaveAll()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 12px;outline:none">
+          <option value="">All employees</option>
+        </select>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Employee</th><th>Type</th><th>Date</th><th>Hours</th><th>Status</th><th>Note / Reason</th><th>Actions</th></tr></thead>
+          <tbody id="leave-all-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- SWAPS -->
@@ -735,6 +808,22 @@ tbody tr{animation:rowIn .2s ease both;}
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('staffing-day-modal').classList.remove('open')">✕</button>
     </div>
     <div id="staffing-day-content"></div>
+  </div>
+</div>
+
+<!-- DENY REASON MODAL -->
+<div class="modal-overlay" id="deny-leave-modal">
+  <div class="modal" style="max-width:420px">
+    <h3>Deny Leave Request</h3>
+    <input type="hidden" id="deny-leave-id"/>
+    <div class="form-group" style="margin-bottom:0">
+      <label>Reason for denial <span style="color:var(--red);font-size:10px">*required</span></label>
+      <textarea class="bc-textarea" id="deny-leave-reason" placeholder="Explain why this request is being denied…" maxlength="300" style="min-height:80px"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('deny-leave-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDenyLeave()">Deny Request</button>
+    </div>
   </div>
 </div>
 
@@ -2166,6 +2255,235 @@ loadAll = async function(){
   toggleBcFilter(); // populate filter dropdown with fresh loc data
   adminInitRipples();
   requestAnimationFrame(updateTabIndicator);
+  refreshLeavePendingBadge();
+};
+
+// ══════════════════════════════
+//  LEAVE MANAGEMENT
+// ══════════════════════════════
+
+async function refreshLeavePendingBadge() {
+  const res = await apiFetch('/api/leave/admin/pending-count');
+  const badge = document.getElementById('leave-pending-badge');
+  if (!badge) return;
+  const count = res?.count || 0;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function loadLeavePanel() {
+  // Populate user filter + call-off employee picker
+  const userSel = document.getElementById('leave-filter-user');
+  const coUser  = document.getElementById('co-user');
+  const active  = allUsers.filter(u => u.is_active !== false);
+  const opts    = active.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  if (userSel) userSel.innerHTML = '<option value="">All employees</option>' + opts;
+  if (coUser)  coUser.innerHTML  = opts;
+  if (!document.getElementById('co-date').value)
+    document.getElementById('co-date').value = new Date().toISOString().slice(0,10);
+
+  await Promise.all([loadLeavePending(), loadLeaveAll()]);
+  refreshLeavePendingBadge();
+}
+
+async function loadLeavePending() {
+  const el = document.getElementById('leave-pending-list');
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  const res = await apiFetch('/api/leave/admin/requests?status=pending');
+  if (!res?.ok) { el.innerHTML = '<div class="empty">Failed to load</div>'; return; }
+  const reqs = res.requests;
+  if (!reqs.length) { el.innerHTML = '<div class="empty">No pending requests 🎉</div>'; return; }
+
+  el.innerHTML = reqs.map(r => {
+    const dateStr = String(r.date).slice(0,10);
+    const d = new Date(dateStr + 'T12:00:00');
+    const fmtDate = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    const color = r.type_color || '#888';
+    return `<div class="card" style="margin-bottom:10px;padding:14px 18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          ${makeAvatar(r.employee_name)}
+          <div>
+            <div style="font-weight:700;font-size:14px">${r.employee_name}</div>
+            <div style="font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:1px">${r.employee_position||'—'}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:99px;background:rgba(${hexToRgb(color)}, .12);color:${color};border:1px solid rgba(${hexToRgb(color)},.3)">${r.type_label}</span>
+          <span style="font-size:12px;font-family:var(--mono);color:var(--text)">${fmtDate}</span>
+          <span style="font-size:13px;font-weight:700;font-family:var(--mono)">${parseFloat(r.hours_requested).toFixed(1)} hrs</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="approveLeave('${r.id}',this)">Approve</button>
+          <button class="btn btn-danger btn-sm" onclick="openDenyLeave('${r.id}')">Deny</button>
+        </div>
+      </div>
+      ${r.notes ? `<div style="margin-top:10px;font-size:12px;font-family:var(--mono);color:var(--muted);padding:8px 10px;background:var(--bg3);border-radius:6px">${r.notes}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function loadLeaveAll() {
+  const tbody = document.getElementById('leave-all-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  const status  = document.getElementById('leave-filter-status')?.value || '';
+  const userId  = document.getElementById('leave-filter-user')?.value || '';
+  let url = '/api/leave/admin/requests';
+  const params = [];
+  if (status)  params.push('status=' + status);
+  if (userId)  params.push('user_id=' + userId);
+  if (params.length) url += '?' + params.join('&');
+
+  const res = await apiFetch(url);
+  if (!res?.ok) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Failed to load</td></tr>'; return; }
+  const reqs = res.requests;
+  if (!reqs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No requests found</td></tr>'; return; }
+
+  const STATUS_COLORS = {
+    pending:   'var(--orange)',
+    approved:  'var(--green)',
+    denied:    'var(--red)',
+    cancelled: 'var(--dim)',
+  };
+
+  tbody.innerHTML = reqs.map(r => {
+    const dateStr = String(r.date).slice(0,10);
+    const d = new Date(dateStr + 'T12:00:00');
+    const fmtDate = d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const color = r.type_color || '#888';
+    const noteOrReason = r.status === 'denied' && r.denial_reason
+      ? `<span style="color:var(--red)">Denied: ${r.denial_reason}</span>`
+      : (r.notes || '—');
+
+    let actions = '';
+    if (r.status === 'approved') {
+      actions = `<button class="btn btn-ghost btn-sm" onclick="reverseLeave('${r.id}',this)" style="font-size:11px;color:var(--muted)">Reverse</button>`;
+      if (r.type_name === 'call_off') {
+        const applied = parseFloat(r.sick_hours_applied) || 0;
+        const hrs = parseFloat(r.hours_requested);
+        if (applied < hrs)
+          actions += ` <button class="btn btn-ghost btn-sm" onclick="convertToSick('${r.id}',this)" style="font-size:11px;color:var(--green)">Apply Sick</button>`;
+      }
+    }
+    if (r.status === 'pending') {
+      actions = `<button class="btn btn-primary btn-sm" onclick="approveLeave('${r.id}',this)">✓</button>
+                 <button class="btn btn-danger btn-sm" onclick="openDenyLeave('${r.id}')">✗</button>`;
+    }
+
+    const sickNote = r.type_name === 'call_off' && parseFloat(r.sick_hours_applied) > 0
+      ? `<br><span style="font-size:10px;color:var(--green)">${parseFloat(r.sick_hours_applied).toFixed(2)} sick hrs applied</span>` : '';
+
+    return `<tr>
+      <td>${makeAvatar(r.employee_name)} <span style="margin-left:6px;font-weight:600">${r.employee_name}</span></td>
+      <td><span style="font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:99px;background:rgba(${hexToRgb(color)},.12);color:${color}">${r.type_label}</span></td>
+      <td class="mono">${fmtDate}</td>
+      <td class="mono">${parseFloat(r.hours_requested).toFixed(1)}</td>
+      <td><span style="font-size:11px;font-family:var(--mono);color:${STATUS_COLORS[r.status]||'var(--muted)'}">${r.status}</span>${sickNote}</td>
+      <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${noteOrReason}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Helper: hex color → "r,g,b" string for rgba()
+function hexToRgb(hex) {
+  hex = hex.replace('#','');
+  if (hex.length === 3) hex = hex.split('').map(c=>c+c).join('');
+  const n = parseInt(hex, 16);
+  return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+}
+
+async function approveLeave(id, btn) {
+  btn.disabled = true;
+  const res = await apiFetch(`/api/leave/requests/${id}/approve`, { method:'PATCH' });
+  if (!res?.ok) { showToast(res?.error || 'Failed to approve', true); btn.disabled=false; return; }
+  showToast('Request approved ✓');
+  await loadLeavePanel();
+}
+
+function openDenyLeave(id) {
+  document.getElementById('deny-leave-id').value = id;
+  document.getElementById('deny-leave-reason').value = '';
+  document.getElementById('deny-leave-modal').classList.add('open');
+}
+
+async function confirmDenyLeave() {
+  const id = document.getElementById('deny-leave-id').value;
+  const reason = document.getElementById('deny-leave-reason').value.trim();
+  if (!reason) { showToast('Please enter a denial reason', true); return; }
+  const res = await apiFetch(`/api/leave/requests/${id}/deny`, { method:'PATCH', body:{ denial_reason: reason } });
+  if (!res?.ok) { showToast(res?.error || 'Failed to deny', true); return; }
+  document.getElementById('deny-leave-modal').classList.remove('open');
+  showToast('Request denied');
+  await loadLeavePanel();
+}
+
+async function reverseLeave(id, btn) {
+  if (!confirm('Reverse this approval? The hours will be restored to the employee.')) return;
+  btn.disabled = true;
+  const res = await apiFetch(`/api/leave/requests/${id}/reverse`, { method:'PATCH' });
+  if (!res?.ok) { showToast(res?.error || 'Failed to reverse', true); btn.disabled=false; return; }
+  showToast('Request reversed — hours restored');
+  await loadLeavePanel();
+}
+
+async function convertToSick(id, btn) {
+  if (!confirm('Apply available sick time to this call-off?')) return;
+  btn.disabled = true;
+  const res = await apiFetch(`/api/leave/calloff/${id}/convert-sick`, { method:'PATCH' });
+  if (!res?.ok) { showToast(res?.error || 'Failed to convert', true); btn.disabled=false; return; }
+  showToast(`${res.sick_hours_added.toFixed(2)} sick hrs applied ✓`);
+  await loadLeavePanel();
+}
+
+async function submitCallOff() {
+  const userId = document.getElementById('co-user').value;
+  const date   = document.getElementById('co-date').value;
+  const hours  = parseFloat(document.getElementById('co-hours').value);
+  const sick   = document.getElementById('co-sick').checked;
+  const notes  = document.getElementById('co-notes').value.trim();
+  const result = document.getElementById('co-result');
+
+  if (!userId || !date || !hours || hours <= 0) {
+    showToast('Please fill in all required fields', true); return;
+  }
+
+  result.style.display = 'none';
+  const res = await apiFetch('/api/leave/calloff', {
+    method: 'POST',
+    body: { user_id: userId, date, hours_requested: hours, notes, apply_sick_time: sick }
+  });
+
+  if (!res?.ok) {
+    result.style.cssText = 'display:block;color:var(--red);margin-top:10px;font-size:12px;font-family:var(--mono)';
+    result.textContent = res?.error || 'Failed to record call-off';
+    return;
+  }
+
+  let msg = `Call-off recorded.`;
+  if (res.sick_hours_applied > 0) msg += ` ${res.sick_hours_applied.toFixed(2)} sick hrs applied.`;
+  result.style.cssText = 'display:block;color:var(--green);margin-top:10px;font-size:12px;font-family:var(--mono)';
+  result.textContent = msg;
+
+  // Reset form
+  document.getElementById('co-hours').value = '8';
+  document.getElementById('co-sick').checked = false;
+  document.getElementById('co-notes').value  = '';
+
+  showToast('Call-off recorded ✓');
+  await loadLeaveAll();
+  refreshLeavePendingBadge();
+}
+
+// Wire leave tab into switchTab
+const _origSwitchTab = switchTab;
+switchTab = function(name, el) {
+  _origSwitchTab(name, el);
+  if (name === 'leave') loadLeavePanel();
 };
 
 // ══════════════════════════════

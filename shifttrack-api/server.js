@@ -41,6 +41,7 @@ app.use('/api/notifications',   require('./routes/notifications'));
 app.use('/api/unavailability',  require('./routes/unavailability'));
 app.use('/api/open-shifts',    require('./routes/openShifts'));
 app.use('/api/shift-swaps',   require('./routes/swaps'));
+app.use('/api/leave',         require('./routes/leave'));
 
 // Health check
 app.get('/health', (req, res) => {
