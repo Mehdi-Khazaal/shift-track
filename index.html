@@ -85,6 +85,12 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .badge.base{background:rgba(91,143,255,.12);color:var(--accent);box-shadow:0 0 10px rgba(91,143,255,.15);}
 .badge.reg{background:var(--bg4);color:var(--muted);}
 .badge.mix{background:rgba(245,166,35,.1);color:var(--orange);border:1px solid rgba(245,166,35,.2);}
+.badge.live{background:rgba(46,204,138,.15);color:var(--green);border:1px solid rgba(46,204,138,.3);animation:livepulse 1.8s ease-in-out infinite;}
+@keyframes livepulse{0%,100%{opacity:1}50%{opacity:.5}}
+.shift-item.done{opacity:.45;}
+.shift-item.done .shift-right .pay{color:var(--muted);}
+.shift-item.done .shift-dot{opacity:.4;}
+.shift-item.active-shift{border-left:2px solid var(--green);padding-left:14px;background:rgba(46,204,138,.04);}
 .form-group{margin-bottom:14px;}
 .form-group label{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
 .form-group input,.form-group select,.form-group textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:15px;padding:11px 14px;appearance:none;outline:none;transition:border-color .2s,box-shadow .2s;}
@@ -1573,11 +1579,26 @@ function shiftItemHTML(s,bd){
   const d    =new Date(s.date+'T12:00:00');
   const ds   =d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
+  // Determine shift state: done / active / upcoming
+  const now = new Date();
+  const todayLocal = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const nowMins = now.getHours()*60 + now.getMinutes();
+  const stP = parseTimeString(s.start), enP = parseTimeString(s.end);
+  let shiftState = 'upcoming';
+  if(s.date < todayLocal){
+    shiftState = 'done';
+  } else if(s.date === todayLocal && stP && enP){
+    let enM = enP.total; if(enM <= stP.total) enM += 1440;
+    if(nowMins >= enM)          shiftState = 'done';
+    else if(nowMins >= stP.total) shiftState = 'active';
+  }
+
   let badge='';
-  if(s.isBase)          badge='<span class="badge base">BASE</span>';
-  else if(otHrs>=hrs)   badge='<span class="badge ot">OT</span>';
-  else if(otHrs>0)      badge='<span class="badge mix">REG+OT</span>';
-  else                  badge='<span class="badge reg">REG</span>';
+  if(shiftState==='active')     badge='<span class="badge live">● LIVE</span>';
+  else if(s.isBase)             badge='<span class="badge base">BASE</span>';
+  else if(otHrs>=hrs)           badge='<span class="badge ot">OT</span>';
+  else if(otHrs>0)              badge='<span class="badge mix">REG+OT</span>';
+  else                          badge='<span class="badge reg">REG</span>';
 
   const otNote=otHrs>0
     ?`<div class="ot-note">${(hrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
@@ -1588,7 +1609,9 @@ function shiftItemHTML(s,bd){
   const awardedTag=s.locked&&s.awardedBy?`<div class="notes-chip" style="color:var(--accent)">Awarded by ${s.awardedBy}</div>`:'';
   const adminNotesChip=s.adminNotes?`<div class="notes-chip">${s.adminNotes.slice(0,40)}${s.adminNotes.length>40?'…':''}</div>`:'';
 
-  return `<div class="shift-item${s.isBase?' base-item':''}" onclick="${click}">
+  const itemClass=`shift-item${s.isBase?' base-item':''}${shiftState==='done'?' done':''}${shiftState==='active'?' active-shift':''}`;
+
+  return `<div class="${itemClass}" onclick="${click}">
     <div class="shift-dot${s.isBase?' sq':''}" style="background:${color}"></div>
     <div class="shift-info">
       <div class="name">${name}${schedLabel}</div>
