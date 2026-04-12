@@ -2665,14 +2665,6 @@ function updateLiveTicker() {
   const all = [...activeLogged, ...activeBase];
   if (!all.length) { card.style.display = 'none'; return; }
 
-  // Build full week shift list to correctly compute how many reg hours were
-  // already consumed before the active shift started (for OT calculation)
-  const thresh = getSettings().otThreshold;
-  const allWeekLogged = getShifts().filter(s => wkD.map(d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`).includes(s.date));
-  const allWeekBase = getBase().map(b => ({ ...b, date: baseToDate(b, wkD), isBase: true })).filter(b => b.date !== null);
-  const weekShifts = [...allWeekLogged, ...allWeekBase]
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
-
   // Compute elapsed hours correctly for overnight shifts that carry into today
   function elapsedHoursForActive(active) {
     const st = parseTimeString(active.start);
@@ -2684,6 +2676,19 @@ function updateLiveTicker() {
     return Math.max(0, nowMins - st.total) / 60;
   }
 
+  // Build week shift list for OT calculation, rooted at the active shift's own date
+  // (not today's date — an overnight shift crossing a week boundary must use its own week)
+  function weekShiftsForDate(dateStr) {
+    const wk = weekDatesForDate(dateStr);
+    const wkYMDs = wk.map(d => toYMD(d));
+    return [
+      ...getShifts().filter(s => wkYMDs.includes(s.date)),
+      ...getBase().map(b => ({ ...b, date: baseToDate(b, wk), isBase: true })).filter(b => b.date !== null),
+    ].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+  }
+
+  const thresh = getSettings().otThreshold;
+
   let earned = 0;
   for (const active of all) {
     const rate = getLocById(active.locationId)?.rate || 0;
@@ -2691,10 +2696,9 @@ function updateLiveTicker() {
 
     // Sum reg hours from all shifts that started strictly before this active shift
     let regBefore = 0;
-    for (const s of weekShifts) {
+    for (const s of weekShiftsForDate(active.date)) {
       if (s.date > active.date || (s.date === active.date && s.start >= active.start)) continue;
-      const hrs = shiftHours(s.start, s.end);
-      regBefore = Math.min(thresh, regBefore + hrs);
+      regBefore = Math.min(thresh, regBefore + shiftHours(s.start, s.end));
     }
 
     const regRemaining = Math.max(0, thresh - regBefore);
@@ -2708,7 +2712,7 @@ function updateLiveTicker() {
     if (!rate) return false;
     const elapsedHrs = elapsedHoursForActive(s);
     let regBefore = 0;
-    for (const w of weekShifts) {
+    for (const w of weekShiftsForDate(s.date)) {
       if (w.date > s.date || (w.date === s.date && w.start >= s.start)) continue;
       regBefore = Math.min(thresh, regBefore + shiftHours(w.start, w.end));
     }
