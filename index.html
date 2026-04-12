@@ -1911,11 +1911,15 @@ function renderCalMonth(){
     const isToday = toYMD(date)===toYMD(today);
     const shifts = getShiftsForDate(ymd);
     const unavail = getUnavailForDate(ymd);
+    const leaves  = getLeaveForDate(ymd);
+    const leaveCls = leaves.length
+      ? (leaves[0].type_name==='pto' ? ' leave-pto' : leaves[0].type_name==='sick_time' ? ' leave-sick' : ' leave-calloff')
+      : '';
     const dots = shifts.slice(0,4).map(s=>{
       const loc=getLocById(s.locationId);
       return `<div class="cal-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>`;
     }).join('');
-    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}" onclick="openDaySheet('${ymd}')">
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="openDaySheet('${ymd}')">
       <div class="cal-dn">${date.getDate()}</div>
       ${unavail.length?'<div class="unavail-stripe"></div>':''}
       ${dots?`<div class="cal-dots">${dots}</div>`:''}
@@ -2929,13 +2933,13 @@ function switchLeaveSubtab(tab) {
   document.getElementById('subtab-timeoff').classList.toggle('active', tab === 'timeoff');
   document.getElementById('lp-cal').classList.toggle('active', tab === 'cal');
   document.getElementById('lp-timeoff').classList.toggle('active', tab === 'timeoff');
-  // Show/hide calendar nav controls
+  // Show/hide calendar nav controls; update title
   document.getElementById('cal-controls').style.display = tab === 'cal' ? 'flex' : 'none';
-  document.getElementById('cal-title').style.display    = tab === 'cal' ? ''     : 'none';
-  if (tab === 'cal') {
-    renderCalendar();
-  } else {
+  if (tab === 'timeoff') {
+    document.getElementById('cal-title').textContent = 'Time Off';
     loadLeaveData();
+  } else {
+    renderCalendar(); // restores proper month/week title
   }
 }
 
@@ -3121,25 +3125,7 @@ async function cancelLeaveRequest(id) {
   renderCalendar();
 }
 
-// ── Patch renderCalendar to add leave indicators ──────────────────────────────
-// Patch renderCalMonth to show leave overlay on cells
-const _origRenderCalMonth = renderCalMonth;
-function renderCalMonth() {
-  // call original first, then patch in leave classes
-  _origRenderCalMonth();
-  document.querySelectorAll('.cal-month-grid .cal-cell').forEach(cell => {
-    const onclick = cell.getAttribute('onclick') || '';
-    const match = onclick.match(/'(\d{4}-\d{2}-\d{2})'/);
-    if (!match) return;
-    const dateStr = match[1];
-    const leaves = getLeaveForDate(dateStr);
-    if (leaves.length) {
-      const lt = leaves[0];
-      const cls = lt.type_name === 'pto' ? 'leave-pto' : lt.type_name === 'sick_time' ? 'leave-sick' : 'leave-calloff';
-      cell.classList.add(cls);
-    }
-  });
-}
+// leave color indicators are baked directly into renderCalMonth below.
 
 // leave data is loaded lazily when the Time Off subtab is opened,
 // and pre-warmed in the background after login via enterApp().
