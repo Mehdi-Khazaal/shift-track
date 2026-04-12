@@ -96,6 +96,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .form-group{margin-bottom:14px;}
 .form-group label{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;}
 .form-group input,.form-group select,.form-group textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--sans);font-size:15px;padding:11px 14px;appearance:none;outline:none;transition:border-color .2s,box-shadow .2s;}
+.form-group input[type="checkbox"]{width:auto;appearance:auto;padding:0;background:transparent;border:none;box-shadow:none;cursor:pointer;}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,143,255,.12);}
 .form-group textarea{resize:vertical;min-height:70px;}
 select option{background:var(--bg3);}
@@ -1232,13 +1233,20 @@ function computeWeekPay(shifts){
   const breakdown=sorted.map(s=>{
     const loc=getLocById(s.locationId);
     const rate=loc?loc.rate:0;
-    const hrs=shiftHours(s.start,s.end);
+    const rawHrs=shiftHours(s.start,s.end);
+    // Approved call-offs reduce worked hours (unpaid)
+    const callOffHrs=leaveCache.loaded
+      ? leaveCache.requests
+          .filter(r=>r.type_name==='call_off'&&r.status==='approved'&&r.date&&String(r.date).slice(0,10)===s.date)
+          .reduce((sum,r)=>sum+parseFloat(r.hours_requested||0),0)
+      : 0;
+    const hrs=Math.max(0,rawHrs-callOffHrs);
     const regHrs=Math.max(0,Math.min(hrs,thresh-regRunning));
     const otHrs=hrs-regHrs;
     const pay=regHrs*rate+otHrs*rate*1.5;
     regRunning+=regHrs;
     totalPay+=pay;
-    return {...s,hrs,regHrs,otHrs,pay,rate};
+    return {...s,hrs,rawHrs,callOffHrs,regHrs,otHrs,pay,rate};
   });
   const totalHrs=breakdown.reduce((a,b)=>a+b.hrs,0);
   const totalOt =breakdown.reduce((a,b)=>a+b.otHrs,0);
@@ -1709,8 +1717,10 @@ function shiftItemHTML(s,bd,swapId=null){
   const color=loc?.color||'#888';
   const name =loc?.name||'Unknown';
   const rate =loc?.rate||0;
-  const hrs  =shiftHours(s.start,s.end);
-  const pay  =bd?bd.pay:hrs*rate;
+  const rawHrs=shiftHours(s.start,s.end);
+  // bd.hrs already accounts for call-off deduction via computeWeekPay
+  const effectiveHrs=bd?bd.hrs:rawHrs;
+  const pay  =bd?bd.pay:effectiveHrs*rate;
   const otHrs=bd?bd.otHrs:0;
   const d    =new Date(s.date+'T12:00:00');
   const ds   =d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
@@ -1725,20 +1735,47 @@ function shiftItemHTML(s,bd,swapId=null){
     shiftState = 'done';
   } else if(s.date === todayLocal && stP && enP){
     let enM = enP.total; if(enM <= stP.total) enM += 1440;
-    if(nowMins >= enM)          shiftState = 'done';
+    if(nowMins >= enM)            shiftState = 'done';
     else if(nowMins >= stP.total) shiftState = 'active';
   }
 
+  // Approved leave for this date
+  const leaves=getLeaveForDate(s.date);
+  const callOffLeave=leaves.find(r=>r.type_name==='call_off');
+  const ptoLeave    =leaves.find(r=>r.type_name==='pto');
+  const sickLeave   =leaves.find(r=>r.type_name==='sick_time');
+
+  // Leave note row
+  let leaveNote='';
+  if(callOffLeave){
+    const coH=parseFloat(callOffLeave.hours_requested).toFixed(1);
+    leaveNote=`<div class="ot-note" style="color:#f87171">✗ Call Off · ${coH}h unpaid</div>`;
+  } else if(ptoLeave){
+    const pH=parseFloat(ptoLeave.hours_requested).toFixed(1);
+    leaveNote=`<div class="ot-note" style="color:#60a5fa">🌴 PTO · ${pH}h</div>`;
+  } else if(sickLeave){
+    const sH=parseFloat(sickLeave.hours_requested).toFixed(1);
+    leaveNote=`<div class="ot-note" style="color:#a78bfa">🤒 Sick · ${sH}h</div>`;
+  }
+
+  // Hours display: "3.0/8.0 hrs" for partial call-off, "0.0 hrs" for full
+  const hrsDisplay=callOffLeave
+    ?`${effectiveHrs.toFixed(1)}/${rawHrs.toFixed(1)} hrs`
+    :`${effectiveHrs.toFixed(1)} hrs`;
+
   let badge='';
-  if(shiftState==='active')     badge='<span class="badge live">● LIVE</span>';
-  else if(swapId)               badge='<span class="badge swap">⇄ SWAPPED</span>';
-  else if(s.isBase)             badge='<span class="badge base">BASE</span>';
-  else if(otHrs>=hrs)           badge='<span class="badge ot">OT</span>';
-  else if(otHrs>0)              badge='<span class="badge mix">REG+OT</span>';
-  else                          badge='<span class="badge reg">REG</span>';
+  if(shiftState==='active')            badge='<span class="badge live">● LIVE</span>';
+  else if(swapId)                      badge='<span class="badge swap">⇄ SWAPPED</span>';
+  else if(callOffLeave)                badge='<span class="badge" style="background:rgba(248,113,113,.15);color:#f87171;border-color:rgba(248,113,113,.3)">CALL OFF</span>';
+  else if(ptoLeave)                    badge='<span class="badge" style="background:rgba(96,165,250,.15);color:#60a5fa;border-color:rgba(96,165,250,.3)">PTO</span>';
+  else if(sickLeave)                   badge='<span class="badge" style="background:rgba(167,139,250,.15);color:#a78bfa;border-color:rgba(167,139,250,.3)">SICK</span>';
+  else if(s.isBase)                    badge='<span class="badge base">BASE</span>';
+  else if(effectiveHrs>0&&otHrs>=effectiveHrs) badge='<span class="badge ot">OT</span>';
+  else if(otHrs>0)                     badge='<span class="badge mix">REG+OT</span>';
+  else                                 badge='<span class="badge reg">REG</span>';
 
   const otNote=otHrs>0
-    ?`<div class="ot-note">${(hrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
+    ?`<div class="ot-note">${(effectiveHrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
 
   const click=s.isBase?`showToast('Base shifts are set by your administrator',false)`:`openAddShift('${s.id}')`;
   const payStr=formatPay(pay);
@@ -1757,6 +1794,7 @@ function shiftItemHTML(s,bd,swapId=null){
     <div class="shift-info">
       <div class="name">${name}${schedLabel}</div>
       <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
+      ${leaveNote}
       ${otNote}
       ${awardedTag}
       ${s.notes?`<div class="notes-chip">${s.notes.slice(0,40)}${s.notes.length>40?'…':''}</div>`:''}
@@ -1765,7 +1803,7 @@ function shiftItemHTML(s,bd,swapId=null){
     </div>
     <div class="shift-right">
       <div class="pay">${payStr}</div>
-      <div class="hrs">${hrs.toFixed(1)} hrs</div>
+      <div class="hrs">${hrsDisplay}</div>
       ${badge}
     </div>
   </div>`;
@@ -2009,9 +2047,13 @@ function openDaySheet(dateStr){
       return shiftItemHTML(s, bdMap[key]);
     }).join('');
 
-    // Summary
+    // Summary — use effective hours/pay from breakdown (call-offs already deducted)
     const dayShifts = shifts;
-    const dayHrs = dayShifts.reduce((a,s)=>a+shiftHours(s.start,s.end),0);
+    const dayHrs = dayShifts.reduce((a,s)=>{
+      const key=s.id+(s.isBase?'_b':'');
+      const bd=bdMap[key];
+      return a+(bd?bd.hrs:shiftHours(s.start,s.end));
+    },0);
     const dayPay = dayShifts.reduce((a,s)=>{
       const key=s.id+(s.isBase?'_b':'');
       const bd=bdMap[key];
@@ -2956,6 +2998,9 @@ async function loadLeaveData() {
   if (reqRes?.ok) leaveCache.requests  = reqRes.requests;
   leaveCache.loaded = true;
   renderLeaveTab();
+  // Re-render dash + shift list so leave badges/call-off deductions appear immediately
+  renderDash();
+  renderAllShifts();
 }
 
 // ── Render leave dashboard ────────────────────────────────────────────────────
