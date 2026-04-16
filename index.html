@@ -1738,10 +1738,16 @@ function shiftItemHTML(s,bd,swapId=null){
   // Determine shift state: done / active / upcoming
   const now = new Date();
   const todayLocal = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const yestD = new Date(now); yestD.setDate(yestD.getDate() - 1);
+  const yesterdayLocal = `${yestD.getFullYear()}-${String(yestD.getMonth()+1).padStart(2,'0')}-${String(yestD.getDate()).padStart(2,'0')}`;
   const nowMins = now.getHours()*60 + now.getMinutes();
   const stP = parseTimeString(s.start), enP = parseTimeString(s.end);
   let shiftState = 'upcoming';
-  if(s.date < todayLocal){
+  if(s.date === yesterdayLocal && stP && enP && enP.total < stP.total){
+    // Overnight shift that started yesterday — check if we're still in the post-midnight window
+    if(nowMins < enP.total) shiftState = 'active';
+    else                    shiftState = 'done';
+  } else if(s.date < todayLocal){
     shiftState = 'done';
   } else if(s.date === todayLocal && stP && enP){
     let enM = enP.total; if(enM <= stP.total) enM += 1440;
