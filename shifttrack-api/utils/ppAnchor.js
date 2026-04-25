@@ -15,7 +15,7 @@ async function getUserAnchor(userId) {
 }
 
 /**
- * Returns 1 or 2 — which pay-period week a given date falls in.
+ * Returns 1 or 2 - which pay-period week a given date falls in.
  * @param {string} dateStr   YYYY-MM-DD
  * @param {string} anchorStr YYYY-MM-DD
  */

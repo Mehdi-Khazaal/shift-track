@@ -5,14 +5,14 @@ const auth    = require('../middleware/auth');
 const bcrypt  = require('bcrypt');
 const jwt     = require('jsonwebtoken');
 
-// Middleware — admin only
+// Middleware - admin only
 function adminOnly(req, res, next){
   if(req.role !== 'admin')
     return res.status(403).json({ ok:false, error:'Admin access required' });
   next();
 }
 
-// GET /api/admin/users — all users (active and inactive) with basic info
+// GET /api/admin/users - all users (active and inactive) with basic info
 router.get('/users', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
@@ -28,7 +28,7 @@ router.get('/users', auth, adminOnly, async (req, res) => {
   }
 });
 
-// GET /api/admin/users/:id/shifts — all shifts for a user
+// GET /api/admin/users/:id/shifts - all shifts for a user
 router.get('/users/:id/shifts', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
@@ -45,7 +45,7 @@ router.get('/users/:id/shifts', auth, adminOnly, async (req, res) => {
   }
 });
 
-// GET /api/admin/users/:id/schedule — base schedule for a user
+// GET /api/admin/users/:id/schedule - base schedule for a user
 router.get('/users/:id/schedule', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
@@ -62,7 +62,7 @@ router.get('/users/:id/schedule', auth, adminOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/users/:id — permanent hard delete (only allowed on inactive users)
+// DELETE /api/admin/users/:id - permanent hard delete (only allowed on inactive users)
 router.delete('/users/:id', auth, adminOnly, async (req, res) => {
   if(req.params.id === req.userId)
     return res.status(400).json({ ok:false, error:"Can't delete your own account" });
@@ -79,7 +79,7 @@ router.delete('/users/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id/deactivate — soft-delete (preserves all history)
+// PATCH /api/admin/users/:id/deactivate - soft-delete (preserves all history)
 router.patch('/users/:id/deactivate', auth, adminOnly, async (req, res) => {
   if(req.params.id === req.userId)
     return res.status(400).json({ ok:false, error:"Can't deactivate your own account" });
@@ -109,7 +109,7 @@ router.patch('/users/:id/reactivate', auth, adminOnly, async (req, res) => {
   }
 });
 
-// POST /api/admin/users — create account (admin only)
+// POST /api/admin/users - create account (admin only)
 router.post('/users', auth, adminOnly, async (req, res) => {
   const { email, name, password, position, location_id } = req.body;
   if(!email || !password)
@@ -137,7 +137,7 @@ router.post('/users', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id — update user info (name, email, role, position, location, hire_date, optional password)
+// PATCH /api/admin/users/:id - update user info (name, email, role, position, location, hire_date, optional password)
 router.patch('/users/:id', auth, adminOnly, async (req, res) => {
   const { name, email, role, position, location_id, password, hire_date } = req.body;
   if(!name || !email)
@@ -167,7 +167,7 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id/role — promote/demote
+// PATCH /api/admin/users/:id/role - promote/demote
 router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
   const { role } = req.body;
   if(!['admin','user'].includes(role))
@@ -183,7 +183,7 @@ router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id/password — reset a user's password
+// PATCH /api/admin/users/:id/password - reset a user's password
 router.patch('/users/:id/password', auth, adminOnly, async (req, res) => {
   const { password } = req.body;
   if(!password || password.length < 8)
@@ -202,7 +202,7 @@ router.patch('/users/:id/password', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/shifts/:id/notes — set admin note on a logged shift
+// PATCH /api/admin/shifts/:id/notes - set admin note on a logged shift
 router.patch('/shifts/:id/notes', auth, adminOnly, async (req, res) => {
   const { admin_notes } = req.body;
   try {
@@ -217,7 +217,7 @@ router.patch('/shifts/:id/notes', auth, adminOnly, async (req, res) => {
   }
 });
 
-// POST /api/admin/schedule — add base shift for any user
+// POST /api/admin/schedule - add base shift for any user
 router.post('/schedule', auth, adminOnly, async (req, res) => {
   const { user_id, week, day_of_week, location_id, start_time, end_time } = req.body;
   if(!user_id||!week||day_of_week===undefined||!location_id||!start_time||!end_time)
@@ -226,7 +226,7 @@ router.post('/schedule', auth, adminOnly, async (req, res) => {
     return res.status(400).json({ ok:false, error:'week must be 1 or 2' });
   const dow = Number(day_of_week);
   if(!Number.isInteger(dow) || dow < 0 || dow > 6)
-    return res.status(400).json({ ok:false, error:'day_of_week must be 0–6' });
+    return res.status(400).json({ ok:false, error:'day_of_week must be 0-6' });
   try {
     const result = await db.query(
       `INSERT INTO base_schedule (user_id,week,day_of_week,location_id,start_time,end_time)
@@ -239,7 +239,7 @@ router.post('/schedule', auth, adminOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/schedule/:id — remove base shift
+// DELETE /api/admin/schedule/:id - remove base shift
 router.delete('/schedule/:id', auth, adminOnly, async (req, res) => {
   try {
     await db.query('DELETE FROM base_schedule WHERE id=$1',[req.params.id]);
@@ -249,7 +249,7 @@ router.delete('/schedule/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// GET /api/admin/swaps — all swaps visible to admin
+// GET /api/admin/swaps - all swaps visible to admin
 router.get('/swaps', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
@@ -273,7 +273,7 @@ router.get('/swaps', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/swaps/:id/reject — admin rejects/undoes any swap
+// PATCH /api/admin/swaps/:id/reject - admin rejects/undoes any swap
 router.patch('/swaps/:id/reject', auth, adminOnly, async (req, res) => {
   try {
     const swapRes = await db.query(
@@ -340,7 +340,7 @@ router.patch('/swaps/:id/reject', auth, adminOnly, async (req, res) => {
   }
 });
 
-// GET /api/admin/suppressed-dates — all base schedule suppression entries
+// GET /api/admin/suppressed-dates - all base schedule suppression entries
 router.get('/suppressed-dates', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query('SELECT user_id, date FROM base_suppressed_dates');

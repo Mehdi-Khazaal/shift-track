@@ -4,7 +4,7 @@ const db      = require('./db/index');
 const { getUserAnchor, payWeekOf } = require('./utils/ppAnchor');
 const { getPtoAnnualHours, availableHours } = require('./routes/leave');
 
-// Runs every minute — sends push notifications when it's time
+// Runs every minute - sends push notifications when it's time
 cron.schedule('* * * * *', async () => {
   try {
     const now = new Date();
@@ -18,7 +18,7 @@ cron.schedule('* * * * *', async () => {
     for (const sub of subsRes.rows) {
       const notifyMs  = Number(sub.notify_minutes) * 60 * 1000;
       // tz_offset from getTimezoneOffset(): positive = behind UTC (e.g. Eastern = 240)
-      // local time = UTC - tz_offset minutes  →  UTC = local + tz_offset minutes
+      // local time = UTC - tz_offset minutes  ->  UTC = local + tz_offset minutes
       const tzOffset  = Number(sub.tz_offset || 0); // minutes
 
       const [shiftsRes, baseRes, suppressedRes, anchorStr] = await Promise.all([
@@ -44,7 +44,7 @@ cron.schedule('* * * * *', async () => {
 
       const toSend = [];
 
-      // Logged shifts — date stored as user's local date, time as local time
+      // Logged shifts - date stored as user's local date, time as local time
       for (const s of shiftsRes.rows) {
         const dateStr   = String(s.date).slice(0, 10);
         // Create timestamp treating stored values as local, then convert to UTC
@@ -56,7 +56,7 @@ cron.schedule('* * * * *', async () => {
         }
       }
 
-      // Base schedule — check next 14 days in user's local time
+      // Base schedule - check next 14 days in user's local time
       const localNowMs = now.getTime() - tzOffset * 60 * 1000;
       for (let offset = 0; offset < 14; offset++) {
         const localD    = new Date(localNowMs + offset * 86400000);
@@ -81,7 +81,7 @@ cron.schedule('* * * * *', async () => {
         const payload = JSON.stringify({
           title: 'Shift Reminder',
           body:  notifBody,
-          icon:  '/shift-track/icon-192.png',
+          icon:  '/shift-track/icons/icon-192.png',
         });
         try {
           await webpush.sendNotification(
@@ -108,7 +108,7 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
-// Runs every minute — process expired house-type open shifts (assign winner + notify)
+// Runs every minute - process expired house-type open shifts (assign winner + notify)
 cron.schedule('* * * * *', async () => {
   try {
     const expired = await db.query(
@@ -143,8 +143,8 @@ cron.schedule('* * * * *', async () => {
           `UPDATE open_shifts SET status='claimed', claimed_by=$1 WHERE id=$2`,
           [winner.user_id, shift.id]
         );
-        const notifBody = `You got the open shift at ${shift.location_name} on ${dateStr} (${shift.start_time.slice(0,5)}–${shift.end_time.slice(0,5)})`;
-        const payload = JSON.stringify({ title: 'Shift Assigned', body: notifBody, icon: '/shift-track/icon-192.png' });
+        const notifBody = `You got the open shift at ${shift.location_name} on ${dateStr} (${shift.start_time.slice(0,5)}-${shift.end_time.slice(0,5)})`;
+        const payload = JSON.stringify({ title: 'Shift Assigned', body: notifBody, icon: '/shift-track/icons/icon-192.png' });
         const subs = await db.query('SELECT * FROM push_subscriptions WHERE user_id=$1', [winner.user_id]);
         for (const sub of subs.rows) {
           try {
@@ -176,7 +176,7 @@ cron.schedule('* * * * *', async () => {
 
 console.log('[scheduler] Notification cron started (every minute)');
 
-// ── Daily at 00:05 — PTO accrual + anniversary processing ────────────────────
+// -- Daily at 00:05 - PTO accrual + anniversary processing --------------------
 cron.schedule('5 0 * * *', async () => {
   try {
     const typesRes = await db.query('SELECT * FROM leave_types');
@@ -199,7 +199,7 @@ cron.schedule('5 0 * * *', async () => {
         const hire = new Date(user.hire_date);
         hire.setHours(0, 0, 0, 0);
 
-        // ── Anniversary detection ─────────────────────────────────────────
+        // -- Anniversary detection -----------------------------------------
         // An anniversary occurs when today's month/day matches hire month/day
         const isAnniversary = (
           today.getMonth()  === hire.getMonth() &&
@@ -210,7 +210,7 @@ cron.schedule('5 0 * * *', async () => {
         if (isAnniversary) {
           const completedYears = today.getFullYear() - hire.getFullYear();
 
-          // ── PTO anniversary reset ─────────────────────────────────────
+          // -- PTO anniversary reset -------------------------------------
           const ptoBal = await db.query(
             'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
             [user.id, ptoType.id]
@@ -221,7 +221,7 @@ cron.schedule('5 0 * * *', async () => {
             const currentAvailable = availableHours(old);
             const carryover = Math.min(currentAvailable, 40);
 
-            // Reset: carryover ≤40, accrued=0, used=0 for new year
+            // Reset: carryover <=40, accrued=0, used=0 for new year
             await db.query(
               `UPDATE leave_balances
                SET accrued_hours=0, used_hours=0, carried_over_hours=$1,
@@ -240,7 +240,7 @@ cron.schedule('5 0 * * *', async () => {
             );
           }
 
-          // ── Sick time anniversary: payout unused + reset ──────────────
+          // -- Sick time anniversary: payout unused + reset --------------
           const sickBal = await db.query(
             'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
             [user.id, sickType.id]
@@ -262,7 +262,7 @@ cron.schedule('5 0 * * *', async () => {
                  VALUES ($1,$2,$3,$4)`,
                 [user.id, sickAvail, rate, payout]
               );
-              console.log(`[scheduler] Sick payout: ${user.name} — ${sickAvail} hrs @ $${rate} = $${payout.toFixed(2)}`);
+              console.log(`[scheduler] Sick payout: ${user.name} - ${sickAvail} hrs @ $${rate} = $${payout.toFixed(2)}`);
             }
 
             // Reset sick balance for new year
@@ -287,7 +287,7 @@ cron.schedule('5 0 * * *', async () => {
           console.log(`[scheduler] Anniversary processed for ${user.name} (year ${completedYears})`);
         }
 
-        // ── Daily PTO accrual (skip year-0 employees) ─────────────────────
+        // -- Daily PTO accrual (skip year-0 employees) ---------------------
         const msPerYear = 365.25 * 86400000;
         const totalYears = (today - hire) / msPerYear;
         if (totalYears < 1) continue; // no PTO in first year
@@ -317,7 +317,7 @@ cron.schedule('5 0 * * *', async () => {
         console.error(`[scheduler] Leave processing error for user ${user.id}:`, userErr.message);
       }
     }
-    console.log(`[scheduler] Daily leave accrual complete — ${users.rows.length} users processed`);
+    console.log(`[scheduler] Daily leave accrual complete - ${users.rows.length} users processed`);
   } catch (err) {
     console.error('[scheduler] Daily leave cron error:', err.message);
   }

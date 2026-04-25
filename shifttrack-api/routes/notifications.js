@@ -5,14 +5,14 @@ const auth      = require('../middleware/auth');
 const webpush   = require('../utils/webpush');
 const { getUserAnchor } = require('../utils/ppAnchor');
 
-// ── Helper: write to notification_log ──────────────────────────────────────
+// -- Helper: write to notification_log --------------------------------------
 async function logNotification(userId, title, body) {
   try {
     await db.query(
       'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
       [userId, title, body]
     );
-  } catch(e) { /* non-fatal — don't break the push flow */ }
+  } catch(e) { /* non-fatal - don't break the push flow */ }
 }
 
 // GET /api/notifications/vapid-public-key
@@ -66,7 +66,7 @@ router.get('/status', auth, async (req, res) => {
   }
 });
 
-// DELETE /api/notifications/history — clear all notifications for the user
+// DELETE /api/notifications/history - clear all notifications for the user
 router.delete('/history', auth, async (req, res) => {
   try {
     await db.query('DELETE FROM notification_log WHERE user_id=$1', [req.userId]);
@@ -76,7 +76,7 @@ router.delete('/history', auth, async (req, res) => {
   }
 });
 
-// DELETE /api/notifications/history/:id — delete a single notification
+// DELETE /api/notifications/history/:id - delete a single notification
 router.delete('/history/:id', auth, async (req, res) => {
   try {
     await db.query(
@@ -89,7 +89,7 @@ router.delete('/history/:id', auth, async (req, res) => {
   }
 });
 
-// GET /api/notifications/history — last 30 notifications for the logged-in user
+// GET /api/notifications/history - last 30 notifications for the logged-in user
 router.get('/history', auth, async (req, res) => {
   try {
     const result = await db.query(
@@ -102,7 +102,7 @@ router.get('/history', auth, async (req, res) => {
   }
 });
 
-// POST /api/notifications/broadcast — admin sends push to all/filtered users
+// POST /api/notifications/broadcast - admin sends push to all/filtered users
 router.post('/broadcast', auth, async (req, res) => {
   if(req.role !== 'admin')
     return res.status(403).json({ ok: false, error: 'Admin access required' });
@@ -130,7 +130,7 @@ router.post('/broadcast', auth, async (req, res) => {
       [userIds]
     );
 
-    const payload = JSON.stringify({ title: notifTitle, body, icon: '/shift-track/icon-192.png' });
+    const payload = JSON.stringify({ title: notifTitle, body, icon: '/shift-track/icons/icon-192.png' });
     let sent = 0;
     const loggedUsers = new Set(); // log once per user regardless of device count
 
@@ -230,7 +230,7 @@ router.post('/send-upcoming', auth, async (req, res) => {
         const payload = JSON.stringify({
           title: 'Shift Reminder',
           body: notifBody,
-          icon: '/shift-track/icon-192.png'
+          icon: '/shift-track/icons/icon-192.png'
         });
         try {
           await webpush.sendNotification(

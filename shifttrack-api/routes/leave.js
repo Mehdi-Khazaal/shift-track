@@ -4,7 +4,7 @@ const db       = require('../db/index');
 const auth     = require('../middleware/auth');
 const webpush  = require('../utils/webpush');
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers -------------------------------------------------------------------
 
 function adminOnly(req, res, next) {
   if (req.role !== 'admin')
@@ -25,7 +25,7 @@ async function sendPushToUser(userId, title, body) {
   const subs = await db.query(
     'SELECT * FROM push_subscriptions WHERE user_id=$1', [userId]
   );
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icon-192.png' });
+  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
   for (const sub of subs.rows) {
     try {
       await webpush.sendNotification(
@@ -46,7 +46,7 @@ async function sendPushToAllAdmins(title, body) {
      JOIN users u ON ps.user_id = u.id
      WHERE u.role = 'admin' AND u.is_active = TRUE`
   );
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icon-192.png' });
+  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
   const notified = new Set();
   for (const sub of admins.rows) {
     try {
@@ -85,7 +85,7 @@ function availableHours(bal) {
   );
 }
 
-// Initialize leave balances for a user (idempotent — safe to call any time)
+// Initialize leave balances for a user (idempotent - safe to call any time)
 async function initUserLeaveBalances(userId, hireDate) {
   const typesRes = await db.query('SELECT id, name FROM leave_types');
   const today = new Date();
@@ -110,7 +110,7 @@ async function initUserLeaveBalances(userId, hireDate) {
 
   for (const lt of typesRes.rows) {
     if (lt.name === 'call_off') {
-      // call_off has no balance tracking — skip
+      // call_off has no balance tracking - skip
       continue;
     }
 
@@ -132,7 +132,7 @@ async function initUserLeaveBalances(userId, hireDate) {
   }
 }
 
-// ── GET /api/leave/balances ── employee views own balances ───────────────────
+// -- GET /api/leave/balances -- employee views own balances -------------------
 router.get('/balances', auth, async (req, res) => {
   try {
     // Ensure balances exist
@@ -159,7 +159,7 @@ router.get('/balances', auth, async (req, res) => {
   }
 });
 
-// ── GET /api/leave/requests ── employee views own requests ───────────────────
+// -- GET /api/leave/requests -- employee views own requests -------------------
 router.get('/requests', auth, async (req, res) => {
   try {
     const result = await db.query(
@@ -180,7 +180,7 @@ router.get('/requests', auth, async (req, res) => {
   }
 });
 
-// ── POST /api/leave/requests ── employee submits leave request ───────────────
+// -- POST /api/leave/requests -- employee submits leave request ---------------
 router.post('/requests', auth, async (req, res) => {
   const { leave_type_name, date, hours_requested, notes, start_time, end_time } = req.body;
   if (!leave_type_name || !date || !hours_requested)
@@ -201,7 +201,7 @@ router.post('/requests', auth, async (req, res) => {
     if (userRes.rows[0].hire_date)
       await initUserLeaveBalances(req.userId, userRes.rows[0].hire_date);
 
-    // For call_off, no balance check — admin handles sick time deduction later
+    // For call_off, no balance check - admin handles sick time deduction later
     if (leave_type_name !== 'call_off') {
       // Check balance
       const balRes = await db.query(
@@ -239,7 +239,7 @@ router.post('/requests', auth, async (req, res) => {
     // Notify all admins
     const empRes = await db.query('SELECT name FROM users WHERE id=$1', [req.userId]);
     const empName = empRes.rows[0]?.name || 'An employee';
-    const timeStr = start_time && end_time ? ` (${start_time}–${end_time})` : '';
+    const timeStr = start_time && end_time ? ` (${start_time}-${end_time})` : '';
     await sendPushToAllAdmins(
       'Leave Request Submitted',
       `${empName} requested ${hrs} hrs of ${lt.label} on ${date}${timeStr}`
@@ -252,7 +252,7 @@ router.post('/requests', auth, async (req, res) => {
   }
 });
 
-// ── PATCH /api/leave/requests/:id/cancel ── employee cancels pending ─────────
+// -- PATCH /api/leave/requests/:id/cancel -- employee cancels pending ---------
 router.patch('/requests/:id/cancel', auth, async (req, res) => {
   try {
     const reqRes = await db.query(
@@ -276,7 +276,7 @@ router.patch('/requests/:id/cancel', auth, async (req, res) => {
   }
 });
 
-// ── GET /api/leave/admin/requests ── admin gets all requests ─────────────────
+// -- GET /api/leave/admin/requests -- admin gets all requests -----------------
 router.get('/admin/requests', auth, adminOnly, async (req, res) => {
   try {
     const { status, user_id } = req.query;
@@ -303,7 +303,7 @@ router.get('/admin/requests', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── GET /api/leave/admin/balances/:userId ── admin views a user's balances ───
+// -- GET /api/leave/admin/balances/:userId -- admin views a user's balances ---
 router.get('/admin/balances/:userId', auth, adminOnly, async (req, res) => {
   try {
     const userRes = await db.query('SELECT hire_date, name FROM users WHERE id=$1', [req.params.userId]);
@@ -326,7 +326,7 @@ router.get('/admin/balances/:userId', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── PATCH /api/leave/requests/:id/approve ── admin approves ─────────────────
+// -- PATCH /api/leave/requests/:id/approve -- admin approves -----------------
 router.patch('/requests/:id/approve', auth, adminOnly, async (req, res) => {
   try {
     const lrRes = await db.query(
@@ -343,7 +343,7 @@ router.patch('/requests/:id/approve', auth, adminOnly, async (req, res) => {
     if (lr.status !== 'pending')
       return res.status(400).json({ ok: false, error: `Request is already ${lr.status}` });
 
-    // Deduct from balance (not for call_off — handled separately)
+    // Deduct from balance (not for call_off - handled separately)
     if (lr.type_name !== 'call_off') {
       await db.query(
         `UPDATE leave_balances
@@ -376,7 +376,7 @@ router.patch('/requests/:id/approve', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── PATCH /api/leave/requests/:id/deny ── admin denies with reason ────────────
+// -- PATCH /api/leave/requests/:id/deny -- admin denies with reason ------------
 router.patch('/requests/:id/deny', auth, adminOnly, async (req, res) => {
   const { denial_reason } = req.body;
   if (!denial_reason || !denial_reason.trim())
@@ -418,7 +418,7 @@ router.patch('/requests/:id/deny', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── PATCH /api/leave/requests/:id/reverse ── admin reverses an approved request
+// -- PATCH /api/leave/requests/:id/reverse -- admin reverses an approved request
 router.patch('/requests/:id/reverse', auth, adminOnly, async (req, res) => {
   try {
     const lrRes = await db.query(
@@ -479,7 +479,7 @@ router.patch('/requests/:id/reverse', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── POST /api/leave/calloff ── admin creates a call-off for an employee ───────
+// -- POST /api/leave/calloff -- admin creates a call-off for an employee -------
 router.post('/calloff', auth, adminOnly, async (req, res) => {
   const { user_id, date, hours_requested, notes, apply_sick_time } = req.body;
   if (!user_id || !date || !hours_requested)
@@ -546,7 +546,7 @@ router.post('/calloff', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── PATCH /api/leave/calloff/:id/convert-sick ── admin converts call-off to sick
+// -- PATCH /api/leave/calloff/:id/convert-sick -- admin converts call-off to sick
 router.patch('/calloff/:id/convert-sick', auth, adminOnly, async (req, res) => {
   try {
     const lrRes = await db.query(
@@ -616,7 +616,7 @@ router.patch('/calloff/:id/convert-sick', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ── GET /api/leave/admin/pending-count ── quick badge count for admins ────────
+// -- GET /api/leave/admin/pending-count -- quick badge count for admins --------
 router.get('/admin/pending-count', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(

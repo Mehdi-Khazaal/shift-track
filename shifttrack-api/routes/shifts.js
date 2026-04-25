@@ -3,7 +3,7 @@ const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
 
-// GET /api/shifts — get all shifts for logged-in user + suppressed base dates
+// GET /api/shifts - get all shifts for logged-in user + suppressed base dates
 router.get('/', auth, async (req, res) => {
   try {
     const [shiftsRes, suppressedRes] = await Promise.all([
@@ -28,7 +28,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// POST /api/shifts — log a new shift
+// POST /api/shifts - log a new shift
 router.post('/', auth, async (req, res) => {
   const { location_id, date, start_time, end_time, notes } = req.body;
   if (!location_id || !date || !start_time || !end_time)
@@ -57,7 +57,7 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// PUT /api/shifts/:id — edit a shift
+// PUT /api/shifts/:id - edit a shift
 router.put('/:id', auth, async (req, res) => {
   const { location_id, date, start_time, end_time, notes } = req.body;
   try {

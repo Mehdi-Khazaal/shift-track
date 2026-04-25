@@ -8,7 +8,7 @@ const { getUserAnchor, payWeekOf } = require('../utils/ppAnchor');
 async function notifyUsers(userIds, title, body) {
   if (!userIds?.length) return;
   const subs = await db.query('SELECT * FROM push_subscriptions WHERE user_id = ANY($1)', [userIds]);
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icon-192.png' });
+  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
   const logged = new Set();
   for (const sub of subs.rows) {
     try {
@@ -63,7 +63,7 @@ async function resolveShift(userId, dateStr, anchorStr) {
     };
   }
 
-  // 2. Check suppressed — if suppressed, no base shift either
+  // 2. Check suppressed - if suppressed, no base shift either
   const suppressed = await db.query(
     'SELECT id FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
     [userId, dateStr]
@@ -94,7 +94,7 @@ async function resolveShift(userId, dateStr, anchorStr) {
   };
 }
 
-// ─── POST /api/shift-swaps — initiate a swap request ──────────────────────────
+// --- POST /api/shift-swaps - initiate a swap request --------------------------
 router.post('/', auth, async (req, res) => {
   const { my_date, target_user_id, their_date } = req.body;
   if (!my_date || !target_user_id || !their_date)
@@ -155,7 +155,7 @@ router.post('/', auth, async (req, res) => {
     await notifyUsers(
       [target_user_id],
       'Shift Swap Request',
-      `${initiatorName} wants to swap: their ${myShift.location_name} on ${my_date} ↔ your ${theirShift.location_name} on ${their_date}`
+      `${initiatorName} wants to swap: their ${myShift.location_name} on ${my_date} <-> your ${theirShift.location_name} on ${their_date}`
     );
 
     // Notify admins of new swap proposal
@@ -164,7 +164,7 @@ router.post('/', auth, async (req, res) => {
       await notifyUsers(
         admins.rows.map(u => u.id),
         'New Swap Request',
-        `${initiatorName} ↔ ${targetName}: ${myShift.location_name} ${my_date} / ${theirShift.location_name} ${their_date}`
+        `${initiatorName} <-> ${targetName}: ${myShift.location_name} ${my_date} / ${theirShift.location_name} ${their_date}`
       );
     }
 
@@ -175,7 +175,7 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// ─── GET /api/shift-swaps — all swaps for the logged-in user ──────────────────
+// --- GET /api/shift-swaps - all swaps for the logged-in user ------------------
 router.get('/', auth, async (req, res) => {
   try {
     const result = await db.query(
@@ -201,7 +201,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// ─── PATCH /api/shift-swaps/:id/respond — accept or reject (target only) ─────
+// --- PATCH /api/shift-swaps/:id/respond - accept or reject (target only) -----
 router.patch('/:id/respond', auth, async (req, res) => {
   const { response } = req.body;
   if (!['accepted', 'rejected'].includes(response))
@@ -285,7 +285,7 @@ router.patch('/:id/respond', auth, async (req, res) => {
     const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
     if (admins.rows.length) {
       await notifyUsers(admins.rows.map(u => u.id), 'Shift Swap Completed',
-        `${swap.initiator_name} ↔ ${swap.target_name}: ${iDate} and ${tDate}`);
+        `${swap.initiator_name} <-> ${swap.target_name}: ${iDate} and ${tDate}`);
     }
 
     res.json({ ok: true });
@@ -295,7 +295,7 @@ router.patch('/:id/respond', auth, async (req, res) => {
   }
 });
 
-// ─── DELETE /api/shift-swaps/:id — cancel pending (initiator only) ────────────
+// --- DELETE /api/shift-swaps/:id - cancel pending (initiator only) ------------
 router.delete('/:id', auth, async (req, res) => {
   try {
     const r = await db.query(
@@ -318,7 +318,7 @@ router.delete('/:id', auth, async (req, res) => {
     const iDate = String(swap.initiator_date).slice(0, 10);
     const tDate = String(swap.target_date).slice(0, 10);
     await notifyUsers([swap.target_id], 'Swap Request Cancelled',
-      `${swap.initiator_name} cancelled the swap request (${iDate} ↔ ${tDate})`);
+      `${swap.initiator_name} cancelled the swap request (${iDate} <-> ${tDate})`);
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -326,7 +326,7 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// ─── PATCH /api/shift-swaps/:id/cancel — undo an accepted swap (either party) ─
+// --- PATCH /api/shift-swaps/:id/cancel - undo an accepted swap (either party) -
 router.patch('/:id/cancel', auth, async (req, res) => {
   try {
     const swapRes = await db.query(
@@ -387,13 +387,13 @@ router.patch('/:id/cancel', auth, async (req, res) => {
     const cancellerName = swap.initiator_id === req.userId ? swap.initiator_name : swap.target_name;
     const otherId       = swap.initiator_id === req.userId ? swap.target_id      : swap.initiator_id;
     await notifyUsers([otherId], 'Swap Cancelled',
-      `${cancellerName} cancelled the accepted swap (${iDate} ↔ ${tDate}). Your original shift has been restored.`);
+      `${cancellerName} cancelled the accepted swap (${iDate} <-> ${tDate}). Your original shift has been restored.`);
 
     // Notify admins
     const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
     if (admins.rows.length) {
       await notifyUsers(admins.rows.map(u => u.id), 'Swap Undone by Employee',
-        `${cancellerName} cancelled: ${swap.initiator_name} ↔ ${swap.target_name} (${iDate} / ${tDate})`);
+        `${cancellerName} cancelled: ${swap.initiator_name} <-> ${swap.target_name} (${iDate} / ${tDate})`);
     }
 
     res.json({ ok: true });
@@ -403,7 +403,7 @@ router.patch('/:id/cancel', auth, async (req, res) => {
   }
 });
 
-// ─── GET /api/shift-swaps/users — all employees (for picker) ──────────────────
+// --- GET /api/shift-swaps/users - all employees (for picker) ------------------
 router.get('/users', auth, async (req, res) => {
   try {
     const r = await db.query(

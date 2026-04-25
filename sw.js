@@ -3,8 +3,8 @@ self.addEventListener('push', event => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'ShiftTrack', {
       body: data.body || 'You have an upcoming shift',
-      icon: data.icon || '/shift-track/icon-192.png',
-      badge: '/shift-track/icon-192.png',
+      icon: data.icon || '/shift-track/icons/icon-192.png',
+      badge: '/shift-track/icons/icon-192.png',
       vibrate: [200, 100, 200],
       tag: 'shifttrack-reminder',
       renotify: true

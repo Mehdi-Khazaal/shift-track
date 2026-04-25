@@ -13,7 +13,7 @@ function adminOnly(req, res, next){
 async function notifyUsers(userIds, title, body){
   if(!userIds.length) return;
   const subs = await db.query('SELECT * FROM push_subscriptions WHERE user_id = ANY($1)', [userIds]);
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icon-192.png' });
+  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
   const logged = new Set();
   for(const sub of subs.rows){
     try {
@@ -68,7 +68,7 @@ async function processIfExpired(shift){
       );
       const loc = await db.query('SELECT name FROM locations WHERE id=$1', [shift.location_id]);
       const locName = loc.rows[0]?.name || 'the location';
-      await notifyUsers([winner.user_id], 'Shift Assigned', `You got the open shift at ${locName} on ${shift.date} (${shift.start_time.slice(0,5)}–${shift.end_time.slice(0,5)})`);
+      await notifyUsers([winner.user_id], 'Shift Assigned', `You got the open shift at ${locName} on ${shift.date} (${shift.start_time.slice(0,5)}-${shift.end_time.slice(0,5)})`);
       return { ...shift, status:'claimed', claimed_by: winner.user_id };
     } else {
       await db.query(`UPDATE open_shifts SET status='expired' WHERE id=$1`, [shift.id]);
@@ -80,9 +80,9 @@ async function processIfExpired(shift){
   }
 }
 
-// ─── ADMIN ROUTES ──────────────────────────────────────────────────
+// --- ADMIN ROUTES --------------------------------------------------
 
-// POST /api/open-shifts/admin — create an open shift and notify targets
+// POST /api/open-shifts/admin - create an open shift and notify targets
 router.post('/admin', auth, adminOnly, async (req, res) => {
   const { location_id, date, start_time, end_time, notes, target_type, target_user_ids, deadline_hours } = req.body;
   if(!location_id || !date || !start_time || !end_time || !target_type || !deadline_hours)
@@ -120,7 +120,7 @@ router.post('/admin', auth, adminOnly, async (req, res) => {
     const locName = loc.rows[0]?.name || 'Unknown';
     const deadlineStr = deadline.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     await notifyUsers(notifyIds, 'Open Shift Available',
-      `${locName} · ${date} · ${start_time.slice(0,5)}–${end_time.slice(0,5)} · Respond by ${deadlineStr}`);
+      `${locName} - ${date} - ${start_time.slice(0,5)}-${end_time.slice(0,5)} - Respond by ${deadlineStr}`);
 
     res.json({ ok:true, shift });
   } catch(err){
@@ -129,7 +129,7 @@ router.post('/admin', auth, adminOnly, async (req, res) => {
   }
 });
 
-// GET /api/open-shifts/admin — all open shifts with claim details
+// GET /api/open-shifts/admin - all open shifts with claim details
 router.get('/admin', auth, adminOnly, async (req, res) => {
   try {
     const shifts = await db.query(
@@ -170,7 +170,7 @@ router.get('/admin', auth, adminOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/open-shifts/admin/:id — cancel an open shift
+// DELETE /api/open-shifts/admin/:id - cancel an open shift
 router.delete('/admin/:id', auth, adminOnly, async (req, res) => {
   try {
     await db.query('DELETE FROM open_shifts WHERE id=$1', [req.params.id]);
@@ -180,9 +180,9 @@ router.delete('/admin/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ─── USER ROUTES ───────────────────────────────────────────────────
+// --- USER ROUTES ---------------------------------------------------
 
-// GET /api/open-shifts — shifts available to the logged-in user
+// GET /api/open-shifts - shifts available to the logged-in user
 router.get('/', auth, async (req, res) => {
   try {
     const userRes = await db.query('SELECT location_id FROM users WHERE id=$1', [req.userId]);
@@ -229,7 +229,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// POST /api/open-shifts/:id/respond — claim or reject
+// POST /api/open-shifts/:id/respond - claim or reject
 router.post('/:id/respond', auth, async (req, res) => {
   const { response } = req.body;
   if(!['claimed','rejected'].includes(response))

@@ -30,7 +30,7 @@ const authLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ ok: false, error: 'Too many attempts. Try again in 15 minutes.' }),
 });
 
-// ── Routes ──────────────────────────────────
+// -- Routes ----------------------------------
 app.use('/api/auth',     authLimiter, require('./routes/auth'));
 app.use('/api/shifts',   require('./routes/shifts'));
 app.use('/api/locations',require('./routes/locations'));
@@ -54,5 +54,5 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n✅  ShiftTrack API running on http://localhost:${PORT}\n`);
+  console.log(`\nOK  ShiftTrack API running on http://localhost:${PORT}\n`);
 });

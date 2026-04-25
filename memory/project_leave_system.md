@@ -12,11 +12,11 @@ Implemented full leave management system. Key business rules:
 
 **Call Offs:** Employee submits or admin assigns directly. Admin chooses whether to apply sick time (partial OK: uses available sick hrs, rest unpaid). Employee notified when admin assigns.
 
-**Workflow:** pending→approved (hours deducted from balance) or denied (reason required). Employee can cancel pending only. Admin can reverse approved (hours restored).
+**Workflow:** pending->approved (hours deducted from balance) or denied (reason required). Employee can cancel pending only. Admin can reverse approved (hours restored).
 
 **DB tables added:** leave_types (seeded: pto/sick_time/call_off), leave_balances, leave_requests, sick_time_payouts.
 
-**Route:** /api/leave — all endpoints in shifttrack-api/routes/leave.js
+**Route:** /api/leave - all endpoints in shifttrack-api/routes/leave.js
 
 **Scheduler:** Daily 00:05 cron in scheduler.js handles PTO accrual + anniversary events.
 

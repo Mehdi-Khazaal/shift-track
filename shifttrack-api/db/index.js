@@ -3,7 +3,7 @@ require('dotenv').config();
 
 // Return DATE columns as plain "YYYY-MM-DD" strings instead of JS Date objects.
 // The pg library delegates DATE (OID 1082) to postgres-date which returns Date
-// objects; String(dateObj).slice(0,10) then yields "Thu Apr 09" — invalid for
+// objects; String(dateObj).slice(0,10) then yields "Thu Apr 09" - invalid for
 // any subsequent SQL DATE parameter.
 types.setTypeParser(1082, val => val);
 
@@ -12,13 +12,114 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }, // required for Neon
 });
 
-// Run migrations on startup — safe to run repeatedly (all are idempotent)
-async function migrate(){
-  try {
-    // Hire date for seniority tracking
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date DATE`);
+async function addConstraintIfMissing(name, sql) {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = '${name}'
+      ) THEN
+        ${sql};
+      END IF;
+    END $$;
+  `);
+}
 
-    // Open shifts system
+// Run migrations on startup - safe to run repeatedly.
+async function migrate() {
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+
+    // Core tables. Keep locations before users because users.location_id
+    // references locations; locations.created_by is added afterward.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS locations (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name       TEXT NOT NULL,
+        color      TEXT NOT NULL DEFAULT '#5b8fff',
+        rate       NUMERIC(10,2) NOT NULL,
+        address    TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email         TEXT UNIQUE NOT NULL,
+        name          TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role          TEXT NOT NULL DEFAULT 'user',
+        position      TEXT NOT NULL DEFAULT '',
+        location_id   UUID REFERENCES locations(id) ON DELETE SET NULL,
+        hire_date     DATE,
+        is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS created_by UUID`);
+    await addConstraintIfMissing(
+      'locations_created_by_fkey',
+      'ALTER TABLE locations ADD CONSTRAINT locations_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL'
+    );
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS shifts (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        date        DATE NOT NULL,
+        start_time  TIME NOT NULL,
+        end_time    TIME NOT NULL,
+        notes       TEXT DEFAULT '',
+        admin_notes TEXT DEFAULT '',
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS base_schedule (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        week        INTEGER NOT NULL CHECK (week IN (1, 2)),
+        day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+        start_time  TIME NOT NULL,
+        end_time    TIME NOT NULL
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        ot_threshold  NUMERIC(5,2) DEFAULT 40,
+        pp_anchor     DATE DEFAULT '2026-03-22'
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_unavailability (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        start_date DATE NOT NULL,
+        end_date   DATE NOT NULL,
+        start_time TIME,
+        end_time   TIME,
+        note       TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Existing deployments may have older core tables.
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT NOT NULL DEFAULT ''`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS location_id UUID`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS hire_date DATE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`);
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT ''`);
+
+    // Open shifts system.
     await pool.query(`
       CREATE TABLE IF NOT EXISTS open_shifts (
         id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -36,6 +137,7 @@ async function migrate(){
         created_at      TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS open_shift_claims (
         id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -47,7 +149,6 @@ async function migrate(){
       )
     `);
 
-    // Push notification subscriptions
     await pool.query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -62,7 +163,6 @@ async function migrate(){
       )
     `);
 
-    // Notification history log
     await pool.query(`
       CREATE TABLE IF NOT EXISTS notification_log (
         id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -73,12 +173,13 @@ async function migrate(){
       )
     `);
 
-    // Claimed open shift tracking on shifts
-    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT ''`);
-    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS open_shift_id UUID REFERENCES open_shifts(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS open_shift_id UUID`);
+    await addConstraintIfMissing(
+      'shifts_open_shift_id_fkey',
+      'ALTER TABLE shifts ADD CONSTRAINT shifts_open_shift_id_fkey FOREIGN KEY (open_shift_id) REFERENCES open_shifts(id) ON DELETE SET NULL'
+    );
     await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS awarded_by_name TEXT DEFAULT ''`);
 
-    // Shift swap system
     await pool.query(`
       CREATE TABLE IF NOT EXISTS shift_swaps (
         id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -103,18 +204,11 @@ async function migrate(){
       )
     `);
 
-    // Ensure shift_swaps has the is_base columns (added after initial release)
     await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS initiator_is_base BOOLEAN NOT NULL DEFAULT FALSE`);
     await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS target_is_base BOOLEAN NOT NULL DEFAULT FALSE`);
-
-    // Store the concrete shift IDs created when a swap is executed so undo is exact
     await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS swapped_initiator_shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE shift_swaps ADD COLUMN IF NOT EXISTS swapped_target_shift_id UUID REFERENCES shifts(id) ON DELETE SET NULL`);
 
-    // Soft-delete: deactivated employees are hidden from pickers but their history is preserved
-    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
-
-    // Base schedule suppression (used when a swapped base-schedule shift is overridden)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS base_suppressed_dates (
         id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -124,18 +218,82 @@ async function migrate(){
       )
     `);
 
-    console.log('✅  Migrations applied');
-  } catch(err){
-    console.error('❌  Migration failed:', err.message);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS leave_types (
+        id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name  TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#5b8fff'
+      )
+    `);
+    await pool.query(`
+      INSERT INTO leave_types (name, label, color) VALUES
+        ('pto',       'PTO',       '#a78bfa'),
+        ('sick_time', 'Sick Time', '#2ecc8a'),
+        ('call_off',  'Call Off',  '#ff5f6d')
+      ON CONFLICT (name) DO NOTHING
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS leave_balances (
+        id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id                UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        leave_type_id          UUID NOT NULL REFERENCES leave_types(id) ON DELETE CASCADE,
+        accrued_hours          NUMERIC(8,2) NOT NULL DEFAULT 0,
+        used_hours             NUMERIC(8,2) NOT NULL DEFAULT 0,
+        carried_over_hours     NUMERIC(8,2) NOT NULL DEFAULT 0,
+        anniversary_year_start DATE NOT NULL,
+        UNIQUE(user_id, leave_type_id)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS leave_requests (
+        id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        leave_type_id      UUID NOT NULL REFERENCES leave_types(id) ON DELETE CASCADE,
+        date               DATE NOT NULL,
+        hours_requested    NUMERIC(5,2) NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'pending'
+                           CHECK (status IN ('pending','approved','denied','cancelled')),
+        denial_reason      TEXT DEFAULT '',
+        notes              TEXT DEFAULT '',
+        submitted_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at        TIMESTAMPTZ,
+        sick_hours_applied NUMERIC(5,2) NOT NULL DEFAULT 0,
+        start_time         TIME,
+        end_time           TIME,
+        created_at         TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS start_time TIME`);
+    await pool.query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS end_time TIME`);
+    await pool.query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS sick_hours_applied NUMERIC(5,2) NOT NULL DEFAULT 0`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sick_time_payouts (
+        id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        hours_paid   NUMERIC(8,2) NOT NULL,
+        hourly_rate  NUMERIC(10,2) NOT NULL,
+        total_amount NUMERIC(10,2) NOT NULL,
+        paid_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    console.log('OK  Migrations applied');
+  } catch (err) {
+    console.error('ERROR  Migration failed:', err.message);
   }
 }
 
-// Test the connection on startup then run migrations
+// Test the connection on startup then run migrations.
 pool.connect((err, client, release) => {
   if (err) {
-    console.error('❌  Database connection failed:', err.message);
+    console.error('ERROR  Database connection failed:', err.message);
   } else {
-    console.log('✅  Database connected (Neon PostgreSQL)');
+    console.log('OK  Database connected (Neon PostgreSQL)');
     release();
     migrate();
   }
