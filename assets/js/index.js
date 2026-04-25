@@ -329,13 +329,56 @@ function computeWeekPay(shifts){
 function toMins(t){ const parsed=parseTimeString(t); return parsed?parsed.total:0; }
 function toMinsEnd(start,end){ let s=toMins(start),e=toMins(end); if(e<=s) e+=1440; return e; }
 
+function dateToDay(dateStr){
+  return Math.round(new Date(dateStr+'T00:00:00').getTime()/86400000);
+}
+function shiftToAbsRange(date,start,end){
+  const base=dateToDay(date)*1440;
+  const s=toMins(start);
+  let e=toMins(end);
+  if(e<=s) e+=1440;
+  return {startMins:base+s, endMins:base+e};
+}
+
+// Checks whether adding newShift would create a block of >18 consecutive hours
+// (shifts within 60 min of each other are treated as part of the same block).
+function checkConsecutiveChain(newShift, skipId=null){
+  const GAP=60, MAX=MAX_DAY_HOURS*60;
+  const newRange=shiftToAbsRange(newShift.date,newShift.start,newShift.end);
+  const allRanges=[
+    ...getShifts().filter(s=>s.id!==skipId).map(s=>shiftToAbsRange(s.date,s.start,s.end)),
+    newRange
+  ];
+  const visited=new Set([newRange]);
+  const queue=[newRange];
+  let minStart=newRange.startMins, maxEnd=newRange.endMins;
+  while(queue.length){
+    const curr=queue.shift();
+    for(const other of allRanges){
+      if(visited.has(other)) continue;
+      const g1=other.startMins-curr.endMins;
+      const g2=curr.startMins-other.endMins;
+      if((g1>=0&&g1<=GAP)||(g2>=0&&g2<=GAP)){
+        visited.add(other);
+        queue.push(other);
+        minStart=Math.min(minStart,other.startMins);
+        maxEnd=Math.max(maxEnd,other.endMins);
+      }
+    }
+  }
+  const span=maxEnd-minStart;
+  if(span>MAX)
+    return `These shifts total ${(span/60).toFixed(1)} consecutive hours (max 18h with ≤1h gap between shifts).`;
+  return null;
+}
+
 function checkConflicts(newShift, skipId=null){
   const {date,start,end}=newShift;
   const hrs=shiftHours(start,end);
 
-  // 1. Single consecutive shift too long
-  if(hrs>=MAX_DAY_HOURS)
-    return `This shift is ${hrs.toFixed(1)} consecutive hours. Shifts of ${MAX_DAY_HOURS}+ hours in a row are not allowed.`;
+  // 1. Single shift too long (>18 h; exactly 18 is allowed)
+  if(hrs>MAX_DAY_HOURS)
+    return `This shift is ${hrs.toFixed(1)} consecutive hours. Shifts over ${MAX_DAY_HOURS}h are not allowed.`;
 
   // 2. Collect all other shifts on this date
   const loggedSameDay=getShifts().filter(s=>s.date===date&&s.id!==skipId);
@@ -356,7 +399,9 @@ function checkConflicts(newShift, skipId=null){
     if(ns<ee&&ne>es)
       return `Overlap with your ${ex.isBase?'base ':''}shift at ${fmtTime(ex.start)}–${fmtTime(ex.end)} (${ex.name}).`;
   }
-  return null;
+
+  // 4. Back-to-back consecutive hours across shifts (≤1h gap = same block, max 18h)
+  return checkConsecutiveChain(newShift, skipId);
 }
 
 // ═══════════════════════════════════════
