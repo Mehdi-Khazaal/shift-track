@@ -348,11 +348,27 @@ function shiftToAbsRange(date,start,end){
 
 // Checks whether adding newShift would create a block of >18 consecutive hours
 // (shifts within 60 min of each other are treated as part of the same block).
+// Includes both logged shifts and base schedule shifts.
 function checkConsecutiveChain(newShift, skipId=null){
   const GAP=60, MAX=MAX_DAY_HOURS*60;
   const newRange=shiftToAbsRange(newShift.date,newShift.start,newShift.end);
+
+  // Resolve base schedule entries to actual dates within ±2 days of the new shift
+  const baseRanges=[];
+  for(let offset=-2;offset<=2;offset++){
+    const d=new Date(newShift.date+'T12:00:00');
+    d.setDate(d.getDate()+offset);
+    const dateStr=toYMD(d);
+    if(!dateStr) continue;
+    const wkDates=weekDatesForDate(dateStr);
+    getBase()
+      .filter(b=>baseToDate(b,wkDates)===dateStr)
+      .forEach(b=>baseRanges.push(shiftToAbsRange(dateStr,b.start,b.end)));
+  }
+
   const allRanges=[
     ...getShifts().filter(s=>s.id!==skipId).map(s=>shiftToAbsRange(s.date,s.start,s.end)),
+    ...baseRanges,
     newRange
   ];
   const visited=new Set([newRange]);

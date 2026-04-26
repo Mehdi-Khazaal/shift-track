@@ -29,20 +29,45 @@ function toAbsRange(dateStr, startStr, endStr) {
 
 // Returns an error string if adding this shift would create a consecutive block >18h
 // (shifts within 60 min of each other count as the same block).
+// Checks both logged shifts and base schedule shifts.
 async function checkConsecutiveHours(userId, date, start, end, excludeId = null) {
   const params = [userId, date];
   const excludeClause = excludeId ? `AND id != $${params.push(excludeId)}` : '';
-  const { rows } = await db.query(
-    `SELECT date, start_time, end_time FROM shifts
-     WHERE user_id=$1
-       AND date BETWEEN $2::date - interval '2 days' AND $2::date + interval '2 days'
-       ${excludeClause}`,
-    params
-  );
+
+  const [{ rows: loggedRows }, { rows: baseRows }, { rows: settingsRows }] = await Promise.all([
+    db.query(
+      `SELECT date, start_time, end_time FROM shifts
+       WHERE user_id=$1
+         AND date BETWEEN $2::date - interval '2 days' AND $2::date + interval '2 days'
+         ${excludeClause}`,
+      params
+    ),
+    db.query('SELECT week, day_of_week, start_time, end_time FROM base_schedule WHERE user_id=$1', [userId]),
+    db.query('SELECT pp_anchor FROM user_settings WHERE user_id=$1', [userId]),
+  ]);
+
+  const anchor = settingsRows[0]?.pp_anchor?.slice(0, 10) || '2026-03-22';
+  const anchorMs = Date.UTC(...anchor.split('-').map((v,i)=>i===1?Number(v)-1:Number(v)));
+
+  // Resolve base schedule entries to actual dates within ±2 days
+  const baseRanges = [];
+  for (let offset = -2; offset <= 2; offset++) {
+    const d = new Date(date + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + offset);
+    const dateStr = d.toISOString().slice(0, 10);
+    const diff = Math.round((d.getTime() - anchorMs) / 86400000);
+    const week = ((diff % 14) + 14) % 14 < 7 ? 1 : 2;
+    const dow  = d.getUTCDay();
+    for (const b of baseRows) {
+      if (b.week === week && b.day_of_week === dow)
+        baseRanges.push(toAbsRange(dateStr, b.start_time, b.end_time));
+    }
+  }
 
   const newRange = toAbsRange(date, start, end);
   const allRanges = [
-    ...rows.map(r => toAbsRange(r.date.slice(0, 10), r.start_time, r.end_time)),
+    ...loggedRows.map(r => toAbsRange(r.date.slice(0, 10), r.start_time, r.end_time)),
+    ...baseRanges,
     newRange
   ];
 
