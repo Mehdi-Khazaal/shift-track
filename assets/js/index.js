@@ -236,6 +236,12 @@ function toYMD(d){
 }
 function getLocById(id){ return getLocations().find(l=>l.id===id); }
 
+function getAssignedLocation(){
+  const user=getUser();
+  if(!user?.location_id) return null;
+  return getLocById(user.location_id) || null;
+}
+
 // ─── Pay period ───
 // Anchor: first day of a known period. Every 14 days from there is a new period.
 function getPayPeriod(offset=0){
@@ -512,6 +518,8 @@ function openAddShift(id=null){
     const s=getShifts().find(x=>x.id===id);
     if(s){ sel.value=s.locationId; document.getElementById('shift-date').value=s.date; document.getElementById('shift-start').value=s.start; document.getElementById('shift-end').value=s.end; document.getElementById('shift-notes').value=s.notes||''; }
   } else {
+    const assigned=getAssignedLocation();
+    if(assigned) sel.value=assigned.id;
     document.getElementById('shift-date').value=toYMD(new Date());
     document.getElementById('shift-start').value='07:00';
     document.getElementById('shift-end').value='15:00';
@@ -1030,6 +1038,8 @@ function renderSchedule(){
 //  RENDER: SETTINGS
 // ═══════════════════════════════════════
 function renderSettings(){
+  renderSettingsProfile();
+  renderSettingsAvailability();
   const locs=getLocations();
   const el=document.getElementById('location-list');
   const label=document.getElementById('locations-summary-label');
@@ -1041,6 +1051,57 @@ function renderSettings(){
       <div class="shift-info"><div class="name">${l.name}</div><div class="sub">$${l.rate.toFixed(2)}/hr</div></div>
       ${l.address?`<button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="event.stopPropagation();openMapAddress(this.dataset.addr)" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;cursor:pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>`:''}
     </div>`).join('');
+}
+
+function renderSettingsProfile(){
+  const el=document.getElementById('settings-profile-card');
+  if(!el) return;
+  const user=getUser()||{};
+  const loc=getAssignedLocation();
+  const name=user.name||user.email?.split('@')[0]||'Employee';
+  const hire=user.hire_date
+    ? new Date(String(user.hire_date).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+    : 'Not set';
+  el.innerHTML=`
+    <div class="settings-profile-head">
+      <div class="settings-profile-avatar">${name.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div>
+      <div>
+        <div class="settings-profile-name">${name}</div>
+        <div class="settings-profile-email">${user.email||''}</div>
+      </div>
+    </div>
+    <div class="settings-profile-grid">
+      <div><span>Position</span><b>${user.position||'Not assigned'}</b></div>
+      <div><span>Assigned house</span><b>${loc?.name||user.location_name||'Not assigned'}</b></div>
+      <div><span>Hire date</span><b>${hire}</b></div>
+      <div><span>Role</span><b>${user.role==='admin'?'Admin':'Employee'}</b></div>
+    </div>`;
+}
+
+function renderSettingsAvailability(){
+  const el=document.getElementById('settings-unavail-list');
+  if(!el) return;
+  const today=toYMD(new Date());
+  const entries=[...cache.unavailability]
+    .filter(u=>u.endDate>=today)
+    .sort((a,b)=>a.startDate.localeCompare(b.startDate)||(a.startTime||'').localeCompare(b.startTime||''));
+  if(!entries.length){
+    el.innerHTML='<div class="empty-state" style="padding:16px;font-size:12px">No unavailable time set</div>';
+    return;
+  }
+  const fmt=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  el.innerHTML=entries.map(u=>{
+    const dateText=u.startDate===u.endDate ? fmt(u.startDate) : `${fmt(u.startDate)}-${fmt(u.endDate)}`;
+    const timeText=u.startTime ? `${fmtTime(u.startTime)}-${fmtTime(u.endTime)}` : 'All day';
+    return `<div class="settings-unavail-row">
+      <div class="settings-unavail-mark"></div>
+      <div class="settings-unavail-main">
+        <div>${dateText}</div>
+        <span>${timeText}${u.note?' · '+u.note:''}</span>
+      </div>
+      <button onclick="deleteUnavail('${u.id}')" class="settings-unavail-remove">Remove</button>
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════
@@ -1313,6 +1374,8 @@ function openAddShiftForDateStr(dateStr){
   document.getElementById('save-shift-btn').style.opacity='1';
   const sel=document.getElementById('shift-location');
   sel.innerHTML=locs.map(l=>`<option value="${l.id}">${l.name} — $${l.rate}/hr</option>`).join('');
+  const assigned=getAssignedLocation();
+  if(assigned) sel.value=assigned.id;
   document.getElementById('shift-date').value=dateStr;
   document.getElementById('shift-start').value='07:00';
   document.getElementById('shift-end').value='15:00';
@@ -1574,6 +1637,18 @@ function openMarkUnavail(){
   setTimeout(()=>openSheet('sheet-unavail'), 200);
 }
 
+function openAvailabilityFromSettings(){
+  const today=toYMD(new Date());
+  document.getElementById('unavail-start').value = today;
+  document.getElementById('unavail-end').value   = today;
+  document.getElementById('unavail-allday').checked = true;
+  document.getElementById('unavail-time-row').style.display = 'none';
+  document.getElementById('unavail-start-time').value = '09:00';
+  document.getElementById('unavail-end-time').value = '17:00';
+  document.getElementById('unavail-note').value = '';
+  openSheet('sheet-unavail');
+}
+
 function toggleUnavailAllDay(){
   const allDay = document.getElementById('unavail-allday').checked;
   document.getElementById('unavail-time-row').style.display = allDay ? 'none' : 'block';
@@ -1593,6 +1668,7 @@ async function saveUnavail(){
   cache.unavailability.push(normalizeUnavail(res.entry));
   closeSheet('sheet-unavail');
   renderCalendar();
+  renderSettings();
   showToast('Marked unavailable ✓');
 }
 
@@ -1601,7 +1677,8 @@ async function deleteUnavail(id){
   if(!res?.ok){ showToast('Failed to remove',true); return; }
   cache.unavailability = cache.unavailability.filter(u=>u.id!==id);
   renderCalendar();
-  openDaySheet(daySheetDate);
+  renderSettings();
+  if(daySheetDate && document.getElementById('screen-calendar')?.classList.contains('active')) openDaySheet(daySheetDate);
   showToast('Removed ✓');
 }
 
@@ -2213,7 +2290,7 @@ function switchLeaveSubtab(tab) {
   // Show/hide calendar nav controls; update title
   document.getElementById('cal-controls').style.display = tab === 'cal' ? 'flex' : 'none';
   if (tab === 'timeoff') {
-    document.getElementById('cal-title').textContent = 'Time Off';
+    document.getElementById('cal-title').textContent = 'Leave';
     loadLeaveData();
   } else {
     renderCalendar(); // restores proper month/week title

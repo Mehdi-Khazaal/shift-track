@@ -369,6 +369,25 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 .preview-mark.sq{border-radius:2px;}
 .preview-mark.leave{background:#a78bfa;}
 .preview-mark.unavailable{height:3px;width:14px;border-radius:2px;background:var(--muted);}
+.settings-profile-card{padding:14px 16px;}
+.settings-profile-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.settings-profile-avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-gradient);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;flex-shrink:0;}
+.settings-profile-name{font-size:15px;font-weight:700;}
+.settings-profile-email{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:250px;}
+.settings-profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.settings-profile-grid div{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;min-width:0;}
+.settings-profile-grid span{display:block;font-size:10px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.settings-profile-grid b{display:block;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.settings-unavail-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);}
+.settings-unavail-row:last-child{border-bottom:none;}
+.settings-unavail-mark{width:14px;height:3px;border-radius:2px;background:var(--muted);opacity:.75;flex-shrink:0;}
+.settings-unavail-main{flex:1;min-width:0;}
+.settings-unavail-main div{font-size:13px;font-weight:700;}
+.settings-unavail-main span{display:block;font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.settings-unavail-remove{background:rgba(255,95,109,.07);border:1px solid rgba(255,95,109,.25);color:var(--red);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:10px;cursor:pointer;flex-shrink:0;}
+@media(max-width:420px){
+  .settings-profile-grid{grid-template-columns:1fr;}
+}
 @media(max-width:420px){
   .inbox-item{align-items:flex-start;flex-wrap:wrap;}
   .inbox-actions{width:100%;padding-left:38px;justify-content:flex-start;}

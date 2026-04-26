@@ -42,7 +42,13 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'email and password are required' });
 
   try {
-    const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    const result = await db.query(
+      `SELECT u.*, l.name AS location_name
+       FROM users u
+       LEFT JOIN locations l ON u.location_id = l.id
+       WHERE u.email = $1`,
+      [email]
+    );
     if (result.rows.length === 0)
       return res.status(401).json({ ok: false, error: 'Invalid email or password' });
 
@@ -56,7 +62,20 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
-    res.json({ ok: true, token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    res.json({
+      ok: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        position: user.position || '',
+        hire_date: user.hire_date || null,
+        location_id: user.location_id || null,
+        location_name: user.location_name || ''
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: 'Server error' });
