@@ -353,6 +353,8 @@ function openUserDashboard(userId){
   const meta=[u.email, u.position, u.location_name].filter(Boolean).join(' · ');
   document.getElementById('udash-meta').textContent=meta;
   renderUserDashboard();
+  renderUserProfileGrid();
+  loadUserProfileExtras(userId);
   document.getElementById('user-dash-modal').classList.add('open');
 }
 function closeUserDash(){ document.getElementById('user-dash-modal').classList.remove('open'); }
@@ -425,6 +427,68 @@ function renderUserDashboard(){
       <td style="text-align:center">${noteBtn}</td>
     </tr>`;
   }).join('');
+}
+
+async function loadUserProfileExtras(userId){
+  const grid=document.getElementById('udash-profile-grid');
+  if(!grid) return;
+  const [balRes, reqRes]=await Promise.all([
+    apiFetch(`/api/leave/admin/balances/${userId}`),
+    apiFetch(`/api/leave/admin/requests?user_id=${userId}`)
+  ]);
+  if(viewUserId!==userId) return;
+  renderUserProfileGrid(balRes?.balances||[], reqRes?.requests||[]);
+}
+
+function renderUserProfileGrid(leaveBalances=[], leaveRequests=[]){
+  const grid=document.getElementById('udash-profile-grid');
+  if(!grid) return;
+  const u=allUsers.find(x=>x.id===viewUserId);
+  if(!u) return;
+  const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const today=new Date(); today.setHours(0,0,0,0);
+  const todayY=toYMD(today);
+  const shifts=(allShifts[viewUserId]||[]).filter(s=>s.date>=todayY).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+  const sched=(allSchedules[viewUserId]||[]).sort((a,b)=>a.week-b.week||a.day-b.day||a.start.localeCompare(b.start));
+  const notes=(allShifts[viewUserId]||[]).filter(s=>s.adminNotes).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+
+  const upcoming=shifts.slice(0,5).map(s=>`<div class="profile-line">
+    <span>${fmtDate(s.date)}</span><b>${s.location_name||'Location'} · ${s.start}-${s.end}</b>
+  </div>`).join('') || '<div class="profile-empty">No upcoming logged shifts</div>';
+
+  const schedule=sched.slice(0,8).map(s=>`<div class="profile-line">
+    <span>W${s.week} · ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][s.day]}</span><b>${s.location_name||'Location'} · ${s.start}-${s.end}</b>
+  </div>`).join('') || '<div class="profile-empty">No base schedule</div>';
+
+  const balances=leaveBalances.length
+    ? leaveBalances.map(b=>`<div class="profile-balance">
+        <span style="background:${b.type_color||'#888'}"></span>
+        <div><b>${b.type_label||b.type_name}</b><em>${parseFloat(b.available_hours||0).toFixed(1)}h available</em></div>
+      </div>`).join('')
+    : '<div class="profile-empty">Loading leave balances...</div>';
+
+  const requests=leaveRequests.slice(0,4).map(r=>`<div class="profile-line">
+    <span>${String(r.date).slice(0,10)}</span><b>${r.type_label||r.type_name} · ${r.status}</b>
+  </div>`).join('') || '<div class="profile-empty">No leave requests</div>';
+
+  const adminNotes=notes.map(s=>`<div class="profile-note">
+    <span>${fmtDate(s.date)} · ${s.location_name||'Location'}</span>
+    <p>${s.adminNotes}</p>
+  </div>`).join('') || '<div class="profile-empty">No admin notes</div>';
+
+  const hire=u.hire_date ? new Date(u.hire_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'Not set';
+  grid.innerHTML=`
+    <div class="profile-card"><h4>Employee</h4>
+      <div class="profile-line"><span>Position</span><b>${u.position||'None'}</b></div>
+      <div class="profile-line"><span>Main house</span><b>${u.location_name||'None'}</b></div>
+      <div class="profile-line"><span>Hire date</span><b>${hire}</b></div>
+      <div class="profile-line"><span>Status</span><b>${u.is_active===false?'Inactive':'Active'}</b></div>
+    </div>
+    <div class="profile-card"><h4>Upcoming</h4>${upcoming}</div>
+    <div class="profile-card"><h4>Base Schedule</h4>${schedule}</div>
+    <div class="profile-card"><h4>Leave Balances</h4>${balances}</div>
+    <div class="profile-card"><h4>Recent Leave</h4>${requests}</div>
+    <div class="profile-card"><h4>Admin Notes</h4>${adminNotes}</div>`;
 }
 
 document.getElementById('user-dash-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('user-dash-modal')) closeUserDash(); });
@@ -805,6 +869,7 @@ function showToast(msg,isErr=false){
 // ══════════════════════════════
 let staffingView = 'month';
 let staffingAnchor = new Date();
+let staffingGapsOpen = false;
 
 function staffingGoToday(){ staffingAnchor = new Date(); renderStaffing(); }
 
@@ -831,6 +896,11 @@ function staffingNav(dir){
   } else {
     const a = new Date(staffingAnchor); a.setDate(a.getDate() + dir); staffingAnchor = a;
   }
+  renderStaffing();
+}
+
+function toggleStaffingGaps(){
+  staffingGapsOpen = !staffingGapsOpen;
   renderStaffing();
 }
 
@@ -873,6 +943,7 @@ function getDetailedStaffingForDate(dateStr){
 function renderStaffing(){
   const today = new Date(); today.setHours(0,0,0,0);
   const label = document.getElementById('staffing-label');
+  document.getElementById('stf-gaps-btn')?.classList.toggle('active', staffingGapsOpen);
   if(staffingView === 'month'){
     const ref = new Date(staffingAnchor.getFullYear(), staffingAnchor.getMonth(), 1);
     label.textContent = ref.toLocaleDateString('en-US', { month:'long', year:'numeric' });
@@ -886,6 +957,54 @@ function renderStaffing(){
     label.textContent = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
     renderStaffingDay(toYMD(d), today);
   }
+  renderStaffingGaps();
+}
+
+function getStaffingRangeDates(){
+  if(staffingView === 'month'){
+    const ref = new Date(staffingAnchor.getFullYear(), staffingAnchor.getMonth(), 1);
+    const days = new Date(ref.getFullYear(), ref.getMonth()+1, 0).getDate();
+    return Array.from({length:days},(_,i)=>toYMD(new Date(ref.getFullYear(), ref.getMonth(), i+1)));
+  }
+  if(staffingView === 'week') return weekDatesForDateStr(toYMD(staffingAnchor)).map(toYMD);
+  return [toYMD(staffingAnchor)];
+}
+
+function renderStaffingGaps(){
+  const panel=document.getElementById('staffing-gaps-panel');
+  if(!panel) return;
+  if(!staffingGapsOpen){ panel.style.display='none'; panel.innerHTML=''; return; }
+  const dates=getStaffingRangeDates();
+  const gaps=[];
+  const thin=[];
+  for(const dateStr of dates){
+    const staffing=getDetailedStaffingForDate(dateStr);
+    for(const loc of allLocs){
+      const entries=staffing[loc.id]||[];
+      const row={ dateStr, loc, entries };
+      if(entries.length===0) gaps.push(row);
+      else if(entries.length===1) thin.push(row);
+    }
+  }
+  const fmtDate=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const card=(r,kind)=>`<button class="stf-gap-item ${kind}" onclick="stfMonthDayClick('${r.dateStr}','${r.loc.id}')">
+    <span class="stf-gap-dot" style="background:${r.loc.color||'#888'}"></span>
+    <span><b>${r.loc.name}</b><em>${fmtDate(r.dateStr)}</em></span>
+    <strong>${kind==='empty'?'No staff':'1 staff'}</strong>
+  </button>`;
+  panel.style.display='';
+  panel.innerHTML=`<div class="stf-gap-panel">
+    <div class="stf-gap-summary">
+      <div><strong>${gaps.length}</strong><span>uncovered</span></div>
+      <div><strong>${thin.length}</strong><span>single-staffed</span></div>
+      <div><strong>${dates.length}</strong><span>days scanned</span></div>
+    </div>
+    <div class="stf-gap-list">
+      ${gaps.slice(0,12).map(r=>card(r,'empty')).join('')}
+      ${thin.slice(0,8).map(r=>card(r,'thin')).join('')}
+      ${!gaps.length&&!thin.length?'<div class="empty" style="padding:16px">No coverage gaps in this view</div>':''}
+    </div>
+  </div>`;
 }
 
 function renderStaffingMonth(ref, today){

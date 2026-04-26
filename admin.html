@@ -111,8 +111,10 @@
             <div class="arr-btn" onclick="staffingNav(1)">›</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="staffingGoToday()">Today</button>
+          <button class="btn btn-ghost btn-sm" id="stf-gaps-btn" onclick="toggleStaffingGaps()">Gaps</button>
         </div>
       </div>
+      <div id="staffing-gaps-panel" style="display:none"></div>
       <div id="staffing-body"></div>
     </div>
 
@@ -502,6 +504,7 @@
         <tbody id="udash-tbody"><tr><td colspan="5" class="empty">No shifts</td></tr></tbody>
       </table>
     </div>
+    <div id="udash-profile-grid" class="udash-profile-grid"></div>
   </div>
 </div>
 

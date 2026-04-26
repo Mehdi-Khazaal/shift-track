@@ -151,6 +151,8 @@
     <div id="open-shifts-list" style="margin-bottom:8px"></div>
   </div>
 
+  <div id="shift-action-inbox" style="display:none"></div>
+
   <div class="section-hd"><h2>My Shifts</h2></div>
   <div id="shift-list-all">
     <div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>
@@ -239,9 +241,16 @@
 
   <!-- Calendar sub-panel -->
   <div id="lp-cal" class="leave-panel active">
+    <div class="cal-legend">
+      <span><i class="legend-dot logged"></i>Logged</span>
+      <span><i class="legend-dot base"></i>Base</span>
+      <span><i class="legend-dot leave"></i>Leave</span>
+      <span><i class="legend-line"></i>Unavailable</span>
+    </div>
     <div class="cal-dow-row"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
     <div id="cal-month-view"><div id="cal-month-grid" class="cal-month-grid"></div></div>
     <div id="cal-week-view" style="display:none"><div id="cal-week-grid"></div></div>
+    <div id="cal-day-preview" class="cal-day-preview"></div>
   </div>
 
   <!-- Time Off sub-panel -->

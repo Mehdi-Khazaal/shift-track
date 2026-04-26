@@ -56,7 +56,7 @@ async function checkConsecutiveHours(userId, date, start, end, excludeId = null)
       if (visited.has(other)) continue;
       const g1 = other.startMins - curr.endMins;
       const g2 = curr.startMins - other.endMins;
-      if ((g1 >= 0 && g1 <= GAP_LIMIT_MINS) || (g2 >= 0 && g2 <= GAP_LIMIT_MINS)) {
+      if ((g1 >= 0 && g1 < GAP_LIMIT_MINS) || (g2 >= 0 && g2 < GAP_LIMIT_MINS)) {
         visited.add(other);
         queue.push(other);
         minStart = Math.min(minStart, other.startMins);
@@ -66,8 +66,11 @@ async function checkConsecutiveHours(userId, date, start, end, excludeId = null)
   }
 
   const span = maxEnd - minStart;
-  if (span > MAX_SHIFT_MINS)
-    return `These shifts total ${(span / 60).toFixed(1)} consecutive hours (max 18h with ≤1h gap between shifts).`;
+  if (span > MAX_SHIFT_MINS) {
+    const h = Math.floor(span / 60), m = span % 60;
+    const label = m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return `These shifts total ${label} consecutive (max 18h; shifts within 1h of each other count as one block).`;
+  }
   return null;
 }
 

@@ -358,7 +358,7 @@ function checkConsecutiveChain(newShift, skipId=null){
       if(visited.has(other)) continue;
       const g1=other.startMins-curr.endMins;
       const g2=curr.startMins-other.endMins;
-      if((g1>=0&&g1<=GAP)||(g2>=0&&g2<=GAP)){
+      if((g1>=0&&g1<GAP)||(g2>=0&&g2<GAP)){
         visited.add(other);
         queue.push(other);
         minStart=Math.min(minStart,other.startMins);
@@ -367,8 +367,11 @@ function checkConsecutiveChain(newShift, skipId=null){
     }
   }
   const span=maxEnd-minStart;
-  if(span>MAX)
-    return `These shifts total ${(span/60).toFixed(1)} consecutive hours (max 18h with ≤1h gap between shifts).`;
+  if(span>MAX){
+    const h=Math.floor(span/60), m=span%60;
+    const label=m>0?`${h}h ${m}m`:`${h}h`;
+    return `These shifts total ${label} consecutive (max 18h; shifts within 1h of each other count as one block).`;
+  }
   return null;
 }
 
@@ -757,6 +760,7 @@ function renderDash(){
 //  RENDER: ALL SHIFTS
 // ═══════════════════════════════════════
 function renderAllShifts(){
+  renderShiftActionInbox();
   const shifts=getShifts();
   const el=document.getElementById('shift-list-all');
   if(!shifts.length){ el.innerHTML='<div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>'; return; }
@@ -826,6 +830,70 @@ function toggleWeek(key){
 // ═══════════════════════════════════════
 //  SHIFT ITEM HTML
 // ═══════════════════════════════════════
+function getShiftsForDateRange(startDate, days){
+  const out=[];
+  for(let i=0;i<days;i++){
+    const d=new Date(startDate);
+    d.setDate(startDate.getDate()+i);
+    out.push(...getShiftsForDate(toYMD(d)));
+  }
+  return out.sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+}
+
+function renderShiftActionInbox(){
+  const box=document.getElementById('shift-action-inbox');
+  if(!box) return;
+  const myId=getUser()?.id;
+  const now=new Date();
+  const fmtD=d=>{ const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
+  const items=[];
+
+  swapsData.filter(s=>s.status==='pending').slice(0,4).forEach(s=>{
+    const iAmInitiator=s.initiator_id===myId;
+    const title=iAmInitiator?`Waiting on ${s.target_name}`:`Swap request from ${s.initiator_name}`;
+    const detail=iAmInitiator
+      ?`${fmtD((s.initiator_date||'').slice(0,10))} for ${fmtD((s.target_date||'').slice(0,10))}`
+      :`${s.initiator_location_name} for ${s.target_location_name} on ${fmtD((s.target_date||'').slice(0,10))}`;
+    const actions=iAmInitiator
+      ?`<button class="btn btn-ghost btn-sm" onclick="cancelSwap('${s.id}')">Cancel</button>`
+      :`<button class="btn btn-primary btn-sm" onclick="respondSwap('${s.id}','accepted')">Accept</button><button class="btn btn-ghost btn-sm" onclick="respondSwap('${s.id}','rejected')">Decline</button>`;
+    items.push(`<div class="inbox-item">
+      <div class="inbox-icon swap">SW</div>
+      <div class="inbox-main"><div class="inbox-title">${title}</div><div class="inbox-detail">${detail}</div></div>
+      <div class="inbox-actions">${actions}</div>
+    </div>`);
+  });
+
+  openShiftsData.filter(s=>!s.my_response).slice(0,4).forEach(s=>{
+    const dl=new Date(s.deadline);
+    const hours=Math.max(0,Math.round((dl-now)/3600000));
+    const deadline=hours<1?'Due soon':hours<24?`${hours}h left`:dl.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    items.push(`<div class="inbox-item">
+      <div class="inbox-icon open">OS</div>
+      <div class="inbox-main"><div class="inbox-title">${s.location_name}</div><div class="inbox-detail">${(s.date||'').slice(0,10)} · ${s.start_time.slice(0,5)}-${s.end_time.slice(0,5)} · ${deadline}</div></div>
+      <div class="inbox-actions"><button class="btn btn-primary btn-sm" onclick="respondOpenShift('${s.id}','claimed')">Claim</button><button class="btn btn-ghost btn-sm" onclick="respondOpenShift('${s.id}','rejected')">Decline</button></div>
+    </div>`);
+  });
+
+  getShiftsForDateRange(now, 2)
+    .filter(s=>!getLeaveForDate(s.date).length)
+    .slice(0,3)
+    .forEach(s=>{
+      const start=new Date(`${s.date}T${s.start}:00`).getTime();
+      if(start<now.getTime() || start>now.getTime()+172800000) return;
+      const loc=getLocById(s.locationId);
+      items.push(`<div class="inbox-item">
+        <div class="inbox-icon soon">UP</div>
+        <div class="inbox-main"><div class="inbox-title">Upcoming shift</div><div class="inbox-detail">${fmtD(s.date)} · ${loc?.name||'Unknown'} · ${fmtTime(s.start)}-${fmtTime(s.end)}</div></div>
+        <div class="inbox-actions"><button class="btn btn-ghost btn-sm" onclick="openDaySheet('${s.date}')">View</button></div>
+      </div>`);
+    });
+
+  if(!items.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='';
+  box.innerHTML=`<div class="section-hd"><h2>Action Inbox</h2></div><div class="action-inbox-card">${items.join('')}</div>`;
+}
+
 function shiftItemHTML(s,bd,swapId=null){
   const loc  =getLocById(s.locationId);
   const color=loc?.color||'#888';
@@ -1014,6 +1082,7 @@ function confirmClearData(){
 let calView = 'month'; // 'month' | 'week'
 let calOffset = 0;     // months offset for month view, weeks for week view
 let daySheetDate = ''; // currently open day sheet date
+let calSelectedDate = toYMD(new Date());
 
 function setCalView(v){
   calView = v;
@@ -1037,6 +1106,7 @@ function getShiftsForDate(dateStr){
 function renderCalendar(){
   if(calView==='month') renderCalMonth();
   else                  renderCalWeek();
+  renderCalDayPreview(calSelectedDate);
 }
 
 function renderCalMonth(){
@@ -1073,6 +1143,7 @@ function renderCalMonth(){
   grid.innerHTML = cells.map(({date,otherMonth})=>{
     const ymd = toYMD(date);
     const isToday = toYMD(date)===toYMD(today);
+    const isSelected = ymd===calSelectedDate;
     const shifts = getShiftsForDate(ymd);
     const unavail = getUnavailForDate(ymd);
     const leaves  = getLeaveForDate(ymd);
@@ -1083,7 +1154,7 @@ function renderCalMonth(){
       const loc=getLocById(s.locationId);
       return `<div class="cal-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>`;
     }).join('');
-    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="openDaySheet('${ymd}')">
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="selectCalendarDay('${ymd}')">
       <div class="cal-dn">${date.getDate()}</div>
       ${unavail.length?'<div class="unavail-stripe"></div>':''}
       ${dots?`<div class="cal-dots">${dots}</div>`:''}
@@ -1116,7 +1187,7 @@ function renderCalWeek(){
       </div>`;
     }).join('');
     const addBtn = `<div class="cal-add-pill" onclick="event.stopPropagation();openAddShiftForDateStr('${ymd}')">+ add</div>`;
-    return `<div class="cal-week-row" onclick="openDaySheet('${ymd}')">
+    return `<div class="cal-week-row${isToday?' today':''}${ymd===calSelectedDate?' selected':''}" onclick="selectCalendarDay('${ymd}')">
       <div class="cal-week-day-label${isToday?' today':''}">
         <div class="wd">${DAY_SHORT[i]}</div>
         <div class="dn">${d.getDate()}</div>
@@ -1129,8 +1200,44 @@ function renderCalWeek(){
   }).join('');
 }
 
+function selectCalendarDay(dateStr){
+  calSelectedDate = dateStr;
+  renderCalendar();
+}
+
+function renderCalDayPreview(dateStr){
+  const el=document.getElementById('cal-day-preview');
+  if(!el || !dateStr) return;
+  const d=new Date(dateStr+'T12:00:00');
+  const title=d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+  const shifts=getShiftsForDate(dateStr);
+  const unavails=getUnavailForDate(dateStr);
+  const leaves=getLeaveForDate(dateStr);
+  const rows=[];
+  shifts.slice(0,3).forEach(s=>{
+    const loc=getLocById(s.locationId);
+    rows.push(`<div class="cal-preview-row">
+      <span class="preview-mark${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></span>
+      <span>${loc?.name||'Unknown'}${s.isBase?' · base':''}</span>
+      <b>${fmtTime(s.start)}-${fmtTime(s.end)}</b>
+    </div>`);
+  });
+  leaves.forEach(r=>{
+    rows.push(`<div class="cal-preview-row leave"><span class="preview-mark leave"></span><span>${r.type_label||r.type_name}</span><b>${parseFloat(r.hours_requested||0).toFixed(1)}h</b></div>`);
+  });
+  unavails.forEach(u=>{
+    rows.push(`<div class="cal-preview-row muted"><span class="preview-mark unavailable"></span><span>Unavailable</span><b>${u.startTime?`${fmtTime(u.startTime)}-${fmtTime(u.endTime)}`:'All day'}</b></div>`);
+  });
+  el.innerHTML=`<div class="cal-preview-hd">
+      <div><div class="cal-preview-title">${title}</div><div class="cal-preview-meta">${rows.length?`${rows.length} item${rows.length!==1?'s':''}`:'No shifts or requests'}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="openDaySheet('${dateStr}')">Open</button>
+    </div>
+    ${rows.length?`<div class="cal-preview-list">${rows.join('')}</div>`:'<div class="cal-preview-empty">Tap Open to log a shift, mark unavailable, or request leave.</div>'}`;
+}
+
 // ── Day sheet ──
 function openDaySheet(dateStr){
+  calSelectedDate = dateStr;
   daySheetDate = dateStr;
   const d = new Date(dateStr+'T12:00:00');
   const title = d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
@@ -1621,7 +1728,7 @@ function renderOpenShifts(){
 
   const section = document.getElementById('open-shifts-section');
   const list    = document.getElementById('open-shifts-list');
-  if(!openShiftsData.length){ section.style.display='none'; return; }
+  if(!openShiftsData.length){ section.style.display='none'; renderShiftActionInbox(); return; }
   section.style.display = '';
 
   list.innerHTML = openShiftsData.map(s => {
@@ -1671,6 +1778,7 @@ function renderOpenShifts(){
       <div class="os-actions">${actionsHtml}</div>
     </div>`;
   }).join('');
+  renderShiftActionInbox();
 }
 
 async function respondOpenShift(id, response){
@@ -1709,7 +1817,7 @@ function renderSwaps(){
   const myId    = getUser()?.id;
 
   const active = swapsData.filter(s => s.status === 'pending');
-  if(!active.length){ section.style.display = 'none'; return; }
+  if(!active.length){ section.style.display = 'none'; renderShiftActionInbox(); return; }
   section.style.display = '';
 
   const fmtD = d => { const x=new Date(d+'T12:00:00'); return x.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); };
@@ -1746,6 +1854,7 @@ function renderSwaps(){
       <div class="os-actions">${actionsHtml}</div>
     </div>`;
   }).join('');
+  renderShiftActionInbox();
 }
 
 async function cancelAcceptedSwap(id){
