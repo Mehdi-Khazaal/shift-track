@@ -521,3 +521,144 @@ body::before{
 .login-logo span{color:var(--accent);}
 #login-screen{background:linear-gradient(145deg,#090a0b,#17150f);}
 #login-screen::before,#login-screen::after{display:none;}
+
+/* Design additions: consistency, rhythm, polish */
+.section-hd{
+  padding-top:14px;
+  padding-bottom:9px;
+  margin-top:10px;
+}
+.section-hd h2::before{
+  content:'';
+  display:inline-block;
+  width:7px;
+  height:7px;
+  border-radius:2px;
+  background:var(--accent);
+  margin-right:8px;
+  vertical-align:1px;
+}
+.shift-dot,.cal-dot,.pill-dot,.preview-mark,.leave-req-dot,.settings-unavail-mark,.legend-dot{
+  box-shadow:0 0 0 2px rgba(0,0,0,.22);
+}
+.shift-dot{
+  width:6px;
+  min-height:34px;
+}
+.shift-dot.sq,.cal-dot.sq,.pill-dot.sq{
+  border-radius:2px;
+}
+.shift-item,.inbox-item,.leave-req-item,.notif-item,.hist-card,.cal-cell,.cal-week-row,.os-card,.settings-unavail-row{
+  transition:background .16s ease,border-color .16s ease,transform .16s ease,opacity .16s ease;
+}
+.shift-item:hover,.inbox-item:hover,.leave-req-item:hover,.notif-item:hover,.hist-card:hover,.os-card:hover,.settings-unavail-row:hover{
+  background:rgba(243,240,223,.055);
+}
+.shift-item:active,.inbox-item:active,.hist-card:active,.os-card:active{
+  transform:translateY(1px) scale(.992);
+}
+.badge,.os-badge,.leave-req-status{
+  min-height:20px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:3px 8px;
+  border-radius:999px;
+  font-size:9px;
+  line-height:1;
+  letter-spacing:.6px;
+  font-weight:700;
+  box-shadow:none!important;
+}
+.badge.reg{background:rgba(243,240,223,.07);color:var(--muted);}
+.badge.base,.badge.swap,.os-badge{background:rgba(45,212,191,.13);color:var(--accent);border-color:rgba(45,212,191,.28);}
+.badge.live{background:rgba(132,204,22,.15);color:var(--green);border-color:rgba(132,204,22,.32);}
+.badge.ot,.badge.mix{background:rgba(249,115,22,.14);color:var(--orange);border-color:rgba(249,115,22,.3);}
+.badge.leave-pto,.leave-req-status.pending{background:rgba(45,212,191,.11);color:var(--accent);border-color:rgba(45,212,191,.24);}
+.badge.leave-sick,.leave-req-status.approved{background:rgba(132,204,22,.13);color:var(--green);border-color:rgba(132,204,22,.26);}
+.badge.leave-calloff,.leave-req-status.denied{background:rgba(251,82,100,.12);color:var(--red);border-color:rgba(251,82,100,.28);}
+.empty-state{
+  margin:0;
+  color:var(--muted);
+  background:linear-gradient(180deg,rgba(243,240,223,.035),rgba(243,240,223,.015));
+  border:1px dashed rgba(243,240,223,.12);
+  border-radius:var(--radius);
+}
+.card .empty-state,.action-inbox-card .empty-state{
+  border:none;
+  background:transparent;
+}
+.empty-state .icon{
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:12px;
+  background:rgba(45,212,191,.1);
+  color:var(--accent);
+}
+.cal-month-grid{
+  gap:4px;
+  padding-left:12px;
+  padding-right:12px;
+}
+.cal-cell{
+  min-height:58px;
+  border-radius:10px;
+  border:1px solid rgba(243,240,223,.045);
+}
+.cal-cell.has-shift{
+  box-shadow:inset 0 -2px 0 rgba(45,212,191,.18);
+}
+.cal-cell.selected{
+  box-shadow:0 0 0 1px rgba(45,212,191,.42),inset 0 -2px 0 rgba(45,212,191,.35);
+}
+.cal-dots{
+  gap:3px;
+  max-width:42px;
+}
+.cal-dot{
+  width:6px;
+  height:6px;
+}
+.cal-day-preview{
+  position:relative;
+  overflow:hidden;
+}
+.cal-day-preview::before{
+  content:'';
+  position:absolute;
+  inset:0 0 auto;
+  height:2px;
+  background:var(--accent-gradient);
+  opacity:.75;
+}
+.sheet-overlay{
+  background:rgba(0,0,0,.68);
+}
+.sheet{
+  box-shadow:0 -24px 70px rgba(0,0,0,.42);
+}
+.sheet-header{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:linear-gradient(180deg,rgba(35,34,25,.98),rgba(35,34,25,.92));
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+}
+.sheet-header h2{
+  letter-spacing:0;
+}
+.close-btn{
+  width:34px;
+  height:34px;
+  border-radius:9px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(243,240,223,.05);
+  border:1px solid rgba(243,240,223,.08);
+}
