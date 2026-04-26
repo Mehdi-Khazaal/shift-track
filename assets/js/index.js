@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════
 //  CONFIG & AUTH
 // ═══════════════════════════════════════
-const API = 'https://shifttrack-api.onrender.com';
+const API = 'https://shift-track.duckdns.org';
 
 function getToken(){ return localStorage.getItem('st_token'); }
 function getUser(){ try{ return JSON.parse(localStorage.getItem('st_user')||'null'); }catch(e){ return null; } }
