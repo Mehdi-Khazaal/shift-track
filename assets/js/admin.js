@@ -286,6 +286,7 @@ function renderUsers(){
     if(u.location_id){ (byLoc[u.location_id]||(byLoc[u.location_id]=[])).push(u); }
     else unassigned.push(u);
   }
+  const activeCount = allUsers.filter(u => u.is_active !== false).length;
 
   let html='';
   for(const loc of allLocs){
@@ -309,8 +310,48 @@ function renderUsers(){
   if(!allUsers.length) html='<div class="empty">No users yet</div>';
 
   document.getElementById('users-grouped-content').innerHTML=`
-    <div class="sec-hd"><div><h2>Users</h2><p>Employees organised by house</p></div></div>
-    ${html}`;
+    <div class="sec-hd">
+      <div><h2>Users</h2><p>${activeCount} active employees · create, edit, schedule, and review from one page</p></div>
+    </div>
+    <div class="admin-users-layout">
+      <section class="users-main">
+        <div class="section-label">Employees by house</div>
+        ${html}
+      </section>
+      <aside class="users-side">
+        <div class="section-label">Create Account</div>
+        <div class="card account-card">
+          <div class="form-group"><label>Full name</label><input type="text" id="new-name" placeholder="John Smith"/></div>
+          <div class="form-group"><label>Email</label><input type="email" id="new-email" placeholder="john@email.com"/></div>
+          <div class="form-group"><label>Password</label><input type="password" id="new-pass" placeholder="Temporary password"/></div>
+          <div class="form-grid-compact">
+            <div class="form-group">
+              <label>Position</label>
+              <select id="new-position"><option value="">None</option><option value="SRC">SRC</option><option value="DSP">DSP</option><option value="PRN">PRN</option></select>
+            </div>
+            <div class="form-group">
+              <label>Main Location</label>
+              <select id="new-location"><option value="">None</option></select>
+            </div>
+            <div class="form-group">
+              <label>Hire Date <span style="color:var(--red);font-size:10px">*required</span></label>
+              <input type="date" id="new-hire-date"/>
+            </div>
+            <div class="form-group">
+              <label>Role</label>
+              <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+            </div>
+          </div>
+          <div class="account-actions">
+            <button class="btn btn-primary" onclick="createAccount()">Create Account</button>
+            <button class="btn btn-ghost" onclick="clearCreateForm()">Clear</button>
+          </div>
+          <div id="create-result" class="inline-result"></div>
+        </div>
+
+      </aside>
+    </div>`;
+  populateNewLocationSelect();
 }
 
 function userRowHTML(u){
@@ -329,6 +370,7 @@ function userRowHTML(u){
     </div>
     <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
       ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openUserDashboard('${u.id}')">View</button>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.id}')">Edit</button>
       ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${safeName}')">Schedule</button>`:''}
       ${inactive
         ?`<button class="btn btn-ghost btn-sm" onclick="reactivateUser('${u.id}','${safeName}')">Reactivate</button>

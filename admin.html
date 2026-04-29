@@ -42,7 +42,6 @@
     <div class="tab" onclick="switchTab('users',this)">Users</div>
     <div class="tab" onclick="switchTab('staffing',this)">Staffing</div>
     <div class="tab" onclick="switchTab('locations',this)">Locations</div>
-    <div class="tab" onclick="switchTab('accounts',this)">Accounts</div>
     <div class="tab" onclick="switchTab('openshifts',this)">Open Shifts</div>
     <div class="tab" onclick="switchTab('notify',this)">Notify</div>
     <div class="tab" onclick="switchTab('swaps',this)">Swaps</div>
@@ -319,43 +318,43 @@
     </div>
 
     <!-- ACCOUNTS -->
-    <div class="panel" id="panel-accounts">
+    <div class="panel compact-hidden" id="panel-accounts">
       <div class="sec-hd"><div><h2>Accounts</h2><p>Create new accounts and manage existing ones</p></div></div>
 
       <div class="section-label">Create Account</div>
       <div class="card" style="max-width:480px;margin-bottom:32px">
-        <div class="form-group"><label>Full name</label><input type="text" id="new-name" placeholder="John Smith"/></div>
-        <div class="form-group"><label>Email</label><input type="email" id="new-email" placeholder="john@email.com"/></div>
-        <div class="form-group"><label>Password</label><input type="password" id="new-pass" placeholder="Temporary password"/></div>
+        <div class="form-group"><label>Full name</label><input type="text" id="old-new-name" placeholder="John Smith"/></div>
+        <div class="form-group"><label>Email</label><input type="email" id="old-new-email" placeholder="john@email.com"/></div>
+        <div class="form-group"><label>Password</label><input type="password" id="old-new-pass" placeholder="Temporary password"/></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <div class="form-group" style="flex:1;min-width:120px">
             <label>Position</label>
-            <select id="new-position"><option value="">— None —</option><option value="SRC">SRC</option><option value="DSP">DSP</option><option value="PRN">PRN</option></select>
+            <select id="old-new-position"><option value="">— None —</option><option value="SRC">SRC</option><option value="DSP">DSP</option><option value="PRN">PRN</option></select>
           </div>
           <div class="form-group" style="flex:2;min-width:160px">
             <label>Main Location <span style="color:var(--dim);font-size:9px">(optional)</span></label>
-            <select id="new-location"><option value="">— None —</option></select>
+            <select id="old-new-location"><option value="">— None —</option></select>
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <div class="form-group" style="flex:1;min-width:140px">
             <label>Hire Date <span style="color:var(--red);font-size:10px">*required</span></label>
-            <input type="date" id="new-hire-date"/>
+            <input type="date" id="old-new-hire-date"/>
           </div>
           <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0">
             <label>Role</label>
-            <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+            <select id="old-new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
           </div>
         </div>
         <div style="margin-top:20px;display:flex;gap:10px">
           <button class="btn btn-primary" onclick="createAccount()">Create Account</button>
           <button class="btn btn-ghost" onclick="clearCreateForm()">Clear</button>
         </div>
-        <div id="create-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none"></div>
+        <div id="old-create-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none"></div>
       </div>
 
       <div class="section-label">Manage Users</div>
-      <div id="manage-users-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+      <div id="old-manage-users-list" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
         <div class="empty">Loading…</div>
       </div>
     </div>

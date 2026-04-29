@@ -398,7 +398,7 @@ body::before{
   filter:none;
 }
 #tab-indicator{display:none;}
-.content{max-width:1180px;}
+.content{max-width:1320px;padding:22px 24px;}
 .sec-hd h2{letter-spacing:0;}
 .sec-hd p{color:var(--muted);}
 .card,.stat-box,.modal,.stf-house-card,.profile-card,.stf-gap-panel,.pp-card,.user-card{
@@ -562,4 +562,74 @@ tbody tr:hover{
 }
 .tab:hover:not(.active){
   background:rgba(243,240,223,.04);
+}
+
+/* Compact admin workspace */
+.compact-hidden{display:none!important;}
+.tabs{justify-content:center;}
+.tab{padding:10px 14px;font-size:12px;}
+.sec-hd{margin-bottom:16px;}
+.stat-row{gap:10px;margin-bottom:16px;}
+.stat-box{padding:14px;}
+.card{padding:16px;margin-bottom:12px;}
+.form-group{margin-bottom:10px;}
+.form-group input,.form-group select{padding:9px 11px;}
+.admin-users-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 360px;
+  gap:16px;
+  align-items:start;
+}
+.users-main,.users-side{min-width:0;}
+.users-side{
+  position:sticky;
+  top:116px;
+}
+.account-card{margin-bottom:16px;}
+.form-grid-compact{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.account-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+.inline-result{
+  display:none;
+  margin-top:10px;
+  font-size:12px;
+  font-family:var(--mono);
+}
+.compact-list{
+  border:1px solid rgba(243,240,223,.1);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:linear-gradient(180deg,rgba(30,30,24,.96),rgba(19,19,16,.98));
+}
+#panel-notify .card,#panel-openshifts .card,#panel-leave .card{
+  max-width:none!important;
+}
+#panel-notify .card{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px 14px;
+  align-items:end;
+}
+#panel-notify .card .form-group:nth-child(2),
+#panel-notify .card .form-group:nth-child(4),
+#panel-notify .card #bc-result{
+  grid-column:1 / -1;
+}
+#panel-openshifts .card,#panel-leave .card{
+  max-width:760px!important;
+}
+
+@media(max-width:980px){
+  .admin-users-layout{grid-template-columns:1fr;}
+  .users-side{position:static;}
+  .tabs{justify-content:flex-start;}
+  #panel-notify .card{display:block;}
 }
