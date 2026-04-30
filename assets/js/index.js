@@ -1460,7 +1460,6 @@ function renderHistory(){
 // ═══════════════════════════════════════
 //  NOTIFICATIONS — Web Push
 // ═══════════════════════════════════════
-const VAPID_PUBLIC_KEY='BESHXB2fFWXy2JeDTUntrNzoQT6CtZ_cT_1ez5Ff8s1udCKmtHNN0Fl_3dZYepplxWAN9W1DpNw0S1VdlNnlB_s';
 
 function urlBase64ToUint8Array(b64){
   const padding='='.repeat((4-b64.length%4)%4);
@@ -1523,11 +1522,13 @@ async function toggleNotifications(){
       showToast('Permission denied',true);
       return;
     }
+    const keyRes=await apiFetch('/api/notifications/vapid-public-key');
+    if(!keyRes?.key){ throw new Error('Could not fetch VAPID key'); }
     const reg=await navigator.serviceWorker.register('/shift-track/sw.js');
     await navigator.serviceWorker.ready;
     const sub=await reg.pushManager.subscribe({
       userVisibleOnly:true,
-      applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      applicationServerKey:urlBase64ToUint8Array(keyRes.key)
     });
     const minutes=parseInt(document.getElementById('notif-minutes').value)||60;
     const j=sub.toJSON();
