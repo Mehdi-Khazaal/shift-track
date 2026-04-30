@@ -111,9 +111,11 @@ router.patch('/users/:id/reactivate', auth, adminOnly, async (req, res) => {
 
 // POST /api/admin/users - create account (admin only)
 router.post('/users', auth, adminOnly, async (req, res) => {
-  const { email, name, password, position, location_id } = req.body;
+  const { email, name, password, position, location_id, role = 'user' } = req.body;
   if(!email || !password)
     return res.status(400).json({ ok:false, error:'email and password required' });
+  if(!['admin','user','specialist'].includes(role))
+    return res.status(400).json({ ok:false, error:'Invalid role' });
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return res.status(400).json({ ok:false, error:'Invalid email address' });
   if(password.length < 8)
@@ -126,8 +128,8 @@ router.post('/users', auth, adminOnly, async (req, res) => {
     if(!hire_date) return res.status(400).json({ ok:false, error:'Hire date is required' });
     const hash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (email, name, password_hash, position, location_id, hire_date) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, email, name, role, position, location_id, hire_date',
-      [email, name||email.split('@')[0], hash, position||'', location_id||null, hire_date]
+      'INSERT INTO users (email, name, password_hash, role, position, location_id, hire_date) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, email, name, role, position, location_id, hire_date',
+      [email, name||email.split('@')[0], hash, role, position||'', location_id||null, hire_date]
     );
     const user = result.rows[0];
     await db.query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id]);
@@ -142,7 +144,7 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
   const { name, email, role, position, location_id, password, hire_date } = req.body;
   if(!name || !email)
     return res.status(400).json({ ok:false, error:'name and email are required' });
-  if(!['admin','user'].includes(role))
+  if(!['admin','user','specialist'].includes(role))
     return res.status(400).json({ ok:false, error:'Invalid role' });
   try {
     let result;
@@ -170,7 +172,7 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
 // PATCH /api/admin/users/:id/role - promote/demote
 router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
   const { role } = req.body;
-  if(!['admin','user'].includes(role))
+  if(!['admin','user','specialist'].includes(role))
     return res.status(400).json({ ok:false, error:'Invalid role' });
   try {
     const result = await db.query(

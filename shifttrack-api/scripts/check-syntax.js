@@ -26,7 +26,7 @@ for (const file of files) {
   });
 
   if (result.status !== 0) {
-    process.stderr.write(result.stderr || result.stdout);
+    process.stderr.write(result.stderr || result.stdout || `Syntax check failed for ${file}\n`);
     process.exit(result.status || 1);
   }
 }

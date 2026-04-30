@@ -84,17 +84,19 @@ function switchTab(name,el){
 // ══════════════════════════════
 //  DATA
 // ══════════════════════════════
-let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allSuppressed={}, openShiftsPendingCount=0;
+let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allRegions=[], allSuppressed={}, openShiftsPendingCount=0;
 
 async function loadAll(){
   showToast('Loading data…');
   try{
-    const [usersRes,locsRes]=await Promise.all([
+    const [usersRes,locsRes,regsRes]=await Promise.all([
       apiFetch('/api/admin/users'),
-      apiFetch('/api/locations')
+      apiFetch('/api/locations'),
+      apiFetch('/api/regions')
     ]);
     if(usersRes?.ok) allUsers=usersRes.users;
     if(locsRes?.ok)  allLocs=locsRes.locations;
+    if(regsRes?.ok)  allRegions=regsRes.regions;
 
     // Keep admin's pay-period anchor in sync with their personal settings
     const settingsRes = await apiFetch('/api/settings');
@@ -339,7 +341,7 @@ function renderUsers(){
             </div>
             <div class="form-group">
               <label>Role</label>
-              <select id="new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+              <select id="new-role"><option value="user">Employee</option><option value="specialist">Specialist</option><option value="admin">Admin</option></select>
             </div>
           </div>
           <div class="account-actions">
@@ -363,7 +365,7 @@ function userRowHTML(u){
       <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         ${u.name||'—'}
         ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
-        ${u.role==='admin'?'<span class="badge admin">admin</span>':''}
+        ${u.role==='admin'?'<span class="badge admin">admin</span>':u.role==='specialist'?'<span class="badge" style="background:rgba(197,119,255,.15);color:#c77dff;border:1px solid rgba(197,119,255,.3)">specialist</span>':''}
         ${inactive?'<span class="badge" style="background:rgba(255,95,109,.15);color:var(--red);border:1px solid rgba(255,95,109,.3)">inactive</span>':''}
       </div>
       <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
@@ -707,23 +709,118 @@ async function permanentDeleteUser(id,name){
 //  LOCATIONS
 // ══════════════════════════════
 function renderLocs(){
-  const rows=allLocs.map(l=>{
-    const addrCell=l.address
-      ?`<td><button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="openMapAddress(this.dataset.addr)" title="${l.address}" style="display:inline-flex;align-items:center;gap:5px;color:var(--accent);background:none;border:none;cursor:pointer;font-size:12px;font-family:var(--mono);padding:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.address}</span></button></td>`
-      :`<td class="muted" style="font-size:11px;font-family:var(--mono)">—</td>`;
-    return `<tr>
-      <td><div style="width:16px;height:16px;border-radius:4px;background:${l.color}"></div></td>
-      <td style="font-weight:600">${l.name}</td>
-      <td class="mono" style="color:var(--green)">$${parseFloat(l.rate).toFixed(2)}/hr</td>
-      ${addrCell}
-      <td class="muted">${new Date(l.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="openLocModal('${l.id}')">Edit</button></td>
-    </tr>`;
-  });
-  document.getElementById('locs-tbody').innerHTML=rows.join('')||'<tr><td colspan="6" class="empty">No locations yet</td></tr>';
+  const container=document.getElementById('locs-container');
+  if(!container) return;
+
+  if(!allLocs.length && !allRegions.length){
+    container.innerHTML=`<div class="loc-root-empty">
+      <div class="loc-root-empty-icon">🏠</div>
+      <div class="loc-root-empty-title">No locations yet</div>
+      <div class="loc-root-empty-sub">Start by creating a region, then add locations to it</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="openRegionModal()">＋ Create first region</button>
+    </div>`;
+    return;
+  }
+
+  const byRegion={};
+  const unassigned=[];
+  for(const loc of allLocs){
+    if(loc.region_id){ (byRegion[loc.region_id]=byRegion[loc.region_id]||[]).push(loc); }
+    else { unassigned.push(loc); }
+  }
+
+  let html='';
+  for(const region of allRegions){
+    const locs=byRegion[region.id]||[];
+    const addrHtml=region.office_address
+      ?`<div class="region-haddr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${region.office_address}</div>`
+      :'';
+    const cardsHtml=locs.length
+      ?locs.map(l=>renderLocCard(l)).join('')
+      :`<div class="loc-empty-region">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:32px;height:32px"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <div style="font-size:12px">No locations in this region yet</div>
+          <button class="btn btn-ghost btn-xs" onclick="openLocModal(null,'${region.id}')">＋ Add Location</button>
+        </div>`;
+    html+=`<div class="region-group">
+      <div class="region-header">
+        <div class="region-header-left">
+          <div class="region-title">Region</div>
+          <div class="region-hname">${region.name}</div>
+          ${addrHtml}
+        </div>
+        <div class="region-header-right">
+          <span class="region-count">${locs.length} location${locs.length===1?'':'s'}</span>
+          <button class="btn btn-ghost btn-xs" onclick="openRegionModal('${region.id}')">Edit</button>
+          <button class="btn btn-ghost btn-xs" onclick="openLocModal(null,'${region.id}')">＋ Add</button>
+        </div>
+      </div>
+      <div class="loc-grid">${cardsHtml}</div>
+    </div>`;
+  }
+
+  if(unassigned.length){
+    html+=`<div class="region-group unassigned-group">
+      <div class="region-header">
+        <div class="region-header-left">
+          <div class="region-title">Unassigned</div>
+          <div class="region-hname" style="color:var(--muted)">No Region</div>
+        </div>
+        <span class="region-count">${unassigned.length}</span>
+      </div>
+      <div class="loc-grid">${unassigned.map(l=>renderLocCard(l)).join('')}</div>
+    </div>`;
+  }
+
+  if(!allRegions.length && !unassigned.length){
+    html=`<div class="loc-root-empty">
+      <div class="loc-root-empty-icon">🏠</div>
+      <div class="loc-root-empty-title">No locations yet</div>
+      <div class="loc-root-empty-sub">Add your first location to get started</div>
+    </div>`;
+  }
+
+  container.innerHTML=html;
 }
 
-function openLocModal(id=null){
+function renderLocCard(l){
+  const rate=parseFloat(l.rate).toFixed(2);
+  const specialist=l.specialist_name||null;
+  const consumers=l.consumer_count||0;
+  const addrBtn=l.address
+    ?`<div class="loc-addr-row"><button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="openMapAddress(this.dataset.addr)" style="display:inline-flex;align-items:center;gap:5px;color:var(--accent);background:none;border:none;cursor:pointer;font-size:11px;font-family:var(--mono);padding:0;max-width:100%;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.address}</span></button></div>`
+    :'';
+  return `<div class="loc-card">
+    <div class="loc-card-accent" style="background:${l.color}"></div>
+    <div class="loc-card-content">
+      <div class="loc-card-top">
+        <div class="loc-card-name">${l.name}</div>
+        <button class="btn btn-ghost btn-xs" onclick="openLocModal('${l.id}')">Edit</button>
+      </div>
+      <div class="loc-stats">
+        <div class="loc-stat"><span>Pay rate</span><b class="green">$${rate}/hr</b></div>
+        <div class="loc-stat"><span>Consumers</span><b>${consumers}</b></div>
+        <div class="loc-stat"><span>Specialist</span><b>${specialist||'<span style="color:var(--muted)">—</span>'}</b></div>
+      </div>
+      ${addrBtn}
+    </div>
+  </div>`;
+}
+
+function _populateLocModalDropdowns(presetRegionId=null){
+  const regSel=document.getElementById('loc-region');
+  regSel.innerHTML='<option value="">— None —</option>'+allRegions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+  if(presetRegionId) regSel.value=presetRegionId;
+
+  const specSel=document.getElementById('loc-specialist');
+  const specialists=allUsers.filter(u=>u.role==='specialist');
+  specSel.innerHTML='<option value="">— None —</option>'+specialists.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+  if(!specialists.length){
+    specSel.innerHTML='<option value="" disabled>No specialists — create a user with Specialist role</option>';
+  }
+}
+
+function openLocModal(id=null, presetRegionId=null){
   document.getElementById('loc-edit-id').value=id||'';
   document.getElementById('loc-modal-title').textContent=id?'Edit Location':'Add Location';
   document.getElementById('loc-delete-btn').style.display=id?'block':'none';
@@ -732,13 +829,18 @@ function openLocModal(id=null){
   document.getElementById('loc-name').value='';
   document.getElementById('loc-rate').value='';
   document.getElementById('loc-address').value='';
+  document.getElementById('loc-consumers').value='0';
+  _populateLocModalDropdowns(presetRegionId);
   if(id){
     const loc=allLocs.find(l=>l.id===id);
     if(loc){
       document.getElementById('loc-name').value=loc.name;
       document.getElementById('loc-rate').value=parseFloat(loc.rate).toFixed(2);
       document.getElementById('loc-address').value=loc.address||'';
+      document.getElementById('loc-consumers').value=loc.consumer_count||0;
       document.querySelectorAll('.csw').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
+      document.getElementById('loc-region').value=loc.region_id||'';
+      document.getElementById('loc-specialist').value=loc.specialist_id||'';
     }
   }
   document.getElementById('loc-modal').classList.add('open');
@@ -751,11 +853,14 @@ async function saveLoc(){
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.csw.selected')?.dataset.c||'#5b8fff';
   const address=document.getElementById('loc-address').value.trim();
+  const region_id=document.getElementById('loc-region').value||null;
+  const specialist_id=document.getElementById('loc-specialist').value||null;
+  const consumer_count=parseInt(document.getElementById('loc-consumers').value)||0;
   if(!name){ showToast('Enter a name',true); return; }
   if(isNaN(rate)||rate<0){ showToast('Enter a valid rate',true); return; }
   const editId=document.getElementById('loc-edit-id').value;
   const res=await apiFetch(editId?`/api/locations/${editId}`:'/api/locations',
-    {method:editId?'PUT':'POST',body:{name,rate,color,address}});
+    {method:editId?'PUT':'POST',body:{name,rate,color,address,region_id,specialist_id,consumer_count}});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   closeLocModal(); await loadAll(); showToast('Location saved');
 }
@@ -768,8 +873,43 @@ async function deleteLoc(){
   else showToast('Failed to delete',true);
 }
 
-// Close modal on backdrop click
+// ── REGION MODAL ──────────────────────────────────────────────
+function openRegionModal(id=null){
+  document.getElementById('region-edit-id').value=id||'';
+  document.getElementById('region-modal-title').textContent=id?'Edit Region':'Add Region';
+  document.getElementById('region-name').value='';
+  document.getElementById('region-office-address').value='';
+  if(id){
+    const r=allRegions.find(r=>r.id===id);
+    if(r){
+      document.getElementById('region-name').value=r.name;
+      document.getElementById('region-office-address').value=r.office_address||'';
+    }
+  }
+  document.getElementById('region-modal').classList.add('open');
+}
+
+function openRegionModalInline(){
+  closeLocModal();
+  openRegionModal();
+}
+
+function closeRegionModal(){ document.getElementById('region-modal').classList.remove('open'); }
+
+async function saveRegion(){
+  const name=document.getElementById('region-name').value.trim();
+  const office_address=document.getElementById('region-office-address').value.trim();
+  if(!name){ showToast('Enter a region name',true); return; }
+  const editId=document.getElementById('region-edit-id').value;
+  const res=await apiFetch(editId?`/api/regions/${editId}`:'/api/regions',
+    {method:editId?'PUT':'POST',body:{name,office_address}});
+  if(!res?.ok){ showToast(res?.error||'Failed to save region',true); return; }
+  closeRegionModal(); await loadAll(); showToast('Region saved');
+}
+
+// Close modals on backdrop click
 document.getElementById('loc-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('loc-modal')) closeLocModal(); });
+document.getElementById('region-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('region-modal')) closeRegionModal(); });
 
 // ══════════════════════════════
 //  CREATE ACCOUNT
@@ -789,10 +929,9 @@ async function createAccount(){
   if(password.length<8){ showToast('Password must be at least 8 characters',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
 
-  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date}});
+  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date,role}});
   res.style.display='block';
   if(data?.ok){
-    if(role==='admin') await apiFetch(`/api/admin/users/${data.user.id}/role`,{method:'PATCH',body:{role:'admin'}});
     res.style.color='var(--green)';
     res.textContent=`✓ Account created for ${email}`;
     adminFireConfetti();

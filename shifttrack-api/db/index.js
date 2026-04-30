@@ -119,6 +119,18 @@ async function migrate() {
     await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`);
     await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT ''`);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS regions (
+        id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name           TEXT NOT NULL UNIQUE,
+        office_address TEXT DEFAULT '',
+        created_at     TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS region_id UUID REFERENCES regions(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS specialist_id UUID REFERENCES users(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS consumer_count INTEGER DEFAULT 0`);
+
     // Open shifts system.
     await pool.query(`
       CREATE TABLE IF NOT EXISTS open_shifts (

@@ -141,7 +141,10 @@ async function loadAllData(attempt=1){
 
 // Normalize API response fields to match what the app expects
 function normalizeLocation(l){
-  return { id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate), address:l.address||'' };
+  return {
+    id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate), address:l.address||'',
+    regionName:l.region_name||'', specialistName:l.specialist_name||'', consumerCount:l.consumer_count||0
+  };
 }
 function normalizeShift(s){
   return {
@@ -1062,10 +1065,16 @@ function renderSettings(){
   if(label) label.textContent=locs.length?`Locations (${locs.length})`:'Locations';
   if(!locs.length){ el.innerHTML='<div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div>'; return; }
   el.innerHTML=locs.map(l=>`
-    <div class="shift-item">
-      <div class="shift-dot" style="background:${l.color}"></div>
-      <div class="shift-info"><div class="name">${l.name}</div><div class="sub">$${l.rate.toFixed(2)}/hr</div></div>
-      ${l.address?`<button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="event.stopPropagation();openMapAddress(this.dataset.addr)" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;cursor:pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>`:''}
+    <div class="shift-item" style="flex-direction:column;align-items:stretch;gap:0;padding:0">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+        <div class="shift-dot" style="background:${l.color};flex-shrink:0"></div>
+        <div class="shift-info" style="flex:1;min-width:0">
+          <div class="name">${l.name}</div>
+          <div class="sub">${l.regionName?l.regionName+' · ':''}<span style="color:var(--green)">$${l.rate.toFixed(2)}/hr</span></div>
+        </div>
+        ${l.address?`<button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="event.stopPropagation();openMapAddress(this.dataset.addr)" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;cursor:pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>`:''}
+      </div>
+      ${l.specialistName?`<div style="display:flex;align-items:center;gap:6px;padding:6px 14px 10px 38px;font-size:11px;font-family:var(--mono);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Specialist: <span style="color:var(--text);font-weight:600">${l.specialistName}</span></div>`:''}
     </div>`).join('');
 }
 
@@ -1090,7 +1099,7 @@ function renderSettingsProfile(){
       <div><span>Position</span><b>${user.position||'Not assigned'}</b></div>
       <div><span>Assigned house</span><b>${loc?.name||user.location_name||'Not assigned'}</b></div>
       <div><span>Hire date</span><b>${hire}</b></div>
-      <div><span>Role</span><b>${user.role==='admin'?'Admin':'Employee'}</b></div>
+      <div><span>Role</span><b>${user.role==='admin'?'Admin':user.role==='specialist'?'Specialist':'Employee'}</b></div>
     </div>`;
 }
 

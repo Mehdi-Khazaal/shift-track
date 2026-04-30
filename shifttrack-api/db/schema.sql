@@ -215,3 +215,16 @@ CREATE TABLE IF NOT EXISTS sick_time_payouts (
   total_amount NUMERIC(10,2) NOT NULL,
   paid_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- REGIONS
+CREATE TABLE IF NOT EXISTS regions (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name           TEXT NOT NULL UNIQUE,
+  office_address TEXT DEFAULT '',
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Additional location columns (idempotent)
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS region_id      UUID REFERENCES regions(id) ON DELETE SET NULL;
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS specialist_id  UUID REFERENCES users(id)   ON DELETE SET NULL;
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS consumer_count INTEGER DEFAULT 0;

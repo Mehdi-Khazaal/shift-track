@@ -83,15 +83,13 @@
     <!-- LOCATIONS -->
     <div class="panel" id="panel-locations">
       <div class="sec-hd">
-        <div><h2>Locations</h2><p>Houses and pay rates — admin controlled</p></div>
-        <button class="btn btn-primary" onclick="openLocModal()">＋ Add Location</button>
+        <div><h2>Locations</h2><p>Houses grouped by region — admin controlled</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="openRegionModal()">＋ Region</button>
+          <button class="btn btn-primary" onclick="openLocModal()">＋ Location</button>
+        </div>
       </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>Color</th><th>Name</th><th>Pay rate</th><th>Address</th><th>Created</th><th>Actions</th></tr></thead>
-          <tbody id="locs-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
-        </table>
-      </div>
+      <div id="locs-container" style="margin-top:4px"><div class="empty" style="padding:32px">Loading…</div></div>
     </div>
 
     <!-- STAFFING -->
@@ -343,7 +341,7 @@
           </div>
           <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0">
             <label>Role</label>
-            <select id="old-new-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+            <select id="old-new-role"><option value="user">Employee</option><option value="specialist">Specialist</option><option value="admin">Admin</option></select>
           </div>
         </div>
         <div style="margin-top:20px;display:flex;gap:10px">
@@ -419,7 +417,7 @@
     </div>
     <div class="form-group">
       <label>Role</label>
-      <select id="edit-role"><option value="user">Employee</option><option value="admin">Admin</option></select>
+      <select id="edit-role"><option value="user">Employee</option><option value="specialist">Specialist</option><option value="admin">Admin</option></select>
     </div>
     <div class="form-group">
       <label>Hire Date <span style="color:var(--red);font-size:10px">*required</span></label>
@@ -438,12 +436,28 @@
 
 <!-- LOCATION MODAL -->
 <div class="modal-overlay" id="loc-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:480px">
     <h3 id="loc-modal-title">Add Location</h3>
     <input type="hidden" id="loc-edit-id"/>
-    <div class="form-group"><label>Name</label><input type="text" id="loc-name" placeholder="Oakland House"/></div>
-    <div class="form-group"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
-    <div class="form-group"><label>Address <span style="color:var(--dim);font-size:9px;letter-spacing:.5px">(optional — shown as map link to staff)</span></label><input type="text" id="loc-address" placeholder="123 Main St, Pittsburgh, PA 15201"/></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:2;min-width:160px"><label>Name</label><input type="text" id="loc-name" placeholder="Oakland House"/></div>
+      <div class="form-group" style="flex:1;min-width:100px"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
+    </div>
+    <div class="form-group">
+      <label>Region</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="loc-region" style="flex:1"><option value="">— None —</option></select>
+        <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;white-space:nowrap" onclick="openRegionModalInline()">＋ New Region</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Specialist <span style="color:var(--dim);font-size:9px">(head of this location)</span></label>
+      <select id="loc-specialist"><option value="">— None —</option></select>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:2;min-width:160px"><label>Address <span style="color:var(--dim);font-size:9px">(map link to staff)</span></label><input type="text" id="loc-address" placeholder="123 Main St, Pittsburgh, PA 15201"/></div>
+      <div class="form-group" style="flex:1;min-width:100px"><label>Consumers</label><input type="number" id="loc-consumers" min="0" step="1" placeholder="0"/></div>
+    </div>
     <div class="form-group">
       <label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="loc-colors">
@@ -465,9 +479,53 @@
   </div>
 </div>
 
+<!-- REGION MODAL -->
+<div class="modal-overlay" id="region-modal">
+  <div class="modal" style="max-width:400px">
+    <h3 id="region-modal-title">Add Region</h3>
+    <input type="hidden" id="region-edit-id"/>
+    <div class="form-group"><label>Region Name</label><input type="text" id="region-name" placeholder="Harmar Region"/></div>
+    <div class="form-group" style="margin-bottom:0"><label>Office Address <span style="color:var(--dim);font-size:9px">(optional)</span></label><input type="text" id="region-office-address" placeholder="100 Region HQ, Pittsburgh, PA"/></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeRegionModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRegion()">Save Region</button>
+    </div>
+  </div>
+</div>
+
 <style>
 .csw{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .1s;flex-shrink:0;}
 .csw.selected{border-color:var(--text);}
+
+/* Location panel redesign */
+.region-group{margin-bottom:20px;}
+.region-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;}
+.region-header-left{min-width:0;flex:1;}
+.region-title{font-size:11px;font-family:var(--mono);letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:2px;}
+.region-hname{font-size:15px;font-weight:700;color:var(--text);}
+.region-haddr{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:4px;}
+.region-header-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.region-count{font-size:11px;font-family:var(--mono);color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:2px 10px;}
+.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:0;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;}
+.loc-card{display:flex;background:var(--bg2);transition:background .15s;border-right:1px solid var(--border);border-bottom:1px solid var(--border);}
+.loc-card:hover{background:var(--bg3);}
+.loc-card-accent{width:4px;flex-shrink:0;}
+.loc-card-content{flex:1;padding:14px 14px 12px;min-width:0;}
+.loc-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;}
+.loc-card-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.2;}
+.loc-stats{display:flex;flex-direction:column;gap:5px;}
+.loc-stat{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;}
+.loc-stat span{color:var(--muted);}
+.loc-stat b{font-family:var(--mono);font-weight:600;color:var(--text);text-align:right;}
+.loc-stat b.green{color:var(--green);}
+.loc-addr-row{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);}
+.loc-empty-region{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;gap:8px;color:var(--muted);}
+.loc-empty-region svg{opacity:.25;}
+.loc-root-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;gap:10px;color:var(--muted);text-align:center;border:1px dashed var(--border);border-radius:var(--radius);}
+.loc-root-empty-icon{font-size:36px;opacity:.3;}
+.loc-root-empty-title{font-size:15px;font-weight:600;color:var(--text);}
+.loc-root-empty-sub{font-size:12px;font-family:var(--mono);}
+.unassigned-group .region-header{background:var(--bg2);border-style:dashed;}
 </style>
 
 <!-- USER DASHBOARD MODAL -->
