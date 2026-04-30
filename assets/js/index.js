@@ -1526,6 +1526,8 @@ async function toggleNotifications(){
     if(!keyRes?.key){ throw new Error('Could not fetch VAPID key'); }
     const reg=await navigator.serviceWorker.register('/shift-track/sw.js');
     await navigator.serviceWorker.ready;
+    const existing=await reg.pushManager.getSubscription();
+    if(existing) await existing.unsubscribe();
     const sub=await reg.pushManager.subscribe({
       userVisibleOnly:true,
       applicationServerKey:urlBase64ToUint8Array(keyRes.key)
