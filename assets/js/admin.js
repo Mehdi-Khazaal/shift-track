@@ -269,7 +269,7 @@ function renderOverview(){
     const sched=allSchedules[u.id]||[];
     const {pay,hrs,ot,count}=computePayForShifts(shifts,sched,ymds,u.id);
     return `<tr>
-      <td><div style="display:flex;align-items:center;gap:10px">${makeAvatar(u.name||u.email.split('@')[0])}<div><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div><div class="muted" style="font-size:11px">${u.email}</div></div></div></td>
+      <td><div style="display:flex;align-items:center;gap:10px">${makeAvatar(u.name||u.email.split('@')[0])}<div><div style="font-weight:600">${u.name||u.email.split('@')[0]}</div></div></div></td>
       <td class="mono">${hrs.toFixed(1)} hrs</td>
       <td class="mono" style="color:${ot>0?'var(--orange)':'var(--muted)'}">${ot.toFixed(1)} hrs</td>
       <td class="mono" style="color:var(--green);font-weight:700">${formatPay(pay)}</td>
