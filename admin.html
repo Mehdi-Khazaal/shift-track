@@ -38,14 +38,14 @@
 
   <div class="tabs">
     <div id="tab-indicator"></div>
-    <div class="tab active" onclick="switchTab('overview',this)">Overview</div>
-    <div class="tab" onclick="switchTab('users',this)">Users</div>
-    <div class="tab" onclick="switchTab('staffing',this)">Staffing</div>
-    <div class="tab" onclick="switchTab('locations',this)">Locations</div>
-    <div class="tab" onclick="switchTab('openshifts',this)">Open Shifts</div>
-    <div class="tab" onclick="switchTab('notify',this)">Notify</div>
-    <div class="tab" onclick="switchTab('swaps',this)">Swaps</div>
-    <div class="tab" id="tab-leave-btn" onclick="switchTab('leave',this)">Leave <span id="leave-pending-badge" style="display:none;background:var(--red);color:#fff;border-radius:99px;font-size:9px;padding:1px 5px;margin-left:4px;font-family:var(--mono);vertical-align:middle"></span></div>
+    <div class="tab active" onclick="switchTab('overview',this)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="8" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="15" width="7" height="6" rx="2"/></svg><span>Overview</span></div>
+    <div class="tab" onclick="switchTab('users',this)"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
+    <div class="tab" onclick="switchTab('staffing',this)"><svg viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg><span>Staffing</span></div>
+    <div class="tab" onclick="switchTab('locations',this)"><svg viewBox="0 0 24 24"><path d="M12 21s7-4.4 7-11a7 7 0 0 0-14 0c0 6.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Locations</span></div>
+    <div class="tab" onclick="switchTab('openshifts',this)"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg><span>Open Shifts</span></div>
+    <div class="tab" onclick="switchTab('notify',this)"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span>Notify</span></div>
+    <div class="tab" onclick="switchTab('swaps',this)"><svg viewBox="0 0 24 24"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg><span>Swaps</span></div>
+    <div class="tab" id="tab-leave-btn" onclick="switchTab('leave',this)"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/><path d="M19 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h8"/></svg><span>Leave</span><span id="leave-pending-badge" style="display:none;background:var(--red);color:#fff;border-radius:99px;font-size:9px;padding:1px 5px;margin-left:4px;font-family:var(--mono);vertical-align:middle"></span></div>
   </div>
 
   <div class="content">
