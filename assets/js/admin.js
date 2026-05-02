@@ -1413,7 +1413,7 @@ function initOverviewNotifyCard(){
   document.getElementById('panel-notify-legacy')?.remove();
   const card = document.getElementById('overview-notify-card');
   if(!card || card._wired) return;
-  const mq = window.matchMedia('(max-width: 720px)');
+  const mq = window.matchMedia('(max-width: 980px)');
   const apply = () => {
     if(mq.matches){
       if(!card.dataset.userToggled) card.open = false;
