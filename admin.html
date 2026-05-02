@@ -44,7 +44,6 @@
     <div class="tab" onclick="switchTab('staffing',this)"><svg viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg><span>Staffing</span></div>
     <div class="tab" onclick="switchTab('locations',this)"><svg viewBox="0 0 24 24"><path d="M12 21s7-4.4 7-11a7 7 0 0 0-14 0c0 6.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Locations</span></div>
     <div class="tab" onclick="switchTab('openshifts',this)"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg><span>Open Shifts</span></div>
-    <div class="tab" onclick="switchTab('notify',this)"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span>Notify</span></div>
     <div class="tab" onclick="switchTab('swaps',this)"><svg viewBox="0 0 24 24"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg><span>Swaps</span></div>
     <div class="tab" id="tab-leave-btn" onclick="switchTab('leave',this)"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/><path d="M19 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h8"/></svg><span>Leave</span><span id="leave-pending-badge" style="display:none;background:var(--red);color:#fff;border-radius:99px;font-size:9px;padding:1px 5px;margin-left:4px;font-family:var(--mono);vertical-align:middle"></span></div>
   </div>
@@ -68,11 +67,50 @@
           <div class="lbl">open shifts pending</div>
         </div>
       </div>
+      <div class="overview-command-layout">
+        <div class="overview-main">
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Employee</th><th>This period hrs</th><th>OT hrs</th><th>Est. pay</th><th>Shifts</th></tr></thead>
           <tbody id="overview-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
         </table>
+      </div>
+        </div>
+        <details class="card overview-notify-card" id="overview-notify-card" open>
+          <summary>
+            <span>
+              <strong>Send Announcement</strong>
+              <em>Push notification broadcast to staff</em>
+            </span>
+            <b>Compose</b>
+          </summary>
+          <div class="overview-notify-body">
+            <div class="form-group">
+              <label>Title <span style="color:var(--dim);font-size:9px">(optional)</span></label>
+              <input type="text" id="bc-title" placeholder="Announcement" maxlength="80"/>
+            </div>
+            <div class="form-group">
+              <label>Message</label>
+              <textarea class="bc-textarea" id="bc-body" placeholder="Type your message to staffâ€¦" maxlength="200"></textarea>
+              <div id="bc-char-count" style="font-size:10px;font-family:var(--mono);color:var(--dim);text-align:right;margin-top:3px">0 / 200</div>
+            </div>
+            <div class="form-group">
+              <label>Audience</label>
+              <select id="bc-filter" onchange="toggleBcFilter()">
+                <option value="all">All employees</option>
+                <option value="location">By location</option>
+                <option value="position">By position</option>
+              </select>
+            </div>
+            <div class="form-group" id="bc-filter-val-row" style="display:none">
+              <label id="bc-filter-val-label">Location</label>
+              <select id="bc-filter-val"></select>
+            </div>
+            <button class="btn btn-primary" style="width:100%;padding:10px 20px" id="bc-send-btn" onclick="sendBroadcast()">Send Notification</button>
+            <div id="bc-result" style="margin-top:14px;font-size:12px;font-family:var(--mono);display:none;padding:10px 12px;border-radius:var(--radius-sm)"></div>
+            <div class="overview-delivery-note">Only employees who enabled push notifications will receive it. The message also appears in their notification history.</div>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -117,7 +155,7 @@
     </div>
 
     <!-- NOTIFY -->
-    <div class="panel" id="panel-notify">
+    <div class="panel compact-hidden" id="panel-notify-legacy" aria-hidden="true">
       <div class="sec-hd">
         <div><h2>Send Announcement</h2><p>Push notification broadcast to staff</p></div>
       </div>

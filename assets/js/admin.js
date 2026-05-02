@@ -70,13 +70,18 @@ function enterApp(user){
 //  TABS
 // ══════════════════════════════
 function switchTab(name,el){
+  if(name === 'notify'){
+    const overviewTab = document.querySelector('[onclick*="overview"]');
+    switchTab('overview', overviewTab);
+    document.getElementById('overview-notify-card')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    return;
+  }
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-'+name).classList.add('active');
   updateTabIndicator();
   if(name==='staffing')    renderStaffing();
-  if(name==='notify')      toggleBcFilter();
   if(name==='openshifts')  { populateOsForm(); loadOpenShifts(); }
   if(name==='swaps')       loadAdminSwaps();
 }
@@ -1404,6 +1409,27 @@ document.getElementById('bc-body').addEventListener('input', function(){
   document.getElementById('bc-char-count').textContent = `${this.value.length} / 200`;
 });
 
+function initOverviewNotifyCard(){
+  document.getElementById('panel-notify-legacy')?.remove();
+  const card = document.getElementById('overview-notify-card');
+  if(!card || card._wired) return;
+  const mq = window.matchMedia('(max-width: 720px)');
+  const apply = () => {
+    if(mq.matches){
+      if(!card.dataset.userToggled) card.open = false;
+    } else {
+      card.open = true;
+      delete card.dataset.userToggled;
+    }
+  };
+  card.addEventListener('toggle', () => {
+    if(mq.matches) card.dataset.userToggled = '1';
+  });
+  mq.addEventListener?.('change', apply);
+  card._wired = true;
+  apply();
+}
+
 function toggleBcFilter(){
   const val    = document.getElementById('bc-filter').value;
   const row    = document.getElementById('bc-filter-val-row');
@@ -1775,6 +1801,7 @@ loadAll = async function(){
   await _origLoadAll();
   renderStaffing();
   toggleBcFilter(); // populate filter dropdown with fresh loc data
+  initOverviewNotifyCard();
   adminInitRipples();
   requestAnimationFrame(updateTabIndicator);
   refreshLeavePendingBadge();

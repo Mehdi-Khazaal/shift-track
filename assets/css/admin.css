@@ -609,6 +609,67 @@ tbody tr:hover{
   overflow:hidden;
   background:linear-gradient(180deg,rgba(30,30,24,.96),rgba(19,19,16,.98));
 }
+.overview-command-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 360px;
+  gap:16px;
+  align-items:start;
+}
+.overview-main{
+  min-width:0;
+}
+.overview-notify-card{
+  position:sticky;
+  top:28px;
+  margin-bottom:0;
+}
+.overview-notify-card summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  cursor:pointer;
+  list-style:none;
+  user-select:none;
+}
+.overview-notify-card summary::-webkit-details-marker{
+  display:none;
+}
+.overview-notify-card summary strong{
+  display:block;
+  font-size:14px;
+}
+.overview-notify-card summary em{
+  display:block;
+  margin-top:3px;
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--muted);
+  font-style:normal;
+  line-height:1.35;
+}
+.overview-notify-card summary b{
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--accent);
+  border:1px solid rgba(45,212,191,.25);
+  border-radius:999px;
+  padding:4px 8px;
+  background:rgba(45,212,191,.08);
+  white-space:nowrap;
+}
+.overview-notify-body{
+  padding-top:14px;
+  margin-top:14px;
+  border-top:1px solid rgba(243,240,223,.08);
+}
+.overview-delivery-note{
+  margin-top:12px;
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--muted);
+  line-height:1.55;
+}
 #panel-notify .card,#panel-openshifts .card,#panel-leave .card{
   max-width:none!important;
 }
@@ -630,6 +691,8 @@ tbody tr:hover{
 @media(max-width:980px){
   .admin-users-layout{grid-template-columns:1fr;}
   .users-side{position:static;}
+  .overview-command-layout{grid-template-columns:1fr;}
+  .overview-notify-card{position:static;order:-1;}
   .tabs{justify-content:flex-start;}
   #panel-notify .card{display:block;}
 }
@@ -982,6 +1045,28 @@ tbody tr:hover{
 }
 
 @media(max-width:720px){
+  .overview-notify-card{
+    padding:13px 14px;
+  }
+  .overview-notify-card summary strong{
+    font-size:13px;
+  }
+  .overview-notify-card summary em{
+    display:none;
+  }
+  .overview-notify-card summary b::after{
+    content:' +';
+  }
+  .overview-notify-card[open] summary b::after{
+    content:'';
+  }
+  .overview-notify-body{
+    padding-top:12px;
+    margin-top:12px;
+  }
+  .overview-delivery-note{
+    display:none;
+  }
   .stf-location-grid{
     grid-template-columns:1fr;
   }
