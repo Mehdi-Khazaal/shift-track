@@ -774,6 +774,12 @@ tbody tr:hover{
     min-height:58px;
     z-index:80;
   }
+  .top-right{
+    position:fixed;
+    top:12px;
+    right:16px;
+    z-index:90;
+  }
   .tabs{
     position:fixed;
     left:10px;
