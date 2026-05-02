@@ -662,3 +662,103 @@ body::before{
   background:rgba(243,240,223,.05);
   border:1px solid rgba(243,240,223,.08);
 }
+
+/* ── Background: clean dark gradient, no grid ── */
+body{
+  background:
+    radial-gradient(ellipse 110% 55% at 50% 0%,rgba(45,212,191,.065) 0%,transparent 52%),
+    radial-gradient(ellipse 65% 45% at 100% 85%,rgba(249,115,22,.04) 0%,transparent 50%),
+    #090a0b;
+  background-size:auto;
+  background-attachment:fixed;
+}
+body::before{display:none;}
+
+/* ── Dashboard 2-column layout (tablet / desktop) ── */
+@media(min-width:700px){
+  .dash-body{
+    display:flex;
+    flex-direction:row-reverse;
+    gap:14px;
+    padding:0 16px;
+    align-items:flex-start;
+  }
+  .dash-col{flex:1;min-width:0;}
+  .dash-col-shifts{flex:1.5;}
+  .dash-body .stat-grid{padding-left:0;padding-right:0;}
+  .dash-body .card{margin-left:0;margin-right:0;}
+  .dash-body .hr-bar-wrap{padding-left:0;padding-right:0;}
+  .dash-body .section-hd{padding-left:0;padding-right:0;margin-top:8px;}
+  .dash-col-shifts>.section-hd:first-child{padding-top:2px;margin-top:0;}
+  .dash-col-shifts>.card{min-height:200px;}
+}
+
+/* ── Calendar: square cells ── */
+.cal-cell{
+  aspect-ratio:1;
+  min-height:unset!important;
+  overflow:hidden;
+}
+
+/* ── Calendar: shift color — tinted background + colored bottom border ── */
+.cal-cell>*{position:relative;z-index:1;}
+.cal-cell.has-shift::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:var(--cc,#2dd4bf);
+  opacity:.11;
+  border-radius:inherit;
+  pointer-events:none;
+  z-index:0;
+}
+.cal-cell.has-shift{
+  border-bottom-color:var(--cc,rgba(45,212,191,.55))!important;
+  border-bottom-width:2px!important;
+}
+.cal-cell.has-shift:not(.selected){
+  box-shadow:none;
+}
+.cal-dots{gap:3px;max-width:100%;}
+.cal-dot{width:8px;height:8px;border-radius:50%;}
+.cal-dot.sq{border-radius:2px;}
+
+/* ── General polish: card depth on larger screens ── */
+@media(min-width:700px){
+  .card,.stat-box,.hist-card{
+    box-shadow:0 20px 50px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.035);
+  }
+  .stat-box.accent{box-shadow:var(--glow-accent),0 20px 50px rgba(0,0,0,.28);}
+  .stat-box.green{box-shadow:var(--glow-green),0 20px 50px rgba(0,0,0,.28);}
+  .stat-box.orange{box-shadow:var(--glow-orange),0 20px 50px rgba(0,0,0,.28);}
+}
+
+/* ── View toggle (Mo/Wk) — match leave-tab active style ── */
+.view-tog.active{
+  background:linear-gradient(135deg,#14b8a6,#65a30d);
+  color:#06100e;
+}
+
+/* ── Calendar week view: today row highlight ── */
+.cal-week-row.today{
+  background:rgba(45,212,191,.05);
+}
+.cal-week-day-label.today .dn{
+  background:linear-gradient(135deg,var(--accent),var(--green));
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+
+/* ── Stat box label refinement ── */
+.stat-box .lbl{
+  font-size:10px;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+}
+
+/* ── Section header — tighter on mobile ── */
+.section-hd{
+  padding-top:12px;
+  padding-bottom:8px;
+}

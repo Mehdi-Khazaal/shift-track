@@ -1240,7 +1240,9 @@ function renderCalMonth(){
       const loc=getLocById(s.locationId);
       return `<div class="cal-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>`;
     }).join('');
-    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="selectCalendarDay('${ymd}')">
+    const firstColor = shifts.length ? (getLocById(shifts[0].locationId)?.color||null) : null;
+    const cellStyle = firstColor ? ` style="--cc:${firstColor}"` : '';
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}"${cellStyle} onclick="selectCalendarDay('${ymd}')">
       <div class="cal-dn">${date.getDate()}</div>
       ${unavail.length?'<div class="unavail-stripe"></div>':''}
       ${dots?`<div class="cal-dots">${dots}</div>`:''}

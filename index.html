@@ -74,57 +74,63 @@
     </div>
   </div>
 
-  <div class="stat-grid">
-    <div class="stat-box accent">
-      <div class="val" id="stat-hours">0.0</div>
-      <div class="lbl">hrs this week</div>
-      <div class="prog-wrap"><div class="prog-bar" id="prog-hrs" style="width:0%"></div></div>
-    </div>
-    <div class="stat-box green">
-      <div class="val" id="stat-pay">$0</div>
-      <div class="lbl">est. earnings</div>
-    </div>
-    <div class="stat-box orange">
-      <div class="val" id="stat-ot">0.0</div>
-      <div class="lbl">overtime hrs</div>
-    </div>
-    <div class="stat-box">
-      <div class="val" id="stat-shifts">0</div>
-      <div class="lbl">shifts this week</div>
-    </div>
-  </div>
+  <div class="dash-body">
+    <div class="dash-col dash-col-stats">
+      <div class="stat-grid">
+        <div class="stat-box accent">
+          <div class="val" id="stat-hours">0.0</div>
+          <div class="lbl">hrs this week</div>
+          <div class="prog-wrap"><div class="prog-bar" id="prog-hrs" style="width:0%"></div></div>
+        </div>
+        <div class="stat-box green">
+          <div class="val" id="stat-pay">$0</div>
+          <div class="lbl">est. earnings</div>
+        </div>
+        <div class="stat-box orange">
+          <div class="val" id="stat-ot">0.0</div>
+          <div class="lbl">overtime hrs</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="stat-shifts">0</div>
+          <div class="lbl">shifts this week</div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <div class="card-label" style="margin-bottom:0">Pay period · 2-week total</div>
-      <div class="pp-nav">
-        <div class="arr-btn" onclick="changePayPeriod(-1)">‹</div>
-        <div class="wk-lbl" id="pp-nav-label">—</div>
-        <div class="arr-btn" onclick="changePayPeriod(1)">›</div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div class="card-label" style="margin-bottom:0">Pay period · 2-week total</div>
+          <div class="pp-nav">
+            <div class="arr-btn" onclick="changePayPeriod(-1)">‹</div>
+            <div class="wk-lbl" id="pp-nav-label">—</div>
+            <div class="arr-btn" onclick="changePayPeriod(1)">›</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px">
+          <div>
+            <div style="font-size:28px;font-weight:800;font-family:var(--mono);letter-spacing:-1px" id="pp-pay">$0.00</div>
+            <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-hrs">0 hrs total</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:12px;color:var(--orange);font-family:var(--mono)" id="pp-ot-label"></div>
+            <div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-dates"></div>
+          </div>
+        </div>
+        <div class="prog-wrap"><div class="prog-bar" id="prog-pp" style="width:0%"></div></div>
+      </div>
+
+      <div class="section-hd"><h2>Hours by location</h2></div>
+      <div class="hr-bar-wrap" id="loc-bars">
+        <div class="empty-state" style="padding:12px"><div style="font-size:12px">No shifts this week</div></div>
       </div>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px">
-      <div>
-        <div style="font-size:28px;font-weight:800;font-family:var(--mono);letter-spacing:-1px" id="pp-pay">$0.00</div>
-        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-hrs">0 hrs total</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:12px;color:var(--orange);font-family:var(--mono)" id="pp-ot-label"></div>
-        <div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px" id="pp-dates"></div>
-      </div>
-    </div>
-    <div class="prog-wrap"><div class="prog-bar" id="prog-pp" style="width:0%"></div></div>
-  </div>
 
-  <div class="section-hd"><h2>Hours by location</h2></div>
-  <div class="hr-bar-wrap" id="loc-bars">
-    <div class="empty-state" style="padding:12px"><div style="font-size:12px">No shifts this week</div></div>
-  </div>
-
-  <div class="section-hd" style="margin-top:4px"><h2>This week</h2></div>
-  <div class="card" style="padding:0">
-    <div id="shift-list-dash">
-      <div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>
+    <div class="dash-col dash-col-shifts">
+      <div class="section-hd"><h2>This week</h2></div>
+      <div class="card" style="padding:0">
+        <div id="shift-list-dash">
+          <div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

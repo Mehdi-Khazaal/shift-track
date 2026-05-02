@@ -1056,6 +1056,8 @@ function staffingGoToday(){ staffingAnchor = new Date(); renderStaffing(); }
 
 function toggleStfCard(hd){
   hd.classList.toggle('open');
+  const card = hd.closest('.stf-house-card');
+  if(card) card.classList.toggle('open-card', hd.classList.contains('open'));
   const body = hd.nextElementSibling;
   if(body) body.classList.toggle('open');
   const chevron = hd.querySelector('.stf-chevron');
@@ -1204,8 +1206,15 @@ function renderStaffingMonth(ref, today){
   cells.filter(c=>!c.other).forEach(c=>{ staffingByDate[toYMD(c.date)]=getDetailedStaffingForDate(toYMD(c.date)); });
 
   const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
-  document.getElementById('staffing-body').innerHTML = allLocs.map(loc => {
+  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid">${allLocs.map(loc => {
     const c = loc.color || '#888';
+    let coveredDays = 0;
+    let peakStaff = 0;
+    cells.filter(cell => !cell.other).forEach(({date}) => {
+      const staff = staffingByDate[toYMD(date)]?.[loc.id] || [];
+      if(staff.length) coveredDays++;
+      if(staff.length > peakStaff) peakStaff = staff.length;
+    });
     const cellsHtml = cells.map(({date,other})=>{
       const ymd = toYMD(date);
       const staff = other ? [] : (staffingByDate[ymd]?.[loc.id] || []);
@@ -1217,10 +1226,14 @@ function renderStaffingMonth(ref, today){
         ${!other && staff.length ? `<div class="stf-mcell-count" style="color:${c}">${staff.length}</div>` : ''}
       </div>`;
     }).join('');
-    return `<div class="stf-house-card">
+    return `<div class="stf-house-card stf-location-card">
       <div class="stf-house-hd" onclick="toggleStfCard(this)">
         <div style="width:12px;height:12px;border-radius:3px;background:${c};flex-shrink:0"></div>
-        <div class="stf-house-name">${loc.name}</div>
+        <div class="stf-house-title">
+          <div class="stf-house-name">${loc.name}</div>
+          <div class="stf-house-meta">${coveredDays}/${daysInMonth} days covered · peak ${peakStaff}</div>
+        </div>
+        <div class="stf-house-count" style="color:${c};background:${c}18">${coveredDays} days</div>
         ${chevronSvg}
       </div>
       <div class="stf-card-body">
@@ -1228,7 +1241,7 @@ function renderStaffingMonth(ref, today){
         <div class="stf-month-grid">${cellsHtml}</div>
       </div>
     </div>`;
-  }).join('') || '<div class="empty">No locations configured</div>';
+  }).join('') || '<div class="empty">No locations configured</div>'}</div>`;
 }
 
 function renderStaffingWeek(wkDates, today){
@@ -2047,3 +2060,5 @@ function updateTabIndicator() {
   ind.style.left = (rect.left - tabsRect.left + tabs.scrollLeft) + 'px';
   ind.style.width = rect.width + 'px';
 }
+
+window.addEventListener('resize', updateTabIndicator);

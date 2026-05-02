@@ -633,3 +633,283 @@ tbody tr:hover{
   .tabs{justify-content:flex-start;}
   #panel-notify .card{display:block;}
 }
+
+/* 2026 admin shell upgrade */
+@media(min-width:981px){
+  #app.visible{
+    display:block;
+    min-height:100vh;
+  }
+  .top-bar{
+    position:fixed;
+    inset:0 auto auto 0;
+    width:252px;
+    height:132px;
+    padding:24px 18px 16px;
+    align-items:flex-start;
+    justify-content:flex-start;
+    border-right:1px solid rgba(243,240,223,.1);
+    border-bottom:none;
+    box-shadow:none;
+    z-index:70;
+  }
+  .top-logo{
+    font-size:21px;
+    line-height:1.05;
+  }
+  .top-logo small{
+    display:block;
+    margin:8px 0 0;
+    letter-spacing:1.6px;
+  }
+  .top-right{
+    position:fixed;
+    left:18px;
+    bottom:18px;
+    width:216px;
+    flex-direction:column;
+    align-items:stretch;
+    gap:9px;
+    z-index:75;
+  }
+  .top-user{
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    padding:10px 11px;
+    border:1px solid rgba(243,240,223,.1);
+    border-radius:9px;
+    background:rgba(243,240,223,.035);
+  }
+  .admin-badge,.logout-btn{
+    width:100%;
+    justify-content:center;
+    text-align:center;
+  }
+  .tabs{
+    position:fixed;
+    left:0;
+    top:132px;
+    bottom:112px;
+    width:252px;
+    flex-direction:column;
+    justify-content:flex-start;
+    gap:6px;
+    padding:14px 12px;
+    border-right:1px solid rgba(243,240,223,.1);
+    border-bottom:none;
+    overflow-y:auto;
+    z-index:65;
+  }
+  .tab{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-height:42px;
+    padding:0 14px;
+    border:1px solid transparent;
+    border-radius:10px;
+    font-family:var(--sans);
+    font-size:13px;
+    font-weight:700;
+    color:#b6ad91;
+  }
+  .tab::before{
+    width:26px;
+    height:26px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:8px;
+    background:rgba(243,240,223,.055);
+    color:var(--muted);
+    font-family:var(--mono);
+    font-size:10px;
+    flex-shrink:0;
+  }
+  .tab[onclick*="overview"]::before{content:"OV";}
+  .tab[onclick*="users"]::before{content:"US";}
+  .tab[onclick*="staffing"]::before{content:"ST";}
+  .tab[onclick*="locations"]::before{content:"LO";}
+  .tab[onclick*="openshifts"]::before{content:"OS";}
+  .tab[onclick*="notify"]::before{content:"NT";}
+  .tab[onclick*="swaps"]::before{content:"SW";}
+  .tab[onclick*="leave"]::before{content:"LV";}
+  .tab.active{
+    border-color:rgba(45,212,191,.28);
+    background:linear-gradient(135deg,rgba(45,212,191,.14),rgba(132,204,22,.07));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 10px 26px rgba(0,0,0,.18);
+  }
+  .tab.active::before{
+    background:var(--accent);
+    color:#06100e;
+  }
+  .content{
+    width:calc(100% - 252px);
+    max-width:none;
+    margin:0 0 0 252px;
+    padding:28px 34px 42px;
+  }
+  .sec-hd{
+    padding:18px 20px;
+    margin-bottom:18px;
+    border:1px solid rgba(243,240,223,.09);
+    border-radius:12px;
+    background:linear-gradient(135deg,rgba(243,240,223,.04),rgba(45,212,191,.035));
+  }
+}
+
+@media(max-width:980px){
+  #app.visible{
+    display:flex;
+  }
+  .top-bar{
+    min-height:58px;
+    z-index:80;
+  }
+  .tabs{
+    position:fixed;
+    left:10px;
+    right:10px;
+    bottom:10px;
+    z-index:200;
+    padding:7px;
+    gap:4px;
+    border:1px solid rgba(243,240,223,.12);
+    border-radius:18px;
+    background:rgba(13,13,11,.92);
+    box-shadow:0 18px 52px rgba(0,0,0,.42);
+  }
+  .tab{
+    flex:1 0 auto;
+    min-width:76px;
+    padding:9px 10px;
+    border:1px solid transparent;
+    border-radius:12px;
+    text-align:center;
+  }
+  .tab.active{
+    border-color:rgba(45,212,191,.25);
+    background:rgba(45,212,191,.14);
+  }
+  .content{
+    padding-bottom:98px;
+  }
+}
+
+/* Staffing location cards */
+#panel-staffing .sec-hd{
+  align-items:flex-start;
+}
+.stf-location-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  gap:14px;
+  align-items:start;
+}
+.stf-location-card{
+  margin-bottom:0;
+  min-height:78px;
+}
+.stf-location-card.open-card{
+  grid-column:span 2;
+}
+.stf-location-card .stf-house-hd{
+  min-height:76px;
+  align-items:center;
+}
+.stf-house-title{
+  flex:1;
+  min-width:0;
+}
+.stf-house-meta{
+  margin-top:4px;
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.stf-location-card .stf-card-body.open{
+  display:block;
+  padding:10px;
+}
+.stf-location-card .stf-month-dow{
+  padding:4px 4px 0;
+}
+.stf-location-card .stf-month-grid{
+  padding:4px;
+  gap:5px;
+}
+.stf-location-card .stf-mcell{
+  min-height:unset;
+  aspect-ratio:1 / .9;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  background:rgba(243,240,223,.028);
+}
+.stf-location-card.open-card .stf-mcell{
+  aspect-ratio:1 / 1;
+}
+.stf-location-card .stf-mcell-dn{
+  font-size:11px;
+}
+.stf-location-card .stf-mcell-count{
+  align-self:flex-start;
+  min-width:23px;
+  text-align:center;
+  background:rgba(0,0,0,.18);
+}
+#staffing-day-modal .modal{
+  width:min(92vw,520px);
+  aspect-ratio:1 / 1;
+  max-height:88vh!important;
+  display:flex;
+  flex-direction:column;
+}
+#staffing-day-content{
+  flex:1;
+  overflow:auto;
+}
+
+@media(max-width:1180px) and (min-width:981px){
+  .stf-location-card.open-card{
+    grid-column:1 / -1;
+  }
+}
+
+@media(max-width:720px){
+  .stf-location-grid{
+    grid-template-columns:1fr;
+  }
+  .stf-location-card.open-card{
+    grid-column:auto;
+  }
+  .stf-location-card .stf-house-hd{
+    min-height:68px;
+  }
+  .stf-location-card .stf-mcell{
+    aspect-ratio:auto;
+    min-height:36px;
+  }
+  #staffing-day-modal .modal{
+    aspect-ratio:auto;
+    min-height:420px;
+  }
+}
+
+/* Match employee background: clean dark gradient, no grid */
+body{
+  background:
+    radial-gradient(ellipse 110% 55% at 50% 0%,rgba(45,212,191,.065) 0%,transparent 52%),
+    radial-gradient(ellipse 65% 45% at 100% 85%,rgba(249,115,22,.04) 0%,transparent 50%),
+    #090a0b;
+  background-size:auto;
+  background-attachment:fixed;
+}
+body::before{
+  display:none;
+}
