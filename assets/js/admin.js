@@ -1190,6 +1190,35 @@ function renderStaffingGaps(){
   </div>`;
 }
 
+function stfGroupedLocs(){
+  const byRegion = {};
+  const unassigned = [];
+  for(const loc of allLocs){
+    if(loc.region_id){ (byRegion[loc.region_id] = byRegion[loc.region_id] || []).push(loc); }
+    else { unassigned.push(loc); }
+  }
+  const groups = allRegions
+    .filter(r => byRegion[r.id])
+    .map(r => ({ region: r, locs: byRegion[r.id] }));
+  return { groups, unassigned };
+}
+
+function stfRenderLocCards(cardFn){
+  const { groups, unassigned } = stfGroupedLocs();
+  if(!groups.length){
+    return allLocs.map(cardFn).join('') || '<div class="empty">No locations configured</div>';
+  }
+  let html = groups.map(({region, locs}) =>
+    `<div class="stf-region-hd"><span>${region.name}</span><span class="stf-region-count">${locs.length}</span></div>` +
+    locs.map(cardFn).join('')
+  ).join('');
+  if(unassigned.length){
+    html += `<div class="stf-region-hd stf-region-hd-unassigned"><span>Unassigned</span><span class="stf-region-count">${unassigned.length}</span></div>` +
+      unassigned.map(cardFn).join('');
+  }
+  return html || '<div class="empty">No locations configured</div>';
+}
+
 function renderStaffingMonth(ref, today){
   const todayYMD = toYMD(today);
   const firstDay = ref.getDay();
@@ -1206,7 +1235,7 @@ function renderStaffingMonth(ref, today){
   cells.filter(c=>!c.other).forEach(c=>{ staffingByDate[toYMD(c.date)]=getDetailedStaffingForDate(toYMD(c.date)); });
 
   const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
-  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid">${allLocs.map(loc => {
+  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid">${stfRenderLocCards(loc => {
     const c = loc.color || '#888';
     let coveredDays = 0;
     let peakStaff = 0;
@@ -1243,7 +1272,7 @@ function renderStaffingMonth(ref, today){
         </div>
       </div>
     </div>`;
-  }).join('') || '<div class="empty">No locations configured</div>'}</div>`;
+  })}</div>`;
 }
 
 function renderStaffingWeek(wkDates, today){
@@ -1254,7 +1283,7 @@ function renderStaffingWeek(wkDates, today){
   const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
 
-  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid stf-week-grid">${allLocs.map(loc => {
+  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid stf-week-grid">${stfRenderLocCards(loc => {
     const c = loc.color || '#888';
     const userMap = new Map();
     let staffedDays = 0;
@@ -1296,7 +1325,7 @@ function renderStaffingWeek(wkDates, today){
       </div>
       <div class="stf-card-body"><div class="stf-card-inner">${bodyContent}</div></div>
     </div>`;
-  }).join('') || '<div class="empty">No locations configured</div>'}</div>`;
+  })}</div>`;
 }
 
 function renderStaffingDay(dateStr, today){
@@ -1304,7 +1333,7 @@ function renderStaffingDay(dateStr, today){
   const d = new Date(dateStr + 'T12:00:00');
   const dayLabel = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
   const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
-  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid stf-day-grid">${allLocs.map(loc => {
+  document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid stf-day-grid">${stfRenderLocCards(loc => {
     const c = loc.color || '#888';
     const entries = (staffing[loc.id] || []).sort((a,b)=>a.start.localeCompare(b.start));
     const countBadge = entries.length
@@ -1333,7 +1362,7 @@ function renderStaffingDay(dateStr, today){
       </div>
       <div class="stf-card-body"><div class="stf-card-inner">${listHtml}</div></div>
     </div>`;
-  }).join('') || '<div class="empty">No locations configured</div>'}</div>`;
+  })}</div>`;
 }
 
 function stfMonthDayClick(dateStr, locId){

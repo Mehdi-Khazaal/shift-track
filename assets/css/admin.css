@@ -1001,6 +1001,40 @@ tbody tr:hover{
   }
 }
 
+/* ── Staffing: region section headers ── */
+.stf-region-hd{
+  grid-column:1/-1;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:16px 2px 6px;
+  font-size:10px;
+  font-family:var(--mono);
+  font-weight:700;
+  letter-spacing:.8px;
+  text-transform:uppercase;
+  color:var(--muted);
+  border-bottom:1px solid var(--border);
+  margin-bottom:4px;
+}
+.stf-region-hd:first-child{
+  padding-top:4px;
+}
+.stf-region-count{
+  font-size:10px;
+  font-family:var(--mono);
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:99px;
+  padding:1px 8px;
+  color:var(--dim);
+  font-weight:500;
+  letter-spacing:0;
+}
+.stf-region-hd-unassigned{
+  color:var(--dim);
+}
+
 /* Match employee background: clean dark gradient, no grid */
 body{
   background:
