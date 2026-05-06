@@ -494,7 +494,7 @@
       <select id="loc-specialist"><option value="">— None —</option></select>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div class="form-group" style="flex:2;min-width:160px"><label>Address <span style="color:var(--dim);font-size:9px">(map link to staff)</span></label><input type="text" id="loc-address" placeholder="123 Main St, Pittsburgh, PA 15201"/></div>
+      <div class="form-group" style="flex:2;min-width:160px"><label>Address <span style="color:var(--dim);font-size:9px">(map link to staff)</span></label><div style="position:relative"><input type="text" id="loc-address" placeholder="123 Main St, Pittsburgh, PA 15201" oninput="onLocAddressInput()" autocomplete="off"/><div id="loc-address-suggestions" class="addr-suggestions"></div></div></div>
       <div class="form-group" style="flex:1;min-width:100px"><label>Consumers</label><input type="number" id="loc-consumers" min="0" step="1" placeholder="0"/></div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">

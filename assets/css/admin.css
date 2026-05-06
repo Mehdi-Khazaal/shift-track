@@ -254,6 +254,15 @@ tbody tr{animation:rowIn .2s ease both;}
 .emp-chip-x:hover{opacity:1;}
 .emp-empty{padding:16px;text-align:center;font-size:12px;font-family:var(--mono);color:var(--dim);}
 
+/* ── Address autocomplete ── */
+.addr-suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);box-shadow:0 16px 48px rgba(0,0,0,.6);z-index:600;display:none;overflow:hidden;}
+.addr-suggestions.open{display:block;}
+.addr-sugg-item{padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s;}
+.addr-sugg-item:last-child{border-bottom:none;}
+.addr-sugg-item:hover{background:var(--bg3);}
+.addr-sugg-main{font-size:13px;font-weight:600;color:var(--text);}
+.addr-sugg-sub{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px;}
+
 @media(max-width:640px){
   .top-bar{padding:14px 16px;}
   .top-logo small{display:none;}

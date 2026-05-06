@@ -852,8 +852,61 @@ function openLocModal(id=null, presetRegionId=null){
   }
   document.getElementById('loc-modal').classList.add('open');
 }
-function closeLocModal(){ document.getElementById('loc-modal').classList.remove('open'); }
+function closeLocModal(){ document.getElementById('loc-modal').classList.remove('open'); hideAddrSuggestions(); }
 function pickColor(el){ document.querySelectorAll('.csw').forEach(s=>s.classList.remove('selected')); el.classList.add('selected'); }
+
+// ── Address autocomplete (Photon / OpenStreetMap) ──────────────
+let _addrDebounce=null, _addrAbort=null;
+
+function onLocAddressInput(){
+  const val=document.getElementById('loc-address').value.trim();
+  clearTimeout(_addrDebounce);
+  hideAddrSuggestions();
+  if(val.length<3) return;
+  _addrDebounce=setTimeout(()=>_fetchAddrSuggestions(val),320);
+}
+
+async function _fetchAddrSuggestions(q){
+  if(_addrAbort){ _addrAbort.abort(); }
+  _addrAbort=new AbortController();
+  try{
+    const res=await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6`,{signal:_addrAbort.signal});
+    const data=await res.json();
+    _renderAddrSuggestions(data.features||[]);
+  }catch(e){ if(e.name!=='AbortError') hideAddrSuggestions(); }
+}
+
+function _renderAddrSuggestions(features){
+  const el=document.getElementById('loc-address-suggestions');
+  if(!el) return;
+  const items=features.filter(f=>f.properties&&(f.properties.street||f.properties.name));
+  if(!items.length){ hideAddrSuggestions(); return; }
+  el.innerHTML=items.map(f=>{
+    const p=f.properties;
+    const main=p.housenumber&&p.street?`${p.housenumber} ${p.street}`:(p.name||p.street||'');
+    const sub=[p.city||p.town||p.village,p.state,p.postcode].filter(Boolean).join(', ');
+    const full=[p.housenumber&&p.street?`${p.housenumber} ${p.street}`:(p.name||p.street||''),p.city||p.town||p.village,p.state,p.postcode].filter(Boolean).join(', ');
+    return `<div class="addr-sugg-item" data-addr="${full.replace(/"/g,'&quot;')}" onclick="pickAddrSuggestion(this.dataset.addr)">
+      <div class="addr-sugg-main">${main}</div>
+      ${sub?`<div class="addr-sugg-sub">${sub}</div>`:''}
+    </div>`;
+  }).join('');
+  el.classList.add('open');
+}
+
+function pickAddrSuggestion(addr){
+  document.getElementById('loc-address').value=addr;
+  hideAddrSuggestions();
+}
+
+function hideAddrSuggestions(){
+  const el=document.getElementById('loc-address-suggestions');
+  if(el) el.classList.remove('open');
+}
+
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#loc-address-suggestions')&&e.target.id!=='loc-address') hideAddrSuggestions();
+});
 
 async function saveLoc(){
   const name=document.getElementById('loc-name').value.trim();
