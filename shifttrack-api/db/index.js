@@ -130,6 +130,7 @@ async function migrate() {
     await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS region_id UUID REFERENCES regions(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS specialist_id UUID REFERENCES users(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS consumer_count INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''`);
 
     // Open shifts system.
     await pool.query(`

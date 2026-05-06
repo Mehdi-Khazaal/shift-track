@@ -236,7 +236,8 @@ tbody tr{animation:rowIn .2s ease both;}
 .emp-search-wrap{padding:10px 10px 6px;border-bottom:1px solid var(--border);}
 .emp-search{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:13px;padding:7px 10px;outline:none;transition:border-color .15s;}
 .emp-search:focus{border-color:var(--accent);}
-.emp-list{max-height:200px;overflow-y:auto;}
+.emp-list{max-height:260px;overflow-y:auto;}
+.emp-group-label{font-size:10px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:7px 12px 4px;background:var(--bg);border-bottom:1px solid var(--border);}
 .emp-item{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background .1s;}
 .emp-item:hover{background:var(--bg3);}
 .emp-item.selected{background:rgba(91,143,255,.08);}

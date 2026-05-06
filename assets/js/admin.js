@@ -834,6 +834,7 @@ function openLocModal(id=null, presetRegionId=null){
   document.getElementById('loc-name').value='';
   document.getElementById('loc-rate').value='';
   document.getElementById('loc-address').value='';
+  document.getElementById('loc-phone').value='';
   document.getElementById('loc-consumers').value='0';
   _populateLocModalDropdowns(presetRegionId);
   if(id){
@@ -842,6 +843,7 @@ function openLocModal(id=null, presetRegionId=null){
       document.getElementById('loc-name').value=loc.name;
       document.getElementById('loc-rate').value=parseFloat(loc.rate).toFixed(2);
       document.getElementById('loc-address').value=loc.address||'';
+      document.getElementById('loc-phone').value=loc.phone||'';
       document.getElementById('loc-consumers').value=loc.consumer_count||0;
       document.querySelectorAll('.csw').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
       document.getElementById('loc-region').value=loc.region_id||'';
@@ -858,6 +860,7 @@ async function saveLoc(){
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.csw.selected')?.dataset.c||'#5b8fff';
   const address=document.getElementById('loc-address').value.trim();
+  const phone=document.getElementById('loc-phone').value.trim();
   const region_id=document.getElementById('loc-region').value||null;
   const specialist_id=document.getElementById('loc-specialist').value||null;
   const consumer_count=parseInt(document.getElementById('loc-consumers').value)||0;
@@ -865,7 +868,7 @@ async function saveLoc(){
   if(isNaN(rate)||rate<0){ showToast('Enter a valid rate',true); return; }
   const editId=document.getElementById('loc-edit-id').value;
   const res=await apiFetch(editId?`/api/locations/${editId}`:'/api/locations',
-    {method:editId?'PUT':'POST',body:{name,rate,color,address,region_id,specialist_id,consumer_count}});
+    {method:editId?'PUT':'POST',body:{name,rate,color,address,phone,region_id,specialist_id,consumer_count}});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   closeLocModal(); await loadAll(); showToast('Location saved');
 }
@@ -1565,7 +1568,17 @@ function renderEmpList(){
   const q = (document.getElementById('emp-search')?.value||'').toLowerCase();
   const users = allUsers.filter(u=>u.role==='user'&&(u.name||u.email).toLowerCase().includes(q));
   if(!users.length){ el.innerHTML=`<div class="emp-empty">No employees found</div>`; return; }
-  el.innerHTML = users.map(u=>{
+
+  // Group by region
+  const groups = {};
+  for(const u of users){
+    const loc = allLocs.find(l=>l.id===u.location_id);
+    const reg = loc ? (allRegions.find(r=>r.id===loc.region_id)?.name||loc.name||'Unassigned') : 'Unassigned';
+    if(!groups[reg]) groups[reg]=[];
+    groups[reg].push(u);
+  }
+
+  const empHTML = u => {
     const name = u.name||u.email.split('@')[0];
     const initials = name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
     const hire = u.hire_date ? 'Hired '+u.hire_date.slice(0,10) : '';
@@ -1578,7 +1591,13 @@ function renderEmpList(){
       </div>
       <div class="emp-item-check">✓</div>
     </div>`;
-  }).join('');
+  };
+
+  const sortedGroups = Object.keys(groups).sort((a,b)=>a==='Unassigned'?1:b==='Unassigned'?-1:a.localeCompare(b));
+  el.innerHTML = sortedGroups.map(reg=>`
+    <div class="emp-group-label">${reg}</div>
+    ${groups[reg].map(empHTML).join('')}
+  `).join('');
 }
 
 function renderEmpChips(){

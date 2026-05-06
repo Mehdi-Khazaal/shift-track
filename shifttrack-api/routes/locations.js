@@ -31,13 +31,13 @@ router.get('/', auth, async (req, res) => {
 
 // POST /api/locations
 router.post('/', auth, adminOnly, async (req, res) => {
-  const { name, color, rate, address, region_id, specialist_id, consumer_count } = req.body;
+  const { name, color, rate, address, phone, region_id, specialist_id, consumer_count } = req.body;
   if(!name || rate == null) return res.status(400).json({ ok: false, error: 'name and rate are required' });
   try {
     const result = await db.query(
-      `INSERT INTO locations (name, color, rate, address, region_id, specialist_id, consumer_count, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [name, color || '#5b8fff', rate, address || '', region_id || null, specialist_id || null, consumer_count || 0, req.userId]
+      `INSERT INTO locations (name, color, rate, address, phone, region_id, specialist_id, consumer_count, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [name, color || '#5b8fff', rate, address || '', phone || '', region_id || null, specialist_id || null, consumer_count || 0, req.userId]
     );
     res.status(201).json({ ok: true, location: result.rows[0] });
   } catch(err) {
@@ -47,14 +47,14 @@ router.post('/', auth, adminOnly, async (req, res) => {
 
 // PUT /api/locations/:id
 router.put('/:id', auth, adminOnly, async (req, res) => {
-  const { name, color, rate, address, region_id, specialist_id, consumer_count } = req.body;
+  const { name, color, rate, address, phone, region_id, specialist_id, consumer_count } = req.body;
   if(!name || rate == null) return res.status(400).json({ ok: false, error: 'name and rate are required' });
   try {
     const result = await db.query(
       `UPDATE locations
-       SET name=$1, color=$2, rate=$3, address=$4, region_id=$5, specialist_id=$6, consumer_count=$7
-       WHERE id=$8 RETURNING *`,
-      [name, color, rate, address || '', region_id || null, specialist_id || null, consumer_count || 0, req.params.id]
+       SET name=$1, color=$2, rate=$3, address=$4, phone=$5, region_id=$6, specialist_id=$7, consumer_count=$8
+       WHERE id=$9 RETURNING *`,
+      [name, color, rate, address || '', phone || '', region_id || null, specialist_id || null, consumer_count || 0, req.params.id]
     );
     if(!result.rows.length) return res.status(404).json({ ok: false, error: 'Location not found' });
     res.json({ ok: true, location: result.rows[0] });

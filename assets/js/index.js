@@ -143,7 +143,7 @@ async function loadAllData(attempt=1){
 function normalizeLocation(l){
   return {
     id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate), address:l.address||'',
-    regionName:l.region_name||'', specialistName:l.specialist_name||'', consumerCount:l.consumer_count||0
+    phone:l.phone||'', regionName:l.region_name||'', specialistName:l.specialist_name||'', consumerCount:l.consumer_count||0
   };
 }
 function normalizeShift(s){
@@ -1073,6 +1073,7 @@ function renderSettings(){
           <div class="sub">${l.regionName?l.regionName+' · ':''}<span style="color:var(--green)">$${l.rate.toFixed(2)}/hr</span></div>
         </div>
         ${l.address?`<button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="event.stopPropagation();openMapAddress(this.dataset.addr)" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;cursor:pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>`:''}
+        ${l.phone?`<a href="tel:${l.phone.replace(/"/g,'&quot;')}" onclick="event.stopPropagation()" title="Call ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(46,204,138,.12);border:1px solid rgba(46,204,138,.25);color:var(--green);flex-shrink:0;cursor:pointer;text-decoration:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.26h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 5.83 5.83l1.77-1.77a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg></a>`:''}
       </div>
       ${l.specialistName?`<div style="display:flex;align-items:center;gap:6px;padding:6px 14px 10px 38px;font-size:11px;font-family:var(--mono);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Specialist: <span style="color:var(--text);font-weight:600">${l.specialistName}</span></div>`:''}
     </div>`).join('');
