@@ -234,11 +234,12 @@ async function migrate() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS leave_types (
         id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name  TEXT NOT NULL UNIQUE,
+        name  TEXT NOT NULL,
         label TEXT NOT NULL,
         color TEXT NOT NULL DEFAULT '#5b8fff'
       )
     `);
+    await addConstraintIfMissing('leave_types_name_key', 'ALTER TABLE leave_types ADD CONSTRAINT leave_types_name_key UNIQUE (name)');
     await pool.query(`
       INSERT INTO leave_types (name, label, color) VALUES
         ('pto',       'PTO',       '#a78bfa'),

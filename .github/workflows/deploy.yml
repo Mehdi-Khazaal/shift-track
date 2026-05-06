@@ -20,6 +20,7 @@ jobs:
           script: |
             cd /var/www/repo
             git pull origin main
-            cd shifttrack-api
+            cp -r shifttrack-api/* /var/www/shifttrack-api/
+            cd /var/www/shifttrack-api
             npm install --production
             pm2 restart shifttrack-api
