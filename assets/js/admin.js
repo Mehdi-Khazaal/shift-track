@@ -855,7 +855,7 @@ function openLocModal(id=null, presetRegionId=null){
 function closeLocModal(){ document.getElementById('loc-modal').classList.remove('open'); hideAddrSuggestions(); }
 function pickColor(el){ document.querySelectorAll('.csw').forEach(s=>s.classList.remove('selected')); el.classList.add('selected'); }
 
-// ── Address autocomplete (Photon / OpenStreetMap) ──────────────
+// ── Address autocomplete (Nominatim / OpenStreetMap, US only) ──────────────
 let _addrDebounce=null, _addrAbort=null;
 
 function onLocAddressInput(){
@@ -863,29 +863,39 @@ function onLocAddressInput(){
   clearTimeout(_addrDebounce);
   hideAddrSuggestions();
   if(val.length<3) return;
-  _addrDebounce=setTimeout(()=>_fetchAddrSuggestions(val),320);
+  _addrDebounce=setTimeout(()=>_fetchAddrSuggestions(val),350);
 }
 
 async function _fetchAddrSuggestions(q){
   if(_addrAbort){ _addrAbort.abort(); }
   _addrAbort=new AbortController();
   try{
-    const res=await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6`,{signal:_addrAbort.signal});
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=6&countrycodes=us&accept-language=en`;
+    const res=await fetch(url,{signal:_addrAbort.signal,headers:{'Accept-Language':'en'}});
     const data=await res.json();
-    _renderAddrSuggestions(data.features||[]);
+    _renderAddrSuggestions(data||[]);
   }catch(e){ if(e.name!=='AbortError') hideAddrSuggestions(); }
 }
 
-function _renderAddrSuggestions(features){
+function _formatAddr(a){
+  const street=a.house_number&&a.road?`${a.house_number} ${a.road}`:(a.road||a.pedestrian||a.footway||'');
+  const city=a.city||a.town||a.village||a.hamlet||a.municipality||'';
+  const state=a.state||'';
+  const zip=a.postcode||'';
+  return [street,city,state,zip].filter(Boolean).join(', ');
+}
+
+function _renderAddrSuggestions(results){
   const el=document.getElementById('loc-address-suggestions');
   if(!el) return;
-  const items=features.filter(f=>f.properties&&(f.properties.street||f.properties.name));
+  const items=results.filter(r=>r.address&&(r.address.road||r.address.house_number));
   if(!items.length){ hideAddrSuggestions(); return; }
-  el.innerHTML=items.map(f=>{
-    const p=f.properties;
-    const main=p.housenumber&&p.street?`${p.housenumber} ${p.street}`:(p.name||p.street||'');
-    const sub=[p.city||p.town||p.village,p.state,p.postcode].filter(Boolean).join(', ');
-    const full=[p.housenumber&&p.street?`${p.housenumber} ${p.street}`:(p.name||p.street||''),p.city||p.town||p.village,p.state,p.postcode].filter(Boolean).join(', ');
+  el.innerHTML=items.map(r=>{
+    const a=r.address;
+    const main=a.house_number&&a.road?`${a.house_number} ${a.road}`:(a.road||r.display_name.split(',')[0]);
+    const city=a.city||a.town||a.village||a.hamlet||'';
+    const sub=[city,a.state,a.postcode].filter(Boolean).join(', ');
+    const full=_formatAddr(a);
     return `<div class="addr-sugg-item" data-addr="${full.replace(/"/g,'&quot;')}" onclick="pickAddrSuggestion(this.dataset.addr)">
       <div class="addr-sugg-main">${main}</div>
       ${sub?`<div class="addr-sugg-sub">${sub}</div>`:''}
