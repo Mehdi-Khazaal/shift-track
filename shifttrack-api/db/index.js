@@ -318,10 +318,15 @@ async function migrate() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_open_shifts_status   ON open_shifts(status, deadline)`);
 
     console.log('OK  Migrations applied');
+    dbStatus.migrated = true;
   } catch (err) {
     console.error('ERROR  Migration failed:', err.message);
+    dbStatus.migrationError = err.message;
   }
 }
+
+// Exposed so /health can report real migration state.
+const dbStatus = { connected: false, migrated: false, migrationError: null };
 
 // Test the connection on startup then run migrations.
 pool.connect((err, client, release) => {
@@ -329,9 +334,11 @@ pool.connect((err, client, release) => {
     console.error('ERROR  Database connection failed:', err.message);
   } else {
     console.log('OK  Database connected (Neon PostgreSQL)');
+    dbStatus.connected = true;
     release();
     migrate();
   }
 });
 
 module.exports = pool;
+module.exports.dbStatus = dbStatus;

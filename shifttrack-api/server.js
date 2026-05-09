@@ -5,6 +5,7 @@ require('dotenv').config();
 
 // Import database connection (this will test the connection on startup)
 const db = require('./db/index');
+const { dbStatus } = require('./db/index');
 
 // Background scheduler for push notifications
 require('./scheduler');
@@ -43,9 +44,16 @@ app.use('/api/open-shifts',    require('./routes/openShifts'));
 app.use('/api/shift-swaps',   require('./routes/swaps'));
 app.use('/api/leave',         require('./routes/leave'));
 
-// Health check
+// Health check — used by deploy workflow to confirm the app came up cleanly
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'ShiftTrack API is running', time: new Date().toISOString() });
+  const ok = dbStatus.connected && dbStatus.migrated;
+  res.status(ok ? 200 : 503).json({
+    ok,
+    db_connected: dbStatus.connected,
+    db_migrated:  dbStatus.migrated,
+    migration_error: dbStatus.migrationError,
+    time: new Date().toISOString(),
+  });
 });
 
 // 404 fallback

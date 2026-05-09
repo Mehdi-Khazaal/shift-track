@@ -26,3 +26,5 @@ jobs:
             cd /var/www/shifttrack-api
             npm install --omit=dev
             pm2 restart shifttrack-api
+            sleep 5
+            curl -sf http://localhost:3000/health | grep '"ok":true' || (echo "Health check failed" && exit 1)
