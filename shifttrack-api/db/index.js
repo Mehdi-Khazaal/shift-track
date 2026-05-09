@@ -296,6 +296,17 @@ async function migrate() {
       )
     `);
 
+    // -- Indexes on hot query paths -----------------------------------------------
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_id      ON shifts(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_date     ON shifts(user_id, date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_base_schedule_user   ON base_schedule(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_push_subs_user       ON push_subscriptions(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_leave_req_user       ON leave_requests(user_id, status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_osc_shift            ON open_shift_claims(open_shift_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notif_log_user       ON notification_log(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_suppressed_user      ON base_suppressed_dates(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_open_shifts_status   ON open_shifts(status, deadline)`);
+
     console.log('OK  Migrations applied');
   } catch (err) {
     console.error('ERROR  Migration failed:', err.message);

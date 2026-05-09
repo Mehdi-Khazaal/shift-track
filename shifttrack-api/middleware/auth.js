@@ -1,7 +1,13 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db/index');
 
-module.exports = async function auth(req, res, next) {
+function adminOnly(req, res, next) {
+  if (req.role !== 'admin')
+    return res.status(403).json({ ok: false, error: 'Admin access required' });
+  next();
+}
+
+async function auth(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer '))
     return res.status(401).json({ ok: false, error: 'No token provided' });
@@ -33,4 +39,7 @@ module.exports = async function auth(req, res, next) {
     console.error('[auth]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
-};
+}
+
+module.exports = auth;
+module.exports.adminOnly = adminOnly;

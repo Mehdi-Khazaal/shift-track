@@ -2,68 +2,8 @@ const express  = require('express');
 const router   = express.Router();
 const db       = require('../db/index');
 const auth     = require('../middleware/auth');
-const webpush  = require('../utils/webpush');
-
-// -- Helpers -------------------------------------------------------------------
-
-function adminOnly(req, res, next) {
-  if (req.role !== 'admin')
-    return res.status(403).json({ ok: false, error: 'Admin access required' });
-  next();
-}
-
-async function logNotification(userId, title, body) {
-  try {
-    await db.query(
-      'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
-      [userId, title, body]
-    );
-  } catch (e) { /* non-fatal */ }
-}
-
-async function sendPushToUser(userId, title, body) {
-  const subs = await db.query(
-    'SELECT * FROM push_subscriptions WHERE user_id=$1', [userId]
-  );
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
-  for (const sub of subs.rows) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        payload
-      );
-    } catch (e) {
-      if (e.statusCode === 410)
-        await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
-    }
-  }
-  await logNotification(userId, title, body);
-}
-
-async function sendPushToAllAdmins(title, body) {
-  const admins = await db.query(
-    `SELECT ps.* FROM push_subscriptions ps
-     JOIN users u ON ps.user_id = u.id
-     WHERE u.role = 'admin' AND u.is_active = TRUE`
-  );
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
-  const notified = new Set();
-  for (const sub of admins.rows) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        payload
-      );
-      if (!notified.has(sub.user_id)) {
-        notified.add(sub.user_id);
-        await logNotification(sub.user_id, title, body);
-      }
-    } catch (e) {
-      if (e.statusCode === 410)
-        await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
-    }
-  }
-}
+const { adminOnly } = require('../middleware/auth');
+const { sendPushToUser, sendPushToAllAdmins } = require('../utils/push');
 
 // PTO annual hours by completed years of service
 function getPtoAnnualHours(completedYears) {
@@ -343,26 +283,27 @@ router.patch('/requests/:id/approve', auth, adminOnly, async (req, res) => {
     if (lr.status !== 'pending')
       return res.status(400).json({ ok: false, error: `Request is already ${lr.status}` });
 
-    // Deduct from balance (not for call_off - handled separately)
-    if (lr.type_name !== 'call_off') {
-      await db.query(
-        `UPDATE leave_balances
-         SET used_hours = used_hours + $1
-         WHERE user_id=$2 AND leave_type_id=$3`,
-        [lr.hours_requested, lr.user_id, lr.leave_type_id]
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      if (lr.type_name !== 'call_off') {
+        await client.query(
+          `UPDATE leave_balances SET used_hours = used_hours + $1 WHERE user_id=$2 AND leave_type_id=$3`,
+          [lr.hours_requested, lr.user_id, lr.leave_type_id]
+        );
+      }
+      await client.query(
+        `UPDATE leave_requests SET status='approved', reviewed_by=$1, reviewed_at=NOW() WHERE id=$2`,
+        [req.userId, req.params.id]
       );
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
-    await db.query(
-      `UPDATE leave_requests
-       SET status='approved', reviewed_by=$1, reviewed_at=NOW()
-       WHERE id=$2`,
-      [req.userId, req.params.id]
-    );
-
-    // Notify employee
-    const empRes = await db.query('SELECT name FROM users WHERE id=$1', [lr.user_id]);
-    const empName = empRes.rows[0]?.name || 'Employee';
     await sendPushToUser(
       lr.user_id,
       'Leave Request Approved',
@@ -398,13 +339,10 @@ router.patch('/requests/:id/deny', auth, adminOnly, async (req, res) => {
       return res.status(400).json({ ok: false, error: `Request is already ${lr.status}` });
 
     await db.query(
-      `UPDATE leave_requests
-       SET status='denied', denial_reason=$1, reviewed_by=$2, reviewed_at=NOW()
-       WHERE id=$3`,
+      `UPDATE leave_requests SET status='denied', denial_reason=$1, reviewed_by=$2, reviewed_at=NOW() WHERE id=$3`,
       [denial_reason.trim(), req.userId, req.params.id]
     );
 
-    // Notify employee
     await sendPushToUser(
       lr.user_id,
       'Leave Request Denied',
@@ -435,37 +373,40 @@ router.patch('/requests/:id/reverse', auth, adminOnly, async (req, res) => {
     if (lr.status !== 'approved')
       return res.status(400).json({ ok: false, error: 'Only approved requests can be reversed' });
 
-    // Restore balance
-    if (lr.type_name !== 'call_off') {
-      await db.query(
-        `UPDATE leave_balances
-         SET used_hours = GREATEST(0, used_hours - $1)
-         WHERE user_id=$2 AND leave_type_id=$3`,
-        [lr.hours_requested, lr.user_id, lr.leave_type_id]
-      );
-    }
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
 
-    // If a call_off had sick hours applied, restore those too
-    if (lr.type_name === 'call_off' && parseFloat(lr.sick_hours_applied) > 0) {
-      const sickType = await db.query(`SELECT id FROM leave_types WHERE name='sick_time'`);
-      if (sickType.rows.length) {
-        await db.query(
-          `UPDATE leave_balances
-           SET used_hours = GREATEST(0, used_hours - $1)
-           WHERE user_id=$2 AND leave_type_id=$3`,
-          [lr.sick_hours_applied, lr.user_id, sickType.rows[0].id]
+      if (lr.type_name !== 'call_off') {
+        await client.query(
+          `UPDATE leave_balances SET used_hours = GREATEST(0, used_hours - $1) WHERE user_id=$2 AND leave_type_id=$3`,
+          [lr.hours_requested, lr.user_id, lr.leave_type_id]
         );
       }
+
+      if (lr.type_name === 'call_off' && parseFloat(lr.sick_hours_applied) > 0) {
+        const sickType = await client.query(`SELECT id FROM leave_types WHERE name='sick_time'`);
+        if (sickType.rows.length) {
+          await client.query(
+            `UPDATE leave_balances SET used_hours = GREATEST(0, used_hours - $1) WHERE user_id=$2 AND leave_type_id=$3`,
+            [lr.sick_hours_applied, lr.user_id, sickType.rows[0].id]
+          );
+        }
+      }
+
+      await client.query(
+        `UPDATE leave_requests SET status='cancelled', sick_hours_applied=0, reviewed_by=$1, reviewed_at=NOW() WHERE id=$2`,
+        [req.userId, req.params.id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
-    await db.query(
-      `UPDATE leave_requests
-       SET status='cancelled', sick_hours_applied=0, reviewed_by=$1, reviewed_at=NOW()
-       WHERE id=$2`,
-      [req.userId, req.params.id]
-    );
-
-    // Notify employee
     await sendPushToUser(
       lr.user_id,
       'Leave Request Cancelled',

@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
+const { payWeekOf } = require('../utils/ppAnchor');
 
 const MAX_SHIFT_MINS = 18 * 60;
 const GAP_LIMIT_MINS = 60;
@@ -99,6 +100,27 @@ async function checkConsecutiveHours(userId, date, start, end, excludeId = null)
   return null;
 }
 
+// Returns true if a new concrete shift overlaps the user's base schedule on that date
+async function overlapsBaseSchedule(userId, date, start_time, end_time) {
+  const [settingsRes, suppressedRes] = await Promise.all([
+    db.query('SELECT pp_anchor FROM user_settings WHERE user_id=$1', [userId]),
+    db.query('SELECT id FROM base_suppressed_dates WHERE user_id=$1 AND date=$2', [userId, date]),
+  ]);
+  if (suppressedRes.rows.length) return false; // base schedule suppressed for this date
+
+  const anchor    = settingsRes.rows[0]?.pp_anchor?.slice(0, 10) || '2026-03-22';
+  const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+  const weekNum   = payWeekOf(date, anchor);
+
+  const baseOverlap = await db.query(
+    `SELECT id FROM base_schedule
+     WHERE user_id=$1 AND week=$2 AND day_of_week=$3
+       AND start_time < $5::time AND end_time > $4::time`,
+    [userId, weekNum, dayOfWeek, start_time, end_time]
+  );
+  return baseOverlap.rows.length > 0;
+}
+
 // GET /api/shifts - get all shifts for logged-in user + suppressed base dates
 router.get('/', auth, async (req, res) => {
   try {
@@ -143,6 +165,9 @@ router.post('/', auth, async (req, res) => {
     if (overlap.rows.length)
       return res.status(409).json({ ok: false, error: 'This shift overlaps an existing one on the same day' });
 
+    if (await overlapsBaseSchedule(req.userId, date, start_time, end_time))
+      return res.status(409).json({ ok: false, error: 'This shift overlaps your base schedule on that day' });
+
     const chainErr = await checkConsecutiveHours(req.userId, date, start_time, end_time);
     if (chainErr)
       return res.status(409).json({ ok: false, error: chainErr });
@@ -181,6 +206,9 @@ router.put('/:id', auth, async (req, res) => {
     );
     if (overlap.rows.length)
       return res.status(409).json({ ok: false, error: 'This shift overlaps an existing one on the same day' });
+
+    if (await overlapsBaseSchedule(req.userId, date, start_time, end_time))
+      return res.status(409).json({ ok: false, error: 'This shift overlaps your base schedule on that day' });
 
     const chainErr = await checkConsecutiveHours(req.userId, date, start_time, end_time, req.params.id);
     if (chainErr)

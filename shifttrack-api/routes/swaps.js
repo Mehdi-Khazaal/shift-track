@@ -2,33 +2,8 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
-const webpush = require('../utils/webpush');
+const { notifyUsers } = require('../utils/push');
 const { getUserAnchor, payWeekOf } = require('../utils/ppAnchor');
-
-async function notifyUsers(userIds, title, body) {
-  if (!userIds?.length) return;
-  const subs = await db.query('SELECT * FROM push_subscriptions WHERE user_id = ANY($1)', [userIds]);
-  const payload = JSON.stringify({ title, body, icon: '/shift-track/icons/icon-192.png' });
-  const logged = new Set();
-  for (const sub of subs.rows) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        payload
-      );
-      if (!logged.has(sub.user_id)) {
-        logged.add(sub.user_id);
-        await db.query('INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
-          [sub.user_id, title, body]);
-      }
-    } catch (e) {
-      if (e.statusCode === 410)
-        await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
-      else
-        console.error(`[swap notify] Push failed for ${sub.user_id}: ${e.statusCode || e.message}`);
-    }
-  }
-}
 
 // Return the Sunday (YYYY-MM-DD) of the week containing dateStr
 function sunOf(dateStr) {
@@ -38,10 +13,7 @@ function sunOf(dateStr) {
 }
 
 // Resolve a user's shift on a given date (concrete first, then base schedule).
-// anchorStr is that user's personal pay-period anchor (YYYY-MM-DD).
-// Returns { shift_id, date, location_id, start_time, end_time, location_name, is_base }
 async function resolveShift(userId, dateStr, anchorStr) {
-  // 1. Check concrete shifts
   const concrete = await db.query(
     `SELECT s.id, s.date, s.location_id, s.start_time, s.end_time, l.name AS location_name
      FROM shifts s
@@ -63,14 +35,12 @@ async function resolveShift(userId, dateStr, anchorStr) {
     };
   }
 
-  // 2. Check suppressed - if suppressed, no base shift either
   const suppressed = await db.query(
     'SELECT id FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
     [userId, dateStr]
   );
   if (suppressed.rows.length) return null;
 
-  // 3. Check base schedule using this user's personal anchor
   const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
   const weekNum   = payWeekOf(dateStr, anchorStr);
   const base = await db.query(
@@ -125,7 +95,6 @@ router.post('/', auth, async (req, res) => {
     if (!theirShift)
       return res.status(404).json({ ok: false, error: `${targetName} has no shift on that date` });
 
-    // No duplicate pending swaps
     const dup = await db.query(
       `SELECT id FROM shift_swaps
        WHERE initiator_id=$1 AND initiator_date=$2 AND target_id=$3 AND target_date=$4 AND status='pending'`,
@@ -143,7 +112,7 @@ router.post('/', auth, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [
         req.userId, target_user_id,
-        myShift.shift_id,   my_date,    myShift.location_id,    myShift.start_time,    myShift.end_time,
+        myShift.shift_id,    my_date,    myShift.location_id,    myShift.start_time,    myShift.end_time,
         theirShift.shift_id, their_date, theirShift.location_id, theirShift.start_time, theirShift.end_time,
         myShift.is_base, theirShift.is_base
       ]
@@ -158,7 +127,6 @@ router.post('/', auth, async (req, res) => {
       `${initiatorName} wants to swap: their ${myShift.location_name} on ${my_date} <-> your ${theirShift.location_name} on ${their_date}`
     );
 
-    // Notify admins of new swap proposal
     const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
     if (admins.rows.length) {
       await notifyUsers(
@@ -170,7 +138,7 @@ router.post('/', auth, async (req, res) => {
 
     res.json({ ok: true, swap: swap.rows[0] });
   } catch (err) {
-    console.error(err);
+    console.error('[swaps POST]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -185,8 +153,8 @@ router.get('/', auth, async (req, res) => {
               l_i.name  AS initiator_location_name, l_i.color AS initiator_location_color,
               l_t.name  AS target_location_name,    l_t.color AS target_location_color
        FROM shift_swaps ss
-       JOIN users     u_i ON ss.initiator_id         = u_i.id
-       JOIN users     u_t ON ss.target_id            = u_t.id
+       JOIN users     u_i ON ss.initiator_id          = u_i.id
+       JOIN users     u_t ON ss.target_id             = u_t.id
        JOIN locations l_i ON ss.initiator_location_id = l_i.id
        JOIN locations l_t ON ss.target_location_id    = l_t.id
        WHERE ss.initiator_id = $1 OR ss.target_id = $1
@@ -196,7 +164,7 @@ router.get('/', auth, async (req, res) => {
     );
     res.json({ ok: true, swaps: result.rows });
   } catch (err) {
-    console.error(err);
+    console.error('[swaps GET]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -232,56 +200,68 @@ router.patch('/:id/respond', auth, async (req, res) => {
       return res.json({ ok: true });
     }
 
-    // === ACCEPT: execute the swap ===
+    // === ACCEPT: execute the swap atomically ===
     const iDate = String(swap.initiator_date).slice(0, 10);
     const tDate = String(swap.target_date).slice(0, 10);
 
-    // Suppress base dates or delete concrete shifts
-    if (swap.initiator_is_base) {
-      await db.query(
-        'INSERT INTO base_suppressed_dates (user_id, date) VALUES ($1,$2) ON CONFLICT DO NOTHING',
-        [swap.initiator_id, iDate]
+    let iSwapId, tSwapId;
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+
+      if (swap.initiator_is_base) {
+        await client.query(
+          'INSERT INTO base_suppressed_dates (user_id, date) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+          [swap.initiator_id, iDate]
+        );
+      } else if (swap.initiator_shift_id) {
+        await client.query('DELETE FROM shifts WHERE id=$1', [swap.initiator_shift_id]);
+      }
+
+      if (swap.target_is_base) {
+        await client.query(
+          'INSERT INTO base_suppressed_dates (user_id, date) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+          [swap.target_id, tDate]
+        );
+      } else if (swap.target_shift_id) {
+        await client.query('DELETE FROM shifts WHERE id=$1', [swap.target_shift_id]);
+      }
+
+      // Initiator now works target's slot
+      const iSwap = await client.query(
+        `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
+         VALUES ($1,$2,$3,$4,$5,'Swapped shift') RETURNING id`,
+        [swap.initiator_id, swap.target_location_id, tDate, swap.target_start, swap.target_end]
       );
-    } else if (swap.initiator_shift_id) {
-      await db.query('DELETE FROM shifts WHERE id=$1', [swap.initiator_shift_id]);
+      // Target now works initiator's slot
+      const tSwap = await client.query(
+        `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
+         VALUES ($1,$2,$3,$4,$5,'Swapped shift') RETURNING id`,
+        [swap.target_id, swap.initiator_location_id, iDate, swap.initiator_start, swap.initiator_end]
+      );
+
+      iSwapId = iSwap.rows[0].id;
+      tSwapId = tSwap.rows[0].id;
+
+      await client.query(
+        `UPDATE shift_swaps
+         SET status='accepted', responded_at=NOW(),
+             swapped_initiator_shift_id=$2, swapped_target_shift_id=$3
+         WHERE id=$1`,
+        [req.params.id, iSwapId, tSwapId]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
-    if (swap.target_is_base) {
-      await db.query(
-        'INSERT INTO base_suppressed_dates (user_id, date) VALUES ($1,$2) ON CONFLICT DO NOTHING',
-        [swap.target_id, tDate]
-      );
-    } else if (swap.target_shift_id) {
-      await db.query('DELETE FROM shifts WHERE id=$1', [swap.target_shift_id]);
-    }
-
-    // Create swapped shifts and capture their IDs for exact undo later
-    // Initiator now works target's slot
-    const iSwap = await db.query(
-      `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
-       VALUES ($1,$2,$3,$4,$5,'Swapped shift') RETURNING id`,
-      [swap.initiator_id, swap.target_location_id, tDate, swap.target_start, swap.target_end]
-    );
-    // Target now works initiator's slot
-    const tSwap = await db.query(
-      `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
-       VALUES ($1,$2,$3,$4,$5,'Swapped shift') RETURNING id`,
-      [swap.target_id, swap.initiator_location_id, iDate, swap.initiator_start, swap.initiator_end]
-    );
-
-    await db.query(
-      `UPDATE shift_swaps
-       SET status='accepted', responded_at=NOW(),
-           swapped_initiator_shift_id=$2, swapped_target_shift_id=$3
-       WHERE id=$1`,
-      [req.params.id, iSwap.rows[0].id, tSwap.rows[0].id]
-    );
-
-    // Notify initiator
     await notifyUsers([swap.initiator_id], 'Swap Accepted!',
       `${swap.target_name} accepted your shift swap`);
 
-    // Notify all admins
     const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
     if (admins.rows.length) {
       await notifyUsers(admins.rows.map(u => u.id), 'Shift Swap Completed',
@@ -321,7 +301,7 @@ router.delete('/:id', auth, async (req, res) => {
       `${swap.initiator_name} cancelled the swap request (${iDate} <-> ${tDate})`);
     res.json({ ok: true });
   } catch (err) {
-    console.error(err);
+    console.error('[swap DELETE]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -349,47 +329,55 @@ router.patch('/:id/cancel', auth, async (req, res) => {
     const iDate = String(swap.initiator_date).slice(0, 10);
     const tDate = String(swap.target_date).slice(0, 10);
 
-    // Remove the swapped concrete shifts by their stored IDs (exact, no string matching)
-    if (swap.swapped_initiator_shift_id)
-      await db.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_initiator_shift_id]);
-    if (swap.swapped_target_shift_id)
-      await db.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_target_shift_id]);
+    // Wrap all undo operations in a transaction
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Restore initiator's original slot
-    if (swap.initiator_is_base) {
-      await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
-        [swap.initiator_id, iDate]);
-    } else if (swap.initiator_shift_id) {
-      await db.query(
-        `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
-        [swap.initiator_shift_id, swap.initiator_id, swap.initiator_location_id, iDate,
-         swap.initiator_start, swap.initiator_end]
-      );
+      if (swap.swapped_initiator_shift_id)
+        await client.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_initiator_shift_id]);
+      if (swap.swapped_target_shift_id)
+        await client.query('DELETE FROM shifts WHERE id=$1', [swap.swapped_target_shift_id]);
+
+      if (swap.initiator_is_base) {
+        await client.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
+          [swap.initiator_id, iDate]);
+      } else if (swap.initiator_shift_id) {
+        await client.query(
+          `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
+          [swap.initiator_shift_id, swap.initiator_id, swap.initiator_location_id, iDate,
+           swap.initiator_start, swap.initiator_end]
+        );
+      }
+
+      if (swap.target_is_base) {
+        await client.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
+          [swap.target_id, tDate]);
+      } else if (swap.target_shift_id) {
+        await client.query(
+          `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
+          [swap.target_shift_id, swap.target_id, swap.target_location_id, tDate,
+           swap.target_start, swap.target_end]
+        );
+      }
+
+      await client.query(`UPDATE shift_swaps SET status='cancelled', responded_at=NOW() WHERE id=$1`, [req.params.id]);
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
-    // Restore target's original slot
-    if (swap.target_is_base) {
-      await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2',
-        [swap.target_id, tDate]);
-    } else if (swap.target_shift_id) {
-      await db.query(
-        `INSERT INTO shifts (id, user_id, location_id, date, start_time, end_time, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,'') ON CONFLICT DO NOTHING`,
-        [swap.target_shift_id, swap.target_id, swap.target_location_id, tDate,
-         swap.target_start, swap.target_end]
-      );
-    }
-
-    await db.query(`UPDATE shift_swaps SET status='cancelled', responded_at=NOW() WHERE id=$1`, [req.params.id]);
-
-    // Notify the other party
     const cancellerName = swap.initiator_id === req.userId ? swap.initiator_name : swap.target_name;
     const otherId       = swap.initiator_id === req.userId ? swap.target_id      : swap.initiator_id;
     await notifyUsers([otherId], 'Swap Cancelled',
       `${cancellerName} cancelled the accepted swap (${iDate} <-> ${tDate}). Your original shift has been restored.`);
 
-    // Notify admins
     const admins = await db.query(`SELECT id FROM users WHERE role='admin'`);
     if (admins.rows.length) {
       await notifyUsers(admins.rows.map(u => u.id), 'Swap Undone by Employee',
@@ -412,6 +400,7 @@ router.get('/users', auth, async (req, res) => {
     );
     res.json({ ok: true, users: r.rows });
   } catch (err) {
+    console.error('[swap users GET]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });

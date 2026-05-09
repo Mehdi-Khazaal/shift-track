@@ -12,14 +12,13 @@ require('./scheduler');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(cors({
-  origin: [
-    'https://mehdi-khazaal.github.io',
-    'http://localhost:3000',
-    'http://localhost:5500',
-  ],
-}));
+app.use(express.json({ limit: '50kb' }));
+
+const defaultOrigins = ['https://mehdi-khazaal.github.io', 'http://localhost:3000', 'http://localhost:5500'];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : defaultOrigins;
+app.use(cors({ origin: allowedOrigins }));
 
 // Brute-force protection: max 10 auth attempts per IP per 15 minutes
 const authLimiter = rateLimit({

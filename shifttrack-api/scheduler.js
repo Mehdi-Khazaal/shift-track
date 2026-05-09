@@ -1,53 +1,79 @@
 const cron    = require('node-cron');
 const webpush = require('./utils/webpush');
 const db      = require('./db/index');
-const { getUserAnchor, payWeekOf } = require('./utils/ppAnchor');
+const { payWeekOf, DEFAULT_ANCHOR } = require('./utils/ppAnchor');
 const { getPtoAnnualHours, availableHours } = require('./routes/leave');
+
+function groupBy(arr, key) {
+  return arr.reduce((acc, item) => {
+    (acc[item[key]] ||= []).push(item);
+    return acc;
+  }, {});
+}
 
 // Runs every minute - sends push notifications when it's time
 cron.schedule('* * * * *', async () => {
   try {
     const now = new Date();
-    // Send if notifTime fell within the last 60s (matches cron interval, no duplicates)
-    const windowBackMs  = 60 * 1000;
-    const windowFwdMs   = 5  * 1000; // small forward buffer for cron jitter
+    const windowBackMs = 60 * 1000;
+    const windowFwdMs  = 5  * 1000;
 
     const subsRes = await db.query('SELECT * FROM push_subscriptions');
     if (!subsRes.rows.length) return;
 
-    for (const sub of subsRes.rows) {
-      const notifyMs  = Number(sub.notify_minutes) * 60 * 1000;
-      // tz_offset from getTimezoneOffset(): positive = behind UTC (e.g. Eastern = 240)
-      // local time = UTC - tz_offset minutes  ->  UTC = local + tz_offset minutes
-      const tzOffset  = Number(sub.tz_offset || 0); // minutes
+    const userIds = [...new Set(subsRes.rows.map(s => s.user_id))];
 
-      const [shiftsRes, baseRes, suppressedRes, anchorStr] = await Promise.all([
-        db.query(
-          `SELECT s.*, l.name as location_name
-           FROM shifts s JOIN locations l ON s.location_id = l.id
-           WHERE s.user_id = $1`,
-          [sub.user_id]
-        ),
-        db.query(
-          `SELECT b.*, l.name as location_name
-           FROM base_schedule b JOIN locations l ON b.location_id = l.id
-           WHERE b.user_id = $1`,
-          [sub.user_id]
-        ),
-        db.query(
-          `SELECT date FROM base_suppressed_dates WHERE user_id = $1`,
-          [sub.user_id]
-        ),
-        getUserAnchor(sub.user_id),
-      ]);
-      const suppressedDates = new Set(suppressedRes.rows.map(r => r.date));
+    // Batch fetch all data needed for every subscribed user in 4 queries
+    const [shiftsRes, baseRes, suppressedRes, anchorsRes] = await Promise.all([
+      db.query(
+        `SELECT s.user_id, s.date, s.start_time, s.end_time, l.name AS location_name
+         FROM shifts s JOIN locations l ON s.location_id = l.id
+         WHERE s.user_id = ANY($1)`,
+        [userIds]
+      ),
+      db.query(
+        `SELECT b.user_id, b.week, b.day_of_week, b.start_time, b.end_time, l.name AS location_name
+         FROM base_schedule b JOIN locations l ON b.location_id = l.id
+         WHERE b.user_id = ANY($1)`,
+        [userIds]
+      ),
+      db.query(
+        'SELECT user_id, date FROM base_suppressed_dates WHERE user_id = ANY($1)',
+        [userIds]
+      ),
+      db.query(
+        'SELECT user_id, pp_anchor FROM user_settings WHERE user_id = ANY($1)',
+        [userIds]
+      ),
+    ]);
+
+    const shiftsByUser = groupBy(shiftsRes.rows, 'user_id');
+    const baseByUser   = groupBy(baseRes.rows,   'user_id');
+
+    const suppressedByUser = {};
+    for (const r of suppressedRes.rows) {
+      (suppressedByUser[r.user_id] ||= new Set()).add(String(r.date).slice(0, 10));
+    }
+    const anchorByUser = {};
+    for (const r of anchorsRes.rows) {
+      anchorByUser[r.user_id] = String(r.pp_anchor).slice(0, 10);
+    }
+
+    for (const sub of subsRes.rows) {
+      const notifyMs      = Number(sub.notify_minutes) * 60 * 1000;
+      // tz_offset from getTimezoneOffset(): positive = behind UTC (e.g. Eastern = 240)
+      // UTC = local + tz_offset  =>  add offset to convert stored local time to UTC
+      const tzOffset      = Number(sub.tz_offset || 0);
+      const userShifts    = shiftsByUser[sub.user_id]     || [];
+      const userBase      = baseByUser[sub.user_id]       || [];
+      const suppressedSet = suppressedByUser[sub.user_id] || new Set();
+      const anchorStr     = anchorByUser[sub.user_id]     || DEFAULT_ANCHOR;
 
       const toSend = [];
 
-      // Logged shifts - date stored as user's local date, time as local time
-      for (const s of shiftsRes.rows) {
+      // Logged shifts - date/time stored in user's local timezone
+      for (const s of userShifts) {
         const dateStr   = String(s.date).slice(0, 10);
-        // Create timestamp treating stored values as local, then convert to UTC
         const shiftTime = new Date(`${dateStr}T${s.start_time}`);
         shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
         const notifTime = new Date(shiftTime.getTime() - notifyMs);
@@ -60,12 +86,14 @@ cron.schedule('* * * * *', async () => {
       const localNowMs = now.getTime() - tzOffset * 60 * 1000;
       for (let offset = 0; offset < 14; offset++) {
         const localD    = new Date(localNowMs + offset * 86400000);
-        const dayStr    = localD.toISOString().slice(0, 10); // local date
-        const dayOfWeek = localD.getUTCDay();                // local day-of-week
+        const dayStr    = localD.toISOString().slice(0, 10);
+        const dayOfWeek = localD.getUTCDay();
         const weekNum   = payWeekOf(dayStr, anchorStr);
 
-        for (const b of baseRes.rows) {
-          if (Number(b.week) === weekNum && b.day_of_week === dayOfWeek && !suppressedDates.has(dayStr)) {
+        if (suppressedSet.has(dayStr)) continue;
+
+        for (const b of userBase) {
+          if (Number(b.week) === weekNum && Number(b.day_of_week) === dayOfWeek) {
             const shiftTime = new Date(`${dayStr}T${b.start_time}`);
             shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
             const notifTime = new Date(shiftTime.getTime() - notifyMs);
@@ -88,7 +116,6 @@ cron.schedule('* * * * *', async () => {
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             payload
           );
-          // Log to notification history
           await db.query(
             'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
             [sub.user_id, 'Shift Reminder', notifBody]
@@ -119,6 +146,7 @@ cron.schedule('* * * * *', async () => {
          AND os.target_type = 'house'
          AND os.deadline <= NOW()`
     );
+
     for (const shift of expired.rows) {
       const claims = await db.query(
         `SELECT c.user_id, u.hire_date, u.name
@@ -129,45 +157,52 @@ cron.schedule('* * * * *', async () => {
          LIMIT 1`,
         [shift.id]
       );
-      if (claims.rows.length) {
-        const winner = claims.rows[0];
-        const dateStr = shift.date.toISOString ? shift.date.toISOString().slice(0,10) : String(shift.date).slice(0,10);
-        const adminRes = await db.query('SELECT name FROM users WHERE id=$1', [shift.created_by]);
-        const adminName = adminRes.rows[0]?.name || 'Admin';
-        await db.query(
-          `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes, open_shift_id, awarded_by_name)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-          [winner.user_id, shift.location_id, shift.date, shift.start_time, shift.end_time, shift.notes || '', shift.id, adminName]
-        );
-        await db.query(
-          `UPDATE open_shifts SET status='claimed', claimed_by=$1 WHERE id=$2`,
-          [winner.user_id, shift.id]
-        );
-        const notifBody = `You got the open shift at ${shift.location_name} on ${dateStr} (${shift.start_time.slice(0,5)}-${shift.end_time.slice(0,5)})`;
-        const payload = JSON.stringify({ title: 'Shift Assigned', body: notifBody, icon: '/shift-track/icons/icon-192.png' });
-        const subs = await db.query('SELECT * FROM push_subscriptions WHERE user_id=$1', [winner.user_id]);
-        for (const sub of subs.rows) {
-          try {
-            await webpush.sendNotification(
-              { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-              payload
-            );
-          } catch (e) {
-            if (e.statusCode === 410)
-              await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
-            else
-              console.error(`[scheduler] Push failed for user ${winner.user_id}: ${e.statusCode || e.message}`);
-          }
-        }
-        await db.query(
-          'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
-          [winner.user_id, 'Shift Assigned', notifBody]
-        );
-        console.log(`[scheduler] House shift ${shift.id} assigned to user ${winner.user_id}`);
-      } else {
+
+      if (!claims.rows.length) {
         await db.query(`UPDATE open_shifts SET status='expired' WHERE id=$1`, [shift.id]);
         console.log(`[scheduler] House shift ${shift.id} expired with no claimers`);
+        continue;
       }
+
+      const winner = claims.rows[0];
+      const dateStr = String(shift.date).slice(0, 10);
+
+      // Atomic claim: only the first cron tick to run this wins the race
+      const claimed = await db.query(
+        `UPDATE open_shifts SET status='claimed', claimed_by=$1 WHERE id=$2 AND status='open' RETURNING id`,
+        [winner.user_id, shift.id]
+      );
+      if (!claimed.rows.length) continue; // another tick already processed this shift
+
+      const adminRes = await db.query('SELECT name FROM users WHERE id=$1', [shift.created_by]);
+      const adminName = adminRes.rows[0]?.name || 'Admin';
+      await db.query(
+        `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes, open_shift_id, awarded_by_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+        [winner.user_id, shift.location_id, shift.date, shift.start_time, shift.end_time, shift.notes || '', shift.id, adminName]
+      );
+
+      const notifBody = `You got the open shift at ${shift.location_name} on ${dateStr} (${shift.start_time.slice(0,5)}-${shift.end_time.slice(0,5)})`;
+      const payload = JSON.stringify({ title: 'Shift Assigned', body: notifBody, icon: '/shift-track/icons/icon-192.png' });
+      const subs = await db.query('SELECT * FROM push_subscriptions WHERE user_id=$1', [winner.user_id]);
+      for (const sub of subs.rows) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payload
+          );
+        } catch (e) {
+          if (e.statusCode === 410)
+            await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
+          else
+            console.error(`[scheduler] Push failed for user ${winner.user_id}: ${e.statusCode || e.message}`);
+        }
+      }
+      await db.query(
+        'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
+        [winner.user_id, 'Shift Assigned', notifBody]
+      );
+      console.log(`[scheduler] House shift ${shift.id} assigned to user ${winner.user_id}`);
     }
   } catch (err) {
     console.error('[scheduler] Open shift deadline error:', err.message);
@@ -184,7 +219,6 @@ cron.schedule('5 0 * * *', async () => {
     const sickType = typesRes.rows.find(t => t.name === 'sick_time');
     if (!ptoType || !sickType) return;
 
-    // Get all active users with a hire_date
     const users = await db.query(
       `SELECT id, hire_date, name, location_id FROM users
        WHERE is_active=TRUE AND hire_date IS NOT NULL`
@@ -199,38 +233,29 @@ cron.schedule('5 0 * * *', async () => {
         const hire = new Date(user.hire_date);
         hire.setHours(0, 0, 0, 0);
 
-        // -- Anniversary detection -----------------------------------------
-        // An anniversary occurs when today's month/day matches hire month/day
         const isAnniversary = (
-          today.getMonth()  === hire.getMonth() &&
-          today.getDate()   === hire.getDate()  &&
-          today.getFullYear() > hire.getFullYear()
+          today.getMonth()      === hire.getMonth() &&
+          today.getDate()       === hire.getDate()  &&
+          today.getFullYear()   > hire.getFullYear()
         );
 
         if (isAnniversary) {
           const completedYears = today.getFullYear() - hire.getFullYear();
 
-          // -- PTO anniversary reset -------------------------------------
           const ptoBal = await db.query(
             'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
             [user.id, ptoType.id]
           );
 
           if (ptoBal.rows.length) {
-            const old = ptoBal.rows[0];
-            const currentAvailable = availableHours(old);
-            const carryover = Math.min(currentAvailable, 40);
-
-            // Reset: carryover <=40, accrued=0, used=0 for new year
+            const carryover = Math.min(availableHours(ptoBal.rows[0]), 40);
             await db.query(
               `UPDATE leave_balances
-               SET accrued_hours=0, used_hours=0, carried_over_hours=$1,
-                   anniversary_year_start=$2
+               SET accrued_hours=0, used_hours=0, carried_over_hours=$1, anniversary_year_start=$2
                WHERE user_id=$3 AND leave_type_id=$4`,
               [carryover, todayStr, user.id, ptoType.id]
             );
           } else {
-            // First balance record
             await db.query(
               `INSERT INTO leave_balances
                  (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
@@ -240,7 +265,6 @@ cron.schedule('5 0 * * *', async () => {
             );
           }
 
-          // -- Sick time anniversary: payout unused + reset --------------
           const sickBal = await db.query(
             'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
             [user.id, sickType.id]
@@ -249,32 +273,25 @@ cron.schedule('5 0 * * *', async () => {
           if (sickBal.rows.length) {
             const sickAvail = availableHours(sickBal.rows[0]);
             if (sickAvail > 0) {
-              // Determine hourly rate from user's location
               let rate = 0;
               if (user.location_id) {
                 const locRes = await db.query('SELECT rate FROM locations WHERE id=$1', [user.location_id]);
                 if (locRes.rows.length) rate = parseFloat(locRes.rows[0].rate);
               }
-              const payout = sickAvail * rate;
-
               await db.query(
                 `INSERT INTO sick_time_payouts (user_id, hours_paid, hourly_rate, total_amount)
                  VALUES ($1,$2,$3,$4)`,
-                [user.id, sickAvail, rate, payout]
+                [user.id, sickAvail, rate, sickAvail * rate]
               );
-              console.log(`[scheduler] Sick payout: ${user.name} - ${sickAvail} hrs @ $${rate} = $${payout.toFixed(2)}`);
+              console.log(`[scheduler] Sick payout: ${user.name} - ${sickAvail} hrs @ $${rate} = $${(sickAvail * rate).toFixed(2)}`);
             }
-
-            // Reset sick balance for new year
             await db.query(
               `UPDATE leave_balances
-               SET accrued_hours=40, used_hours=0, carried_over_hours=0,
-                   anniversary_year_start=$1
+               SET accrued_hours=40, used_hours=0, carried_over_hours=0, anniversary_year_start=$1
                WHERE user_id=$2 AND leave_type_id=$3`,
               [todayStr, user.id, sickType.id]
             );
           } else {
-            // First sick balance
             await db.query(
               `INSERT INTO leave_balances
                  (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
@@ -287,12 +304,12 @@ cron.schedule('5 0 * * *', async () => {
           console.log(`[scheduler] Anniversary processed for ${user.name} (year ${completedYears})`);
         }
 
-        // -- Daily PTO accrual (skip year-0 employees) ---------------------
-        const msPerYear = 365.25 * 86400000;
+        // Daily PTO accrual - skip employees in their first year
+        const msPerYear  = 365.25 * 86400000;
         const totalYears = (today - hire) / msPerYear;
-        if (totalYears < 1) continue; // no PTO in first year
+        if (totalYears < 1) continue;
 
-        // Find which anniversary year we're in right now
+        // Find the anniversary year start (most recent anniversary on or before today)
         let anniversaryYearStart = new Date(hire);
         while (true) {
           const next = new Date(anniversaryYearStart);
@@ -301,7 +318,7 @@ cron.schedule('5 0 * * *', async () => {
           anniversaryYearStart = next;
         }
         const completedYearsAtAy = Math.floor((anniversaryYearStart - hire) / msPerYear);
-        const annualHours = getPtoAnnualHours(completedYearsAtAy);
+        const annualHours  = getPtoAnnualHours(completedYearsAtAy);
         const dailyAccrual = annualHours / 365;
 
         if (dailyAccrual > 0) {
@@ -312,7 +329,6 @@ cron.schedule('5 0 * * *', async () => {
             [Math.round(dailyAccrual * 100) / 100, user.id, ptoType.id]
           );
         }
-
       } catch (userErr) {
         console.error(`[scheduler] Leave processing error for user ${user.id}:`, userErr.message);
       }

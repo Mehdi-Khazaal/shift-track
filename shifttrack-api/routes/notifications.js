@@ -4,16 +4,7 @@ const db        = require('../db/index');
 const auth      = require('../middleware/auth');
 const webpush   = require('../utils/webpush');
 const { getUserAnchor } = require('../utils/ppAnchor');
-
-// -- Helper: write to notification_log --------------------------------------
-async function logNotification(userId, title, body) {
-  try {
-    await db.query(
-      'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
-      [userId, title, body]
-    );
-  } catch(e) { /* non-fatal - don't break the push flow */ }
-}
+const { logNotification } = require('../utils/push');
 
 // GET /api/notifications/vapid-public-key
 router.get('/vapid-public-key', (req, res) => {
@@ -43,12 +34,10 @@ router.post('/subscribe', auth, async (req, res) => {
 // DELETE /api/notifications/unsubscribe
 router.delete('/unsubscribe', auth, async (req, res) => {
   try {
-    await db.query(
-      'DELETE FROM push_subscriptions WHERE user_id=$1',
-      [req.userId]
-    );
+    await db.query('DELETE FROM push_subscriptions WHERE user_id=$1', [req.userId]);
     res.json({ ok: true });
-  } catch(err) {
+  } catch (err) {
+    console.error('[notifications/unsubscribe]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -61,7 +50,8 @@ router.get('/status', auth, async (req, res) => {
       [req.userId]
     );
     res.json({ ok: true, subscribed: result.rows.length > 0, notify_minutes: result.rows[0]?.notify_minutes || 60 });
-  } catch(err) {
+  } catch (err) {
+    console.error('[notifications/status]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -71,7 +61,8 @@ router.delete('/history', auth, async (req, res) => {
   try {
     await db.query('DELETE FROM notification_log WHERE user_id=$1', [req.userId]);
     res.json({ ok: true });
-  } catch(err) {
+  } catch (err) {
+    console.error('[notifications/history DELETE]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -79,12 +70,10 @@ router.delete('/history', auth, async (req, res) => {
 // DELETE /api/notifications/history/:id - delete a single notification
 router.delete('/history/:id', auth, async (req, res) => {
   try {
-    await db.query(
-      'DELETE FROM notification_log WHERE id=$1 AND user_id=$2',
-      [req.params.id, req.userId]
-    );
+    await db.query('DELETE FROM notification_log WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
     res.json({ ok: true });
-  } catch(err) {
+  } catch (err) {
+    console.error('[notifications/history/:id DELETE]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
@@ -97,7 +86,8 @@ router.get('/history', auth, async (req, res) => {
       [req.userId]
     );
     res.json({ ok: true, notifications: result.rows });
-  } catch(err) {
+  } catch (err) {
+    console.error('[notifications/history GET]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
