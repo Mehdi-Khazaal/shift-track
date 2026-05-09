@@ -66,7 +66,7 @@ async function initUserLeaveBalances(userId, hireDate) {
     await db.query(
       `INSERT INTO leave_balances (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
        VALUES ($1, $2, $3, 0, 0, $4)
-       ON CONFLICT (user_id, leave_type_id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [userId, lt.id, accrued, ayStr]
     );
   }

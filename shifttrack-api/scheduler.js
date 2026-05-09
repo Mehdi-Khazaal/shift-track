@@ -260,7 +260,7 @@ cron.schedule('5 0 * * *', async () => {
               `INSERT INTO leave_balances
                  (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
                VALUES ($1,$2,0,0,0,$3)
-               ON CONFLICT (user_id, leave_type_id) DO NOTHING`,
+               ON CONFLICT DO NOTHING`,
               [user.id, ptoType.id, todayStr]
             );
           }
@@ -296,7 +296,7 @@ cron.schedule('5 0 * * *', async () => {
               `INSERT INTO leave_balances
                  (user_id, leave_type_id, accrued_hours, used_hours, carried_over_hours, anniversary_year_start)
                VALUES ($1,$2,40,0,0,$3)
-               ON CONFLICT (user_id, leave_type_id) DO NOTHING`,
+               ON CONFLICT DO NOTHING`,
               [user.id, sickType.id, todayStr]
             );
           }
