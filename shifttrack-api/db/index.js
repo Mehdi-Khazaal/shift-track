@@ -296,6 +296,12 @@ async function migrate() {
       )
     `);
 
+    // Backfill UNIQUE constraint on leave_balances if it was created before this was added
+    await addConstraintIfMissing(
+      'leave_balances_user_id_leave_type_id_key',
+      'ALTER TABLE leave_balances ADD CONSTRAINT leave_balances_user_id_leave_type_id_key UNIQUE (user_id, leave_type_id)'
+    );
+
     // -- Indexes on hot query paths -----------------------------------------------
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_id      ON shifts(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_date     ON shifts(user_id, date)`);
