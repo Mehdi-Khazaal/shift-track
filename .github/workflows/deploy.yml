@@ -18,9 +18,11 @@ jobs:
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            set -e
             cd /var/www/repo
-            git pull origin main
-            cp -r shifttrack-api/* /var/www/shifttrack-api/
+            git fetch origin main
+            git reset --hard origin/main
+            cp -rf shifttrack-api/* /var/www/shifttrack-api/
             cd /var/www/shifttrack-api
-            npm install --production
+            npm install --omit=dev
             pm2 restart shifttrack-api
