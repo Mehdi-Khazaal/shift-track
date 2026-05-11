@@ -1,6 +1,7 @@
-const express   = require('express');
-const cors      = require('cors');
-const rateLimit = require('express-rate-limit');
+const express      = require('express');
+const cors         = require('cors');
+const rateLimit    = require('express-rate-limit');
+const compression  = require('compression');
 require('dotenv').config();
 
 // Import database connection (this will test the connection on startup)
@@ -13,6 +14,7 @@ require('./scheduler');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(compression());
 app.use(express.json({ limit: '50kb' }));
 
 const defaultOrigins = ['https://mehdi-khazaal.github.io', 'http://localhost:3000', 'http://localhost:5500'];
@@ -31,6 +33,7 @@ const authLimiter = rateLimit({
 });
 
 // -- Routes ----------------------------------
+app.use('/api/bootstrap',require('./routes/bootstrap'));
 app.use('/api/auth',     authLimiter, require('./routes/auth'));
 app.use('/api/shifts',   require('./routes/shifts'));
 app.use('/api/locations',require('./routes/locations'));

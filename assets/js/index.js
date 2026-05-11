@@ -40,7 +40,7 @@ async function doLogin(){
 function doLogout(force=false){
   if(!force && !confirm('Sign out of ShiftTrack?')) return;
   clearAuth();
-  cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.suppressedBases=[]; cache.loaded=false;
+  cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.suppressedBases=[]; cache.loaded=false; cache.allShiftsLoaded=false;
   swapsData=[];
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-email').value='';
@@ -84,7 +84,7 @@ const DEFAULT_ANCHOR = '2026-03-22';
 //  All data lives in Neon via the Render API.
 //  We keep an in-memory cache so renders are instant.
 // ═══════════════════════════════════════
-const cache = { locations:[], shifts:[], base:[], settings:null, unavailability:[], suppressedBases:[], loaded:false };
+const cache = { locations:[], shifts:[], base:[], settings:null, unavailability:[], suppressedBases:[], loaded:false, allShiftsLoaded:false };
 
 function getLocations(){ return cache.locations; }
 function getShifts()   { return cache.shifts;    }
@@ -98,25 +98,23 @@ function getSettings() {
   return { otThreshold, ppAnchor };
 }
 
-// Load all data from API into cache, then re-render
-// Retries up to 3 times with increasing delays (handles Render cold start)
+// Load all data via the bootstrap endpoint (1 request, 1 auth check, 6 parallel DB queries).
+// Shifts are filtered to the last 12 weeks on startup; older history loads on demand.
+// Retries up to 3 times with increasing delays (handles Render cold start).
 async function loadAllData(attempt=1){
   const MAX = 3;
   showToast(attempt===1 ? 'Loading your data…' : `Connecting… (${attempt}/${MAX})`, false, 20000);
+  const from = toYMD(new Date(Date.now() - 84 * 86400000)); // 12 weeks back
   try {
-    const [locsRes, shiftsRes, baseRes, settingsRes, unavailRes] = await Promise.all([
-      apiFetch('/api/locations'),
-      apiFetch('/api/shifts'),
-      apiFetch('/api/schedule'),
-      apiFetch('/api/settings'),
-      apiFetch('/api/unavailability'),
-    ]);
-    if(locsRes?.ok)     cache.locations      = locsRes.locations.map(normalizeLocation);
-    if(shiftsRes?.ok){  cache.shifts         = shiftsRes.shifts.map(normalizeShift);
-                        cache.suppressedBases= shiftsRes.suppressed_bases||[]; }
-    if(baseRes?.ok)     cache.base           = baseRes.schedule.map(normalizeBase);
-    if(settingsRes?.ok) cache.settings       = settingsRes.settings;
-    if(unavailRes?.ok)  cache.unavailability = unavailRes.entries.map(normalizeUnavail);
+    const res = await apiFetch('/api/bootstrap?from=' + from);
+    if(!res?.ok) throw new Error(res?.error || 'Bootstrap failed');
+    cache.locations       = res.locations.map(normalizeLocation);
+    cache.shifts          = res.shifts.map(normalizeShift);
+    cache.suppressedBases = res.suppressed_bases || [];
+    cache.base            = res.schedule.map(normalizeBase);
+    cache.settings        = res.settings;
+    cache.unavailability  = res.unavailability.map(normalizeUnavail);
+    cache.allShiftsLoaded = !res.shifts_partial;
     cache.loaded = true;
     showToast('Ready ✓');
     renderDash();
@@ -137,6 +135,23 @@ async function loadAllData(attempt=1){
       document.getElementById('toast').onclick = () => loadAllData(1);
     }
   }
+}
+
+async function loadAllShiftHistory(options={}){
+  const shouldRender = options.render !== false;
+  if(cache.allShiftsLoaded) return true;
+  showToast('Loading older history...', false, 20000);
+  const res = await apiFetch('/api/shifts');
+  if(!res?.ok){ showToast('Failed to load history', true); return false; }
+  cache.shifts          = res.shifts.map(normalizeShift);
+  cache.suppressedBases = res.suppressed_bases || [];
+  cache.allShiftsLoaded = true;
+  if(shouldRender){
+    renderAllShifts();
+    renderDash();
+    showToast('History loaded');
+  }
+  return true;
 }
 
 // Normalize API response fields to match what the app expects
@@ -808,7 +823,7 @@ function renderAllShifts(){
   // Current week key — open by default, past weeks collapsed
   const currentWkKey=toYMD(weekDatesForDate(today)[0]);
 
-  el.innerHTML=[...groups.entries()].map(([key,{wkD,shifts:wkShifts}])=>{
+  const groupsHtml=[...groups.entries()].map(([key,{wkD,shifts:wkShifts}])=>{
     const wkY=wkD.map(toYMD);
     const allWkShifts=[
       ...getShifts().filter(x=>wkY.includes(x.date)),
@@ -843,6 +858,12 @@ function renderAllShifts(){
       <div class="wk-shifts-card${isCurrentWk?'':' collapsed'}">${shiftsHtml}</div>
     </div>`;
   }).join('');
+
+  el.innerHTML = groupsHtml + (!cache.allShiftsLoaded
+    ? `<div style="text-align:center;padding:18px 0 6px">
+        <button class="btn" style="font-size:13px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:10px;padding:8px 20px;cursor:pointer" onclick="loadAllShiftHistory()">Load older history</button>
+       </div>`
+    : '');
 }
 
 function toggleWeek(key){
@@ -1415,8 +1436,19 @@ function openAddShiftForDateStr(dateStr){
 // ═══════════════════════════════════════
 //  PHASE 2: PAY HISTORY
 // ═══════════════════════════════════════
-function renderHistory(){
+async function renderHistory(){
   const el = document.getElementById('history-list');
+  if(!cache.allShiftsLoaded){
+    el.innerHTML = '<div class="empty-state" style="padding:16px;font-size:12px">Loading full pay history...</div>';
+    const loaded = await loadAllShiftHistory({ render:false });
+    if(!loaded){
+      el.innerHTML = '<div class="empty-state" style="padding:16px;font-size:12px">Could not load pay history.</div>';
+      return;
+    }
+    renderAllShifts();
+    renderDash();
+  }
+
   const { ppAnchor } = getSettings();
   const anchor = new Date(ppAnchor+'T00:00:00');
   const today  = new Date(); today.setHours(0,0,0,0);
@@ -1591,7 +1623,13 @@ enterApp=function(user){
 // ═══════════════════════════════════════
 //  PAY PERIOD PDF (browser print → Save as PDF)
 // ═══════════════════════════════════════
-function downloadPayPDF(offset){
+async function downloadPayPDF(offset){
+  if(!cache.allShiftsLoaded){
+    const loaded = await loadAllShiftHistory({ render:false });
+    if(!loaded) return;
+    renderHistory();
+  }
+
   const { ppAnchor } = getSettings();
   const anchor = new Date(ppAnchor+'T00:00:00');
   const today  = new Date(); today.setHours(0,0,0,0);

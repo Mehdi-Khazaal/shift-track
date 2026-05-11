@@ -18,17 +18,24 @@ cron.schedule('* * * * *', async () => {
     const windowBackMs = 60 * 1000;
     const windowFwdMs  = 5  * 1000;
 
+    // Cheap count check before fetching all subscription data
+    const { rows: [{ count }] } = await db.query('SELECT COUNT(*) FROM push_subscriptions');
+    if (Number(count) === 0) return;
+
     const subsRes = await db.query('SELECT * FROM push_subscriptions');
     if (!subsRes.rows.length) return;
 
     const userIds = [...new Set(subsRes.rows.map(s => s.user_id))];
 
-    // Batch fetch all data needed for every subscribed user in 4 queries
+    // Batch fetch all data needed for every subscribed user in 4 queries.
+    // Logged reminders only need shifts near the current date, not full history.
     const [shiftsRes, baseRes, suppressedRes, anchorsRes] = await Promise.all([
       db.query(
         `SELECT s.user_id, s.date, s.start_time, s.end_time, l.name AS location_name
          FROM shifts s JOIN locations l ON s.location_id = l.id
-         WHERE s.user_id = ANY($1)`,
+         WHERE s.user_id = ANY($1)
+           AND s.date BETWEEN CURRENT_DATE - INTERVAL '2 days'
+                          AND CURRENT_DATE + INTERVAL '2 days'`,
         [userIds]
       ),
       db.query(
@@ -223,10 +230,37 @@ cron.schedule('5 0 * * *', async () => {
       `SELECT id, hire_date, name, location_id FROM users
        WHERE is_active=TRUE AND hire_date IS NOT NULL`
     );
+    if (!users.rows.length) return;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().slice(0, 10);
+
+    // Batch fetch all leave balances and location rates up front — eliminates N+1 reads.
+    const userIds     = users.rows.map(u => u.id);
+    const locationIds = [...new Set(users.rows.map(u => u.location_id).filter(Boolean))];
+
+    const [balancesRes, locRatesRes] = await Promise.all([
+      db.query(
+        `SELECT lb.*, lt.name AS type_name
+         FROM leave_balances lb
+         JOIN leave_types lt ON lb.leave_type_id = lt.id
+         WHERE lb.user_id = ANY($1)`,
+        [userIds]
+      ),
+      locationIds.length
+        ? db.query('SELECT id, rate FROM locations WHERE id = ANY($1)', [locationIds])
+        : Promise.resolve({ rows: [] }),
+    ]);
+
+    const balancesByUser = {};
+    for (const b of balancesRes.rows) {
+      (balancesByUser[b.user_id] ||= {})[b.type_name] = b;
+    }
+    const rateById = {};
+    for (const l of locRatesRes.rows) {
+      rateById[l.id] = parseFloat(l.rate);
+    }
 
     for (const user of users.rows) {
       try {
@@ -234,21 +268,18 @@ cron.schedule('5 0 * * *', async () => {
         hire.setHours(0, 0, 0, 0);
 
         const isAnniversary = (
-          today.getMonth()      === hire.getMonth() &&
-          today.getDate()       === hire.getDate()  &&
-          today.getFullYear()   > hire.getFullYear()
+          today.getMonth()    === hire.getMonth() &&
+          today.getDate()     === hire.getDate()  &&
+          today.getFullYear() >  hire.getFullYear()
         );
 
         if (isAnniversary) {
           const completedYears = today.getFullYear() - hire.getFullYear();
+          const ptoBal  = balancesByUser[user.id]?.pto;
+          const sickBal = balancesByUser[user.id]?.sick_time;
 
-          const ptoBal = await db.query(
-            'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
-            [user.id, ptoType.id]
-          );
-
-          if (ptoBal.rows.length) {
-            const carryover = Math.min(availableHours(ptoBal.rows[0]), 40);
+          if (ptoBal) {
+            const carryover = Math.min(availableHours(ptoBal), 40);
             await db.query(
               `UPDATE leave_balances
                SET accrued_hours=0, used_hours=0, carried_over_hours=$1, anniversary_year_start=$2
@@ -265,19 +296,10 @@ cron.schedule('5 0 * * *', async () => {
             );
           }
 
-          const sickBal = await db.query(
-            'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
-            [user.id, sickType.id]
-          );
-
-          if (sickBal.rows.length) {
-            const sickAvail = availableHours(sickBal.rows[0]);
+          if (sickBal) {
+            const sickAvail = availableHours(sickBal);
+            const rate = user.location_id ? (rateById[user.location_id] || 0) : 0;
             if (sickAvail > 0) {
-              let rate = 0;
-              if (user.location_id) {
-                const locRes = await db.query('SELECT rate FROM locations WHERE id=$1', [user.location_id]);
-                if (locRes.rows.length) rate = parseFloat(locRes.rows[0].rate);
-              }
               await db.query(
                 `INSERT INTO sick_time_payouts (user_id, hours_paid, hourly_rate, total_amount)
                  VALUES ($1,$2,$3,$4)`,

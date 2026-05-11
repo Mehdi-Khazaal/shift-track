@@ -121,22 +121,26 @@ async function overlapsBaseSchedule(userId, date, start_time, end_time) {
   return baseOverlap.rows.length > 0;
 }
 
-// GET /api/shifts - get all shifts for logged-in user + suppressed base dates
+// GET /api/shifts - get shifts for logged-in user + suppressed base dates
+// Optional ?from=YYYY-MM-DD limits shifts to that date onward (used by bootstrap for initial load).
+// Omit ?from to get full history (used by the "load older" UI action).
 router.get('/', auth, async (req, res) => {
   try {
+    const from = req.query.from || null;
+    const shiftParams = [req.userId];
+    const shiftWhere  = from ? 'AND s.date >= $2' : '';
+    if (from) shiftParams.push(from);
+
     const [shiftsRes, suppressedRes] = await Promise.all([
       db.query(
         `SELECT s.*, l.name AS location_name, l.color, l.rate
          FROM shifts s
          JOIN locations l ON s.location_id = l.id
-         WHERE s.user_id = $1
+         WHERE s.user_id = $1 ${shiftWhere}
          ORDER BY s.date DESC, s.start_time DESC`,
-        [req.userId]
+        shiftParams
       ),
-      db.query(
-        `SELECT date FROM base_suppressed_dates WHERE user_id=$1`,
-        [req.userId]
-      )
+      db.query('SELECT date FROM base_suppressed_dates WHERE user_id=$1', [req.userId])
     ]);
     const suppressed = suppressedRes.rows.map(r => String(r.date).slice(0, 10));
     res.json({ ok: true, shifts: shiftsRes.rows, suppressed_bases: suppressed });

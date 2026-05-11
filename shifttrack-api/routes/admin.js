@@ -1,8 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db/index');
-const auth    = require('../middleware/auth');
-const { adminOnly } = require('../middleware/auth');
+const auth = require('../middleware/auth');
+const { adminOnly, invalidateUserCache } = require('../middleware/auth');
 const bcrypt  = require('bcrypt');
 
 // GET /api/admin/users - all users (active and inactive) with basic info
@@ -85,6 +85,7 @@ router.patch('/users/:id/deactivate', auth, adminOnly, async (req, res) => {
       [req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ ok: false, error: 'User not found' });
+    invalidateUserCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('[admin/users/deactivate]', err);
@@ -100,6 +101,7 @@ router.patch('/users/:id/reactivate', auth, adminOnly, async (req, res) => {
       [req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ ok: false, error: 'User not found' });
+    invalidateUserCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('[admin/users/reactivate]', err);
@@ -162,6 +164,7 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
       );
     }
     if (!result.rows.length) return res.status(404).json({ ok: false, error: 'User not found' });
+    invalidateUserCache(req.params.id);
     res.json({ ok: true, user: result.rows[0] });
   } catch (err) {
     console.error('[admin/users PATCH]', err);
@@ -180,6 +183,7 @@ router.patch('/users/:id/role', auth, adminOnly, async (req, res) => {
       [role, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ ok: false, error: 'User not found' });
+    invalidateUserCache(req.params.id);
     res.json({ ok: true, user: result.rows[0] });
   } catch (err) {
     console.error('[admin/users/role PATCH]', err);
