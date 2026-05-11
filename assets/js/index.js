@@ -569,21 +569,21 @@ function updateCalc(){
   }
   if(!start||!end||!loc) return;
 
-  // OT preview: how many hours are already locked in this week before this shift
+  // OT preview: insert this shift into the full week and let the OT engine sort chronologically
   const hrs=shiftHours(start,end);
   const wkDates=weekDatesForDate(date||toYMD(new Date()));
   const wkYMDs=wkDates.map(toYMD);
-  const thresh=getSettings().otThreshold;
-
-  const otherLogged=getShifts().filter(s=>wkYMDs.includes(s.date)&&s.id!==(editId||'__'));
+  const PREVIEW_ID='__preview__';
+  const otherLogged=getShifts().filter(s=>wkYMDs.includes(s.date)&&s.id!==(editId||PREVIEW_ID));
   const baseShifts=getBase()
     .map(b=>({...b,date:baseToDate(b,wkDates)}))
     .filter(b=>b.date&&wkYMDs.includes(b.date));
-  const {totalHrs:priorHrs}=computeWeekPay([...otherLogged,...baseShifts]);
-
-  const regHrs=Math.max(0,Math.min(hrs,thresh-priorHrs));
-  const otHrs=hrs-regHrs;
-  const pay=regHrs*loc.rate+otHrs*loc.rate*1.5;
+  const previewShift={id:PREVIEW_ID,locationId:locId,date,start,end};
+  const {breakdown}=computeWeekPay([...otherLogged,...baseShifts,previewShift]);
+  const entry=breakdown.find(s=>s.id===PREVIEW_ID);
+  const regHrs=entry?entry.regHrs:0;
+  const otHrs =entry?entry.otHrs :0;
+  const pay   =entry?entry.pay   :0;
 
   document.getElementById('shift-calc').style.display='block';
   document.getElementById('calc-dur').textContent=hrs.toFixed(1)+' hrs';
