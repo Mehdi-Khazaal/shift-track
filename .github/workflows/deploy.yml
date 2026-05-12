@@ -22,9 +22,8 @@ jobs:
             cd /var/www/repo
             git fetch origin main
             git reset --hard origin/main
-            cp -rf shifttrack-api/* /var/www/shifttrack-api/
-            cd /var/www/shifttrack-api
+            cd /var/www/repo/shifttrack-api
             npm install --omit=dev
             pm2 restart shifttrack-api
             sleep 5
-            curl -sf http://localhost:3000/health | grep '"ok":true' || (echo "Health check failed" && exit 1)
+            curl -sf "http://localhost:3000/health" | grep '"ok":true' || (echo "Health check failed" && exit 1)
