@@ -306,6 +306,33 @@ async function migrate() {
       console.warn('[migrate] leave_balances UNIQUE constraint skipped:', e.message);
     }
 
+    // Pull bonus system
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS is_pulled BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS pulled_from_location_id UUID`);
+    await addConstraintIfMissing(
+      'shifts_pulled_from_location_id_fkey',
+      'ALTER TABLE shifts ADD CONSTRAINT shifts_pulled_from_location_id_fkey FOREIGN KEY (pulled_from_location_id) REFERENCES locations(id) ON DELETE SET NULL'
+    );
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS pull_bonus NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS shift_pulls (
+        id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        shift_id         UUID REFERENCES shifts(id) ON DELETE SET NULL,
+        from_location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+        to_location_id   UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        pull_date        DATE NOT NULL,
+        shift_start      TIME NOT NULL,
+        shift_end        TIME NOT NULL,
+        has_bonus        BOOLEAN NOT NULL DEFAULT TRUE,
+        bonus_amount     NUMERIC(10,2) NOT NULL DEFAULT 50.00,
+        created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at       TIMESTAMPTZ DEFAULT NOW(),
+        undone_at        TIMESTAMPTZ,
+        undone_by        UUID REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+
     // -- Indexes on hot query paths -----------------------------------------------
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_id      ON shifts(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_date     ON shifts(user_id, date)`);
@@ -316,6 +343,7 @@ async function migrate() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_notif_log_user       ON notification_log(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_suppressed_user      ON base_suppressed_dates(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_open_shifts_status   ON open_shifts(status, deadline)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_shift_pulls_user     ON shift_pulls(user_id, pull_date)`);
 
     console.log('OK  Migrations applied');
     dbStatus.migrated = true;

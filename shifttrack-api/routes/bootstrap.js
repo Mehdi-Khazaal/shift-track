@@ -35,8 +35,11 @@ router.get('/', auth, async (req, res) => {
         ORDER BY r.name ASC NULLS LAST, l.name ASC
       `),
       db.query(`
-        SELECT s.*, l.name AS location_name, l.color, l.rate
-        FROM shifts s JOIN locations l ON s.location_id = l.id
+        SELECT s.*, l.name AS location_name, l.color, l.rate,
+               fl.name AS from_location_name
+        FROM shifts s
+        JOIN locations l ON s.location_id = l.id
+        LEFT JOIN locations fl ON s.pulled_from_location_id = fl.id
         WHERE s.user_id = $1 ${shiftWhere}
         ORDER BY s.date DESC, s.start_time DESC
       `, shiftParams),

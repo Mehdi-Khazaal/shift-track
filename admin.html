@@ -596,6 +596,10 @@
       <div class="stat-box orange"><div class="val" id="udash-ot">—</div><div class="lbl">overtime hrs</div></div>
       <div class="stat-box green"><div class="val" id="udash-pay">—</div><div class="lbl">est. pay</div></div>
       <div class="stat-box accent"><div class="val" id="udash-count">—</div><div class="lbl">shifts</div></div>
+      <div class="stat-box" style="cursor:pointer;border-style:dashed;opacity:.8" onclick="openPullModal()" title="Create shift pull for this employee">
+        <div class="val" style="font-size:20px;line-height:1.2">＋</div>
+        <div class="lbl">pull bonus</div>
+      </div>
     </div>
     <div class="tbl-wrap">
       <table>
@@ -604,6 +608,36 @@
       </table>
     </div>
     <div id="udash-profile-grid" class="udash-profile-grid"></div>
+    <div id="udash-pulls-section"></div>
+  </div>
+</div>
+
+<!-- PULL MODAL -->
+<div class="modal-overlay" id="pull-modal">
+  <div class="modal" style="max-width:460px">
+    <h3 style="margin-bottom:4px;font-size:17px">Create Pull</h3>
+    <p style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:20px">Pull this employee to a different location for one shift</p>
+    <div class="form-group">
+      <label>Shift</label>
+      <select id="pull-shift-sel" onchange="onPullShiftChange()">
+        <option value="">Select a shift…</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Pull to Location</label>
+      <select id="pull-to-loc-sel">
+        <option value="">Select destination location…</option>
+      </select>
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <input type="checkbox" id="pull-has-bonus" checked style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)"/>
+      <label for="pull-has-bonus" style="margin-bottom:0;cursor:pointer;font-size:13px">Add $50 pull bonus to paycheck</label>
+    </div>
+    <div id="pull-result" style="margin-bottom:12px;font-size:12px;font-family:var(--mono);display:none;padding:10px 12px;border-radius:var(--radius-sm);background:rgba(255,95,109,.1);color:var(--red)"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePullModal()">Cancel</button>
+      <button class="btn btn-primary" id="pull-submit-btn" onclick="submitPull()">Create Pull</button>
+    </div>
   </div>
 </div>
 

@@ -174,6 +174,9 @@ function normalizeShift(s){
     awardedBy:   s.awarded_by_name||'',
     locked:      !!s.open_shift_id,
     isBase:      false,
+    isPulled:    !!s.is_pulled,
+    pulledFromLocationName: s.from_location_name||null,
+    pullBonus:   parseFloat(s.pull_bonus)||0,
   };
 }
 function normalizeBase(b){
@@ -336,7 +339,7 @@ function computeWeekPay(shifts){
     const hrs=Math.max(0,rawHrs-callOffHrs);
     const regHrs=Math.max(0,Math.min(hrs,thresh-regRunning));
     const otHrs=hrs-regHrs;
-    const pay=regHrs*rate+otHrs*rate*1.5;
+    const pay=regHrs*rate+otHrs*rate*1.5+(s.pullBonus||0);
     regRunning+=regHrs;
     totalPay+=pay;
     return {...s,hrs,rawHrs,callOffHrs,regHrs,otHrs,pay,rate};
@@ -1008,6 +1011,7 @@ function shiftItemHTML(s,bd,swapId=null){
   else if(callOffLeave)                badge='<span class="badge" style="background:rgba(248,113,113,.15);color:#f87171;border-color:rgba(248,113,113,.3)">CALL OFF</span>';
   else if(ptoLeave)                    badge='<span class="badge" style="background:rgba(96,165,250,.15);color:#60a5fa;border-color:rgba(96,165,250,.3)">PTO</span>';
   else if(sickLeave)                   badge='<span class="badge" style="background:rgba(167,139,250,.15);color:#a78bfa;border-color:rgba(167,139,250,.3)">SICK</span>';
+  else if(s.isPulled)                  badge='<span class="badge" style="background:rgba(255,140,0,.15);color:#ff8c00;border-color:rgba(255,140,0,.3)">PULL</span>';
   else if(s.isBase)                    badge='<span class="badge base">BASE</span>';
   else if(effectiveHrs>0&&otHrs>=effectiveHrs) badge='<span class="badge ot">OT</span>';
   else if(otHrs>0)                     badge='<span class="badge mix">REG+OT</span>';
@@ -1015,6 +1019,9 @@ function shiftItemHTML(s,bd,swapId=null){
 
   const otNote=otHrs>0
     ?`<div class="ot-note">${(effectiveHrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
+  const pullNote=s.isPulled
+    ?`<div class="ot-note" style="color:#ff8c00">Pulled${s.pulledFromLocationName?` from ${s.pulledFromLocationName}`:''}${s.pullBonus>0?` · +$${s.pullBonus.toFixed(0)} pull bonus`:''}</div>`
+    :'';
 
   const click=s.isBase?`showToast('Base shifts are set by your administrator',false)`:`openAddShift('${s.id}')`;
   const payStr=formatPay(pay);
@@ -1035,6 +1042,7 @@ function shiftItemHTML(s,bd,swapId=null){
       <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
       ${leaveNote}
       ${otNote}
+      ${pullNote}
       ${awardedTag}
       ${s.notes?`<div class="notes-chip">${s.notes.slice(0,40)}${s.notes.length>40?'…':''}</div>`:''}
       ${adminNotesChip}
@@ -1655,7 +1663,7 @@ async function downloadPayPDF(offset){
       const rate=loc?loc.rate:0;
       const h=shiftHours(s.start,s.end);
       const reg=Math.max(0,Math.min(h,thresh-regRun)), otH=h-reg;
-      const p=reg*rate+otH*rate*1.5;
+      const p=reg*rate+otH*rate*1.5+(s.pullBonus||0);
       regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
       rows.push({...s,h,otH,p,loc});
     }
@@ -1665,6 +1673,8 @@ async function downloadPayPDF(offset){
   const w1=weekBreakdown(ppW1), w2=weekBreakdown(ppW2);
   const allRows=[...w1.rows,...w2.rows];
   const totPay=w1.totPay+w2.totPay, totHrs=w1.totHrs+w2.totHrs, totOt=w1.totOt+w2.totOt;
+  const pullBonusTotal=allRows.reduce((sum,s)=>sum+(s.pullBonus||0),0);
+  const shiftOnlyPay=totPay-pullBonusTotal;
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   const user=getUser();
 
@@ -1673,17 +1683,32 @@ async function downloadPayPDF(offset){
 
   document.getElementById('pdf-tbody').innerHTML=allRows.map(s=>{
     const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const pullTag=s.isPulled?` <strong style="font-size:9px;background:#fff3e0;color:#c07000;border-radius:2px;padding:0 3px">PULL</strong>`:'';
+    const locCell=s.isPulled&&s.pulledFromLocationName
+      ?`<span style="text-decoration:line-through;opacity:.5">${s.pulledFromLocationName}</span> → ${s.loc?.name||'—'}`
+      :(s.loc?.name||'—');
     return `<tr>
-      <td>${d}</td>
-      <td>${s.loc?.name||'—'}</td>
+      <td>${d}${pullTag}</td>
+      <td>${locCell}</td>
       <td>${s.start}</td>
       <td>${s.end}</td>
       <td>${s.h.toFixed(1)}h${s.otH>0?` (${s.otH.toFixed(1)}h OT)`:''}</td>
-      <td style="text-align:right">${formatPay(s.p)}</td>
+      <td style="text-align:right">${formatPay(s.p)}${s.pullBonus>0?`<br><span style="font-size:10px;color:#c07000">incl. +$${s.pullBonus.toFixed(0)} pull</span>`:''}</td>
     </tr>`;
   }).join('');
 
-  document.getElementById('pdf-tfoot').innerHTML=`
+  document.getElementById('pdf-tfoot').innerHTML=pullBonusTotal>0?`
+    <tr class="pdf-total">
+      <td colspan="4"><strong>Shift Subtotal</strong></td>
+      <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>
+      <td style="text-align:right"><strong>${formatPay(shiftOnlyPay)}</strong></td>
+    </tr>
+    <tr><td colspan="5">Pull Bonus</td><td style="text-align:right;color:#c07000">+${formatPay(pullBonusTotal)}</td></tr>
+    <tr class="pdf-total">
+      <td colspan="4"><strong>Total</strong></td>
+      <td></td>
+      <td style="text-align:right"><strong>${formatPay(totPay)}</strong></td>
+    </tr>`:`
     <tr class="pdf-total">
       <td colspan="4"><strong>Total</strong></td>
       <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>

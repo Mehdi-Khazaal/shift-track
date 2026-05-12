@@ -46,6 +46,7 @@ app.use('/api/unavailability',  require('./routes/unavailability'));
 app.use('/api/open-shifts',    require('./routes/openShifts'));
 app.use('/api/shift-swaps',   require('./routes/swaps'));
 app.use('/api/leave',         require('./routes/leave'));
+app.use('/api/pulls',         require('./routes/pulls'));
 
 // Health check — used by deploy workflow to confirm the app came up cleanly
 app.get('/health', (req, res) => {

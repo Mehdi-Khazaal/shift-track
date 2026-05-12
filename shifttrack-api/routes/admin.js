@@ -26,9 +26,11 @@ router.get('/users', auth, adminOnly, async (req, res) => {
 router.get('/users/:id/shifts', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT s.*, l.name AS location_name, l.color, l.rate
+      `SELECT s.*, l.name AS location_name, l.color, l.rate,
+              fl.name AS from_location_name, fl.color AS from_location_color
        FROM shifts s
        JOIN locations l ON s.location_id = l.id
+       LEFT JOIN locations fl ON s.pulled_from_location_id = fl.id
        WHERE s.user_id = $1
        ORDER BY s.date DESC, s.start_time DESC`,
       [req.params.id]
