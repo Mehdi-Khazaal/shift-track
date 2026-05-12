@@ -121,6 +121,21 @@ async function overlapsBaseSchedule(userId, date, start_time, end_time) {
   return baseOverlap.rows.length > 0;
 }
 
+async function isAcceptedSwapShift(userId, shiftId) {
+  const result = await db.query(
+    `SELECT id FROM shift_swaps
+     WHERE status='accepted'
+       AND (
+         (initiator_id=$1 AND swapped_initiator_shift_id=$2)
+         OR
+         (target_id=$1 AND swapped_target_shift_id=$2)
+       )
+     LIMIT 1`,
+    [userId, shiftId]
+  );
+  return result.rows.length > 0;
+}
+
 // GET /api/shifts - get shifts for logged-in user + suppressed base dates
 // Optional ?from=YYYY-MM-DD limits shifts to that date onward (used by bootstrap for initial load).
 // Omit ?from to get full history (used by the "load older" UI action).
@@ -133,9 +148,11 @@ router.get('/', auth, async (req, res) => {
 
     const [shiftsRes, suppressedRes] = await Promise.all([
       db.query(
-        `SELECT s.*, l.name AS location_name, l.color, l.rate
+        `SELECT s.*, l.name AS location_name, l.color, l.rate,
+                fl.name AS from_location_name, fl.color AS from_location_color
          FROM shifts s
          JOIN locations l ON s.location_id = l.id
+         LEFT JOIN locations fl ON s.pulled_from_location_id = fl.id
          WHERE s.user_id = $1 ${shiftWhere}
          ORDER BY s.date DESC, s.start_time DESC`,
         shiftParams
@@ -197,9 +214,12 @@ router.put('/:id', auth, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'A single shift cannot exceed 18 hours.' });
 
   try {
-    const check = await db.query('SELECT open_shift_id FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    const check = await db.query('SELECT open_shift_id, is_pulled FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
     if (!check.rows.length) return res.status(404).json({ ok: false, error: 'Shift not found' });
     if (check.rows[0].open_shift_id) return res.status(403).json({ ok: false, error: 'Awarded shifts cannot be modified' });
+    if (check.rows[0].is_pulled) return res.status(403).json({ ok: false, error: 'Pulled shifts cannot be modified' });
+    if (await isAcceptedSwapShift(req.userId, req.params.id))
+      return res.status(403).json({ ok: false, error: 'Swapped shifts cannot be modified' });
 
     const overlap = await db.query(
       `SELECT id FROM shifts
@@ -235,9 +255,12 @@ router.put('/:id', auth, async (req, res) => {
 // DELETE /api/shifts/:id
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const check = await db.query('SELECT open_shift_id FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    const check = await db.query('SELECT open_shift_id, is_pulled FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
     if (!check.rows.length) return res.json({ ok: true });
     if (check.rows[0].open_shift_id) return res.status(403).json({ ok: false, error: 'Awarded shifts cannot be removed' });
+    if (check.rows[0].is_pulled) return res.status(403).json({ ok: false, error: 'Pulled shifts cannot be removed' });
+    if (await isAcceptedSwapShift(req.userId, req.params.id))
+      return res.status(403).json({ ok: false, error: 'Swapped shifts cannot be removed' });
     await db.query('DELETE FROM shifts WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
     res.json({ ok: true });
   } catch (err) {

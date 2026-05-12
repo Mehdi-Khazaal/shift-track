@@ -155,7 +155,8 @@ function normalizeShift(s){
     adminNotes:s.admin_notes||'', openShiftId:s.open_shift_id||null, awardedBy:s.awarded_by_name||'',
     location_name:s.location_name, rate:parseFloat(s.rate),
     isPulled:!!s.is_pulled, pulledFromLocationId:s.pulled_from_location_id||null,
-    pulledFromLocationName:s.from_location_name||null, pullBonus:parseFloat(s.pull_bonus)||0 };
+    pulledFromLocationName:s.from_location_name||null, pullBonus:parseFloat(s.pull_bonus)||0,
+    payRateOverride:s.pay_rate_override==null?null:parseFloat(s.pay_rate_override) };
 }
 function normalizeBase(b){
   return { id:b.id, locationId:b.location_id, week:b.week, day:b.day_of_week,
@@ -222,7 +223,7 @@ function computePayForShifts(shifts,schedules,ymds,userId){
     let regRun=0,pay=0,hrs=0,ot=0;
     for(const s of all){
       const h=shiftHours(s.start,s.end);
-      const rate=s.rate||0;
+      const rate=s.payRateOverride ?? (s.rate||0);
       const reg=Math.max(0,Math.min(h,OT_THRESH-regRun));
       const otH=h-reg;
       pay+=reg*rate+otH*rate*1.5;
@@ -396,6 +397,7 @@ function userRowHTML(u){
 let viewUserId='', viewUserPPOffset=0;
 let _udashRows=[], _udashTotHrs=0, _udashTotPay=0, _udashPPLabel='';
 let _udashPulls=[], _udashPullBonus=0, _udashPeriodPulls=[], _pullShiftList=[];
+let editPullId='', toLoc='', hasBonus=false, payRateMode='destination';
 
 function openUserDashboard(userId){
   viewUserId=userId; viewUserPPOffset=0;
@@ -420,7 +422,7 @@ async function loadUserPulls(userId){
   renderPullsList();
 }
 function closeUserDash(){ document.getElementById('user-dash-modal').classList.remove('open'); }
-function changeUDashPP(dir){ viewUserPPOffset+=dir; renderUserDashboard(); }
+function changeUDashPP(dir){ viewUserPPOffset+=dir; renderUserDashboard(); renderPullsList(); }
 
 function renderUserDashboard(){
   const anchor=new Date(PP_ANCHOR+'T00:00:00');
@@ -450,7 +452,7 @@ function renderUserDashboard(){
     const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     let regRun=0,totPay=0,totHrs=0,totOt=0;
     const rows=all.map(s=>{
-      const h=shiftHours(s.start,s.end), rate=s.rate||0;
+      const h=shiftHours(s.start,s.end), rate=s.payRateOverride ?? (s.rate||0);
       const reg=Math.max(0,Math.min(h,OT_THRESH-regRun)), otH=h-reg;
       const p=reg*rate+otH*rate*1.5;
       regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
@@ -572,8 +574,11 @@ document.getElementById('pull-modal').addEventListener('click',e=>{ if(e.target=
 // ══════════════════════════════
 //  PULL BONUS
 // ══════════════════════════════
-function openPullModal(){
+async function openPullModalLegacy(){
   if(!viewUserId) return;
+  document.getElementById('edit-pull-id').value='';
+  document.getElementById('pull-modal-title').textContent='Create Pull';
+  document.getElementById('pull-modal-desc').textContent='Pull this employee to a different location for one shift';
   const anchor=new Date(PP_ANCHOR+'T00:00:00');
   const today=new Date(); today.setHours(0,0,0,0);
   const diffDays=Math.round((today-anchor)/86400000);
@@ -607,12 +612,102 @@ function openPullModal(){
   _pullShiftList.sort((a,b2)=>a.date.localeCompare(b2.date)||a.start.localeCompare(b2.start));
 
   const shiftSel=document.getElementById('pull-shift-sel');
+  shiftSel.disabled=false;
   shiftSel.innerHTML='<option value="">Select a shift…</option>'+
     _pullShiftList.map((s,i)=>`<option value="${i}">${s.label}</option>`).join('');
   const locSel=document.getElementById('pull-to-loc-sel');
   locSel.innerHTML='<option value="">Select destination location…</option>'+
     allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
   document.getElementById('pull-has-bonus').checked=true;
+  document.getElementById('pull-pay-rate-mode').value='destination';
+  document.getElementById('pull-undo-btn').style.display='none';
+  document.getElementById('pull-result').style.display='none';
+  const btn=document.getElementById('pull-submit-btn');
+  if(editPullId){
+    btn.disabled=true; btn.textContent='Saving...';
+    const res=await apiFetch(`/api/pulls/admin/${editPullId}`,{method:'PUT',body:{to_location_id:toLoc,has_bonus:hasBonus,pay_rate_mode:payRateMode}});
+    if(res?.ok){
+      showToast('Pull updated ✓');
+      closePullModal();
+      const sr=await apiFetch(`/api/admin/users/${viewUserId}/shifts`);
+      if(sr?.ok) allShifts[viewUserId]=sr.shifts.map(normalizeShift);
+      await loadUserPulls(viewUserId);
+    } else {
+      const el=document.getElementById('pull-result');
+      el.textContent=res?.error||'Failed to update pull';
+      el.style.display='block';
+      btn.disabled=false; btn.textContent='Save Pull';
+    }
+    return;
+  }
+  if(editPullId){
+    btn.disabled=true; btn.textContent='Saving...';
+    const res=await apiFetch(`/api/pulls/admin/${editPullId}`,{method:'PUT',body:{to_location_id:toLoc,has_bonus:hasBonus,pay_rate_mode:payRateMode}});
+    if(res?.ok){
+      showToast('Pull updated ✓');
+      closePullModal();
+      const sr=await apiFetch(`/api/admin/users/${viewUserId}/shifts`);
+      if(sr?.ok) allShifts[viewUserId]=sr.shifts.map(normalizeShift);
+      await loadUserPulls(viewUserId);
+    } else {
+      const el=document.getElementById('pull-result');
+      el.textContent=res?.error||'Failed to update pull';
+      el.style.display='block';
+      btn.disabled=false; btn.textContent='Save Pull';
+    }
+    return;
+  }
+  btn.disabled=false; btn.textContent='Create Pull';
+  document.getElementById('pull-modal').classList.add('open');
+}
+
+function openPullModal(){
+  if(!viewUserId) return;
+  document.getElementById('edit-pull-id').value='';
+  document.getElementById('pull-modal-title').textContent='Create Pull';
+  document.getElementById('pull-modal-desc').textContent='Pull this employee to a different location for one shift';
+
+  const anchor=new Date(PP_ANCHOR+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const diffDays=Math.round((today-anchor)/86400000);
+  const currentN=diffDays<0?Math.ceil(diffDays/14):Math.floor(diffDays/14);
+  const n=currentN+viewUserPPOffset;
+  const start=new Date(anchor); start.setDate(anchor.getDate()+n*14);
+  const end=new Date(start); end.setDate(start.getDate()+13);
+  const ymds=[];
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ymds.push(toYMD(new Date(d)));
+  const w1D=ymds.slice(0,7).map(y=>new Date(y+'T12:00:00'));
+  const w2D=ymds.slice(7,14).map(y=>new Date(y+'T12:00:00'));
+
+  const suppressed=allSuppressed[viewUserId]||new Set();
+  const shifts=allShifts[viewUserId]||[];
+  const sched=allSchedules[viewUserId]||[];
+  _pullShiftList=[];
+  shifts.filter(s=>ymds.includes(s.date)&&!s.isPulled).forEach(s=>{
+    const date=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    _pullShiftList.push({...s,isBase:false,label:`${date} - ${s.location_name} - ${s.start}-${s.end}`});
+  });
+  sched.forEach(b=>{
+    [[w1D],[w2D]].forEach(([wkD])=>{
+      const d=baseToDate(b,wkD);
+      if(d&&ymds.includes(d)&&!suppressed.has(d)&&!_pullShiftList.find(x=>x.isBase&&x.date===d&&x.start===b.start)){
+        const date=new Date(d+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+        _pullShiftList.push({id:null,locationId:b.locationId,location_name:b.location_name,date:d,start:b.start,end:b.end,isBase:true,label:`${date} - ${b.location_name} - ${b.start}-${b.end} (base)`});
+      }
+    });
+  });
+  _pullShiftList.sort((a,b2)=>a.date.localeCompare(b2.date)||a.start.localeCompare(b2.start));
+
+  const shiftSel=document.getElementById('pull-shift-sel');
+  shiftSel.disabled=false;
+  shiftSel.innerHTML='<option value="">Select a shift...</option>'+
+    _pullShiftList.map((s,i)=>`<option value="${i}">${s.label}</option>`).join('');
+  const locSel=document.getElementById('pull-to-loc-sel');
+  locSel.innerHTML='<option value="">Select destination location...</option>'+
+    allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  document.getElementById('pull-has-bonus').checked=true;
+  document.getElementById('pull-pay-rate-mode').value='destination';
+  document.getElementById('pull-undo-btn').style.display='none';
   document.getElementById('pull-result').style.display='none';
   const btn=document.getElementById('pull-submit-btn');
   btn.disabled=false; btn.textContent='Create Pull';
@@ -620,6 +715,33 @@ function openPullModal(){
 }
 
 function closePullModal(){ document.getElementById('pull-modal').classList.remove('open'); }
+
+function editPull(pullId){
+  const p=(_udashPulls||[]).find(x=>x.id===pullId);
+  if(!p||p.undone_at) return;
+  document.getElementById('edit-pull-id').value=p.id;
+  document.getElementById('pull-modal-title').textContent='Edit Pull';
+  document.getElementById('pull-modal-desc').textContent='Update the destination, bonus, or pay rate for this pull';
+
+  const date=new Date(String(p.pull_date).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const shiftSel=document.getElementById('pull-shift-sel');
+  shiftSel.innerHTML=`<option value="edit">${date} Â· ${p.from_location_name||'Original'} Â· ${String(p.shift_start||'').slice(0,5)}â€“${String(p.shift_end||'').slice(0,5)}</option>`;
+  shiftSel.value='edit';
+  shiftSel.disabled=true;
+
+  const locSel=document.getElementById('pull-to-loc-sel');
+  locSel.innerHTML='<option value="">Select destination locationâ€¦</option>'+
+    allLocs.filter(l=>l.id!==p.from_location_id).map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  locSel.value=p.to_location_id||'';
+
+  document.getElementById('pull-has-bonus').checked=!!p.has_bonus;
+  document.getElementById('pull-pay-rate-mode').value=p.pay_rate_mode||'destination';
+  document.getElementById('pull-undo-btn').style.display='';
+  document.getElementById('pull-result').style.display='none';
+  const btn=document.getElementById('pull-submit-btn');
+  btn.disabled=false; btn.textContent='Save Pull';
+  document.getElementById('pull-modal').classList.add('open');
+}
 
 function onPullShiftChange(){
   const idx=document.getElementById('pull-shift-sel').value;
@@ -631,16 +753,35 @@ function onPullShiftChange(){
 }
 
 async function submitPull(){
+  const editPullId=document.getElementById('edit-pull-id').value;
   const idx=document.getElementById('pull-shift-sel').value;
   const toLoc=document.getElementById('pull-to-loc-sel').value;
-  if(idx===''){ showToast('Select a shift',true); return; }
+  if(!editPullId&&idx===''){ showToast('Select a shift',true); return; }
   if(!toLoc){ showToast('Select a destination location',true); return; }
-  const shift=_pullShiftList[parseInt(idx)];
+  const shift=editPullId?null:_pullShiftList[parseInt(idx)];
   const hasBonus=document.getElementById('pull-has-bonus').checked;
+  const payRateMode=document.getElementById('pull-pay-rate-mode').value;
   const btn=document.getElementById('pull-submit-btn');
+  if(editPullId){
+    btn.disabled=true; btn.textContent='Saving...';
+    const res=await apiFetch(`/api/pulls/admin/${editPullId}`,{method:'PUT',body:{to_location_id:toLoc,has_bonus:hasBonus,pay_rate_mode:payRateMode}});
+    if(res?.ok){
+      showToast('Pull updated ✓');
+      closePullModal();
+      const sr=await apiFetch(`/api/admin/users/${viewUserId}/shifts`);
+      if(sr?.ok) allShifts[viewUserId]=sr.shifts.map(normalizeShift);
+      await loadUserPulls(viewUserId);
+    } else {
+      const el=document.getElementById('pull-result');
+      el.textContent=res?.error||'Failed to update pull';
+      el.style.display='block';
+      btn.disabled=false; btn.textContent='Save Pull';
+    }
+    return;
+  }
   btn.disabled=true; btn.textContent='Creating…';
   const body={user_id:viewUserId,shift_id:shift.isBase?null:shift.id,from_location_id:shift.locationId,
-    to_location_id:toLoc,pull_date:shift.date,shift_start:shift.start,shift_end:shift.end,has_bonus:hasBonus};
+    to_location_id:toLoc,pull_date:shift.date,shift_start:shift.start,shift_end:shift.end,has_bonus:hasBonus,pay_rate_mode:payRateMode};
   const res=await apiFetch('/api/pulls/admin',{method:'POST',body});
   if(res?.ok){
     showToast('Pull created ✓');
@@ -688,6 +829,13 @@ async function undoPull(pullId){
   }
 }
 
+async function undoPullFromModal(){
+  const pullId=document.getElementById('edit-pull-id').value;
+  if(!pullId) return;
+  await undoPull(pullId);
+  closePullModal();
+}
+
 function renderPullsList(){
   const section=document.getElementById('udash-pulls-section');
   if(!section) return;
@@ -695,38 +843,38 @@ function renderPullsList(){
     section.innerHTML='<div class="section-label" style="margin-top:20px;margin-bottom:8px">Pull History</div><div style="font-size:12px;color:var(--muted);font-family:var(--mono)">No pulls recorded for this employee.</div>';
     return;
   }
-  const today=new Date(); today.setHours(0,0,0,0);
-  const weekStart=new Date(today); weekStart.setDate(today.getDate()-today.getDay());
-  const weekStartY=toYMD(weekStart);
-  const thisWeekPulls=_udashPulls.filter(p=>String(p.pull_date).slice(0,10)>=weekStartY&&!p.undone_at);
+  const periodPulls=_udashPeriodPulls||[];
   const allPulls=_udashPulls;
 
-  const renderRow=(p,canUndo)=>{
+  const renderRow=(p,canEdit)=>{
     const date=new Date(String(p.pull_date).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     const bonusBadge=p.has_bonus
       ?`<span style="color:var(--green);font-family:var(--mono);font-size:11px">+$${parseFloat(p.bonus_amount||0).toFixed(0)}</span>`
       :`<span style="color:var(--muted);font-size:11px">no bonus</span>`;
     const undoneBadge=p.undone_at?`<span style="font-size:10px;color:var(--dim);font-family:var(--mono);background:var(--bg3);border-radius:3px;padding:1px 5px">undone</span>`:'';
-    const undoBtn=canUndo?`<button class="btn btn-ghost btn-sm" onclick="undoPull('${p.id}')">Undo</button>`:'';
+    const rateBadge=p.pay_rate_mode==='original'
+      ?`<span style="font-size:10px;color:var(--accent);font-family:var(--mono);background:rgba(91,143,255,.1);border-radius:3px;padding:1px 5px">original rate</span>`
+      :`<span style="font-size:10px;color:var(--muted);font-family:var(--mono);background:var(--bg3);border-radius:3px;padding:1px 5px">destination rate</span>`;
+    const editBtn=canEdit?`<button class="btn btn-ghost btn-sm" onclick="editPull('${p.id}')">Edit</button>`:'';
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);${p.undone_at?'opacity:.5':''}">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${date} · <span>${p.from_location_name||'Base'}</span><span style="color:var(--muted)">→</span><span>${p.to_location_name||'—'}</span>
-          ${bonusBadge}${undoneBadge}
+          ${bonusBadge}${rateBadge}${undoneBadge}
         </div>
         <div style="font-size:11px;font-family:var(--mono);color:var(--muted)">${String(p.shift_start||'').slice(0,5)}–${String(p.shift_end||'').slice(0,5)}</div>
       </div>
-      ${undoBtn}
+      ${editBtn}
     </div>`;
   };
 
-  let html=`<div class="section-label" style="margin-top:20px;margin-bottom:8px">This Week's Pulls</div>`;
-  if(!thisWeekPulls.length){
-    html+='<div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:16px">No pulls this week.</div>';
+  let html=`<div class="section-label" style="margin-top:20px;margin-bottom:8px">Current Pay Period Pulls</div>`;
+  if(!periodPulls.length){
+    html+='<div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:16px">No pulls in this pay period.</div>';
   } else {
-    html+=`<div class="card" style="padding:0;margin-bottom:16px">${thisWeekPulls.map(p=>renderRow(p,true)).join('')}</div>`;
+    html+=`<div class="card" style="padding:0;margin-bottom:16px">${periodPulls.map(p=>renderRow(p,true)).join('')}</div>`;
   }
-  if(allPulls.length>thisWeekPulls.length){
+  if(allPulls.length>periodPulls.length){
     html+=`<div class="section-label" style="margin-bottom:8px">All Pulls</div>
       <div class="card" style="padding:0">${allPulls.map(p=>renderRow(p,!p.undone_at)).join('')}</div>`;
   }

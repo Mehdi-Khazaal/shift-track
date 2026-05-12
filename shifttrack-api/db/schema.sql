@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS shifts (
   admin_notes     TEXT DEFAULT '',
   open_shift_id   UUID,
   awarded_by_name TEXT DEFAULT '',
+  is_pulled       BOOLEAN NOT NULL DEFAULT FALSE,
+  pulled_from_location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  pull_bonus      NUMERIC(10,2) NOT NULL DEFAULT 0,
+  pay_rate_override NUMERIC(10,2),
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -163,6 +167,26 @@ CREATE TABLE IF NOT EXISTS base_suppressed_dates (
   date    DATE NOT NULL,
   UNIQUE(user_id, date)
 );
+
+CREATE TABLE IF NOT EXISTS shift_pulls (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  shift_id         UUID REFERENCES shifts(id) ON DELETE SET NULL,
+  from_location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  to_location_id   UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  pull_date        DATE NOT NULL,
+  shift_start      TIME NOT NULL,
+  shift_end        TIME NOT NULL,
+  has_bonus        BOOLEAN NOT NULL DEFAULT TRUE,
+  bonus_amount     NUMERIC(10,2) NOT NULL DEFAULT 50.00,
+  created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+  is_base_shift    BOOLEAN NOT NULL DEFAULT FALSE,
+  pay_rate_mode    TEXT NOT NULL DEFAULT 'destination',
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  undone_at        TIMESTAMPTZ,
+  undone_by        UUID REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_shift_pulls_user ON shift_pulls(user_id, pull_date);
 
 CREATE TABLE IF NOT EXISTS leave_types (
   id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),

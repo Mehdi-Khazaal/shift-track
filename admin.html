@@ -615,8 +615,9 @@
 <!-- PULL MODAL -->
 <div class="modal-overlay" id="pull-modal">
   <div class="modal" style="max-width:460px">
-    <h3 style="margin-bottom:4px;font-size:17px">Create Pull</h3>
-    <p style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:20px">Pull this employee to a different location for one shift</p>
+    <input type="hidden" id="edit-pull-id" value=""/>
+    <h3 id="pull-modal-title" style="margin-bottom:4px;font-size:17px">Create Pull</h3>
+    <p id="pull-modal-desc" style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:20px">Pull this employee to a different location for one shift</p>
     <div class="form-group">
       <label>Shift</label>
       <select id="pull-shift-sel" onchange="onPullShiftChange()">
@@ -633,8 +634,16 @@
       <input type="checkbox" id="pull-has-bonus" checked style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)"/>
       <label for="pull-has-bonus" style="margin-bottom:0;cursor:pointer;font-size:13px">Add $50 pull bonus to paycheck</label>
     </div>
+    <div class="form-group">
+      <label>Pay Rate</label>
+      <select id="pull-pay-rate-mode">
+        <option value="destination">Use destination location pay rate</option>
+        <option value="original">Keep original location pay rate</option>
+      </select>
+    </div>
     <div id="pull-result" style="margin-bottom:12px;font-size:12px;font-family:var(--mono);display:none;padding:10px 12px;border-radius:var(--radius-sm);background:rgba(255,95,109,.1);color:var(--red)"></div>
     <div class="modal-footer">
+      <button class="btn btn-ghost" id="pull-undo-btn" onclick="undoPullFromModal()" style="display:none;color:var(--red)">Undo Pull</button>
       <button class="btn btn-ghost" onclick="closePullModal()">Cancel</button>
       <button class="btn btn-primary" id="pull-submit-btn" onclick="submitPull()">Create Pull</button>
     </div>

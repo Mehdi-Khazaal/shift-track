@@ -314,6 +314,7 @@ async function migrate() {
       'ALTER TABLE shifts ADD CONSTRAINT shifts_pulled_from_location_id_fkey FOREIGN KEY (pulled_from_location_id) REFERENCES locations(id) ON DELETE SET NULL'
     );
     await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS pull_bonus NUMERIC(10,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE shifts ADD COLUMN IF NOT EXISTS pay_rate_override NUMERIC(10,2)`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS shift_pulls (
         id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -327,11 +328,15 @@ async function migrate() {
         has_bonus        BOOLEAN NOT NULL DEFAULT TRUE,
         bonus_amount     NUMERIC(10,2) NOT NULL DEFAULT 50.00,
         created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+        is_base_shift    BOOLEAN NOT NULL DEFAULT FALSE,
+        pay_rate_mode    TEXT NOT NULL DEFAULT 'destination',
         created_at       TIMESTAMPTZ DEFAULT NOW(),
         undone_at        TIMESTAMPTZ,
         undone_by        UUID REFERENCES users(id) ON DELETE SET NULL
       )
     `);
+    await pool.query(`ALTER TABLE shift_pulls ADD COLUMN IF NOT EXISTS is_base_shift BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE shift_pulls ADD COLUMN IF NOT EXISTS pay_rate_mode TEXT NOT NULL DEFAULT 'destination'`);
 
     // -- Indexes on hot query paths -----------------------------------------------
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_id      ON shifts(user_id)`);

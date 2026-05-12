@@ -177,6 +177,7 @@ function normalizeShift(s){
     isPulled:    !!s.is_pulled,
     pulledFromLocationName: s.from_location_name||null,
     pullBonus:   parseFloat(s.pull_bonus)||0,
+    payRateOverride: s.pay_rate_override==null ? null : parseFloat(s.pay_rate_override),
   };
 }
 function normalizeBase(b){
@@ -328,7 +329,7 @@ function computeWeekPay(shifts){
   const sorted=[...shifts].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
   const breakdown=sorted.map(s=>{
     const loc=getLocById(s.locationId);
-    const rate=loc?loc.rate:0;
+    const rate=s.payRateOverride ?? (loc?loc.rate:0);
     const rawHrs=shiftHours(s.start,s.end);
     // Approved call-offs reduce worked hours (unpaid)
     const callOffHrs=leaveCache.loaded
@@ -533,10 +534,20 @@ async function deleteLocation(){
 // ═══════════════════════════════════════
 //  SHIFT FORM
 // ═══════════════════════════════════════
+function isAcceptedSwapShiftId(id){
+  const myId=getUser()?.id;
+  return swapsData.some(sw=>sw.status==='accepted'&&(
+    (sw.initiator_id===myId&&sw.swapped_initiator_shift_id===id)||
+    (sw.target_id===myId&&sw.swapped_target_shift_id===id)
+  ));
+}
+
 function openAddShift(id=null){
   if(id){
     const s=getShifts().find(x=>x.id===id);
     if(s?.locked){ showToast(`Awarded by ${s.awardedBy||'Admin'} — contact your admin to make changes`,false); return; }
+    if(s?.isPulled){ showToast('Pulled shifts are managed by your administrator',false); return; }
+    if(isAcceptedSwapShiftId(id)){ showToast('Swapped shifts cannot be edited',false); return; }
   }
   const locs=getLocations();
   if(!locs.length){ showToast('Add a location first in Settings',true); switchScreen('settings',document.querySelector('[data-screen="settings"]')); return; }
@@ -639,6 +650,8 @@ async function deleteShift(){
   const id=document.getElementById('edit-shift-id').value;
   const s=getShifts().find(x=>x.id===id);
   if(s?.locked){ showToast(`Awarded shift — contact your admin to remove it`,false); return; }
+  if(s?.isPulled){ showToast('Pulled shifts are managed by your administrator',false); return; }
+  if(isAcceptedSwapShiftId(id)){ showToast('Swapped shifts cannot be removed',false); return; }
   const res=await apiFetch(`/api/shifts/${id}`,{method:'DELETE'});
   if(!res?.ok){ showToast(res?.error||'Failed to delete',true); return; }
   cache.shifts=cache.shifts.filter(s=>s.id!==id);
@@ -949,7 +962,7 @@ function shiftItemHTML(s,bd,swapId=null){
   const loc  =getLocById(s.locationId);
   const color=loc?.color||'#888';
   const name =loc?.name||'Unknown';
-  const rate =loc?.rate||0;
+  const rate =s.payRateOverride ?? (loc?.rate||0);
   const rawHrs=shiftHours(s.start,s.end);
   // bd.hrs already accounts for call-off deduction via computeWeekPay
   const effectiveHrs=bd?bd.hrs:rawHrs;
@@ -1660,7 +1673,7 @@ async function downloadPayPDF(offset){
     let regRun=0, rows=[], totPay=0, totHrs=0, totOt=0;
     for(const s of all){
       const loc=getLocById(s.locationId);
-      const rate=loc?loc.rate:0;
+      const rate=s.payRateOverride ?? (loc?loc.rate:0);
       const h=shiftHours(s.start,s.end);
       const reg=Math.max(0,Math.min(h,thresh-regRun)), otH=h-reg;
       const p=reg*rate+otH*rate*1.5+(s.pullBonus||0);
@@ -1714,6 +1727,24 @@ async function downloadPayPDF(offset){
       <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>
       <td style="text-align:right"><strong>${formatPay(totPay)}</strong></td>
     </tr>`;
+
+  const pulledRows=allRows.filter(s=>s.isPulled&&s.pullBonus>0);
+  document.getElementById('pdf-pull-bonuses').innerHTML=pulledRows.length?`
+    <div style="margin-top:18px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;color:#444">Pull Bonuses</div>
+      <table>
+        <thead><tr><th>Date</th><th>From</th><th>To</th><th>Shift</th><th style="text-align:right">Bonus</th></tr></thead>
+        <tbody>
+          ${pulledRows.map(s=>`<tr>
+            <td>${new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</td>
+            <td>${s.pulledFromLocationName||'â€”'}</td>
+            <td>${s.loc?.name||'â€”'}</td>
+            <td>${s.start}â€“${s.end}</td>
+            <td style="text-align:right;color:#c07000">+${formatPay(s.pullBonus||0)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`:'';
 
   window.print();
 }
@@ -2262,7 +2293,7 @@ function updateLiveTicker() {
 
   let earned = 0;
   for (const active of all) {
-    const rate = getLocById(active.locationId)?.rate || 0;
+    const rate = active.payRateOverride ?? (getLocById(active.locationId)?.rate || 0);
     const elapsedHrs = elapsedHoursForActive(active);
 
     // Sum reg hours from all shifts that started strictly before this active shift
@@ -2279,7 +2310,7 @@ function updateLiveTicker() {
   }
 
   const otActive = all.some(s => {
-    const rate = getLocById(s.locationId)?.rate || 0;
+    const rate = s.payRateOverride ?? (getLocById(s.locationId)?.rate || 0);
     if (!rate) return false;
     const elapsedHrs = elapsedHoursForActive(s);
     let regBefore = 0;
