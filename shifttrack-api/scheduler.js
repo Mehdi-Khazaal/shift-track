@@ -11,8 +11,8 @@ function groupBy(arr, key) {
   }, {});
 }
 
-// Runs every minute - sends push notifications when it's time
-cron.schedule('* * * * *', async () => {
+// Runs every 5 minutes - sends push notifications when it's time
+cron.schedule('*/5 * * * *', async () => {
   try {
     const now = new Date();
     const windowBackMs = 60 * 1000;
@@ -142,8 +142,8 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
-// Runs every minute - process expired house-type open shifts (assign winner + notify)
-cron.schedule('* * * * *', async () => {
+// Runs every 5 minutes - process expired house-type open shifts (assign winner + notify)
+cron.schedule('*/5 * * * *', async () => {
   try {
     const expired = await db.query(
       `SELECT os.*, l.name AS location_name
