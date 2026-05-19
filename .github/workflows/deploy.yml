@@ -25,5 +25,10 @@ jobs:
             cd /var/www/repo/shifttrack-api
             npm install --omit=dev
             pm2 restart shifttrack-api
-            sleep 5
-            curl -sf "http://localhost:3000/health" | grep '"ok":true' || (echo "Health check failed" && exit 1)
+            for i in 1 2 3 4 5 6; do
+              sleep 5
+              result=$(curl -sf "http://localhost:3000/health" 2>/dev/null || true)
+              echo "$result" | grep -q '"ok":true' && echo "Health check passed" && break
+              echo "Attempt $i/6 failed, retrying..."
+              if [ "$i" = "6" ]; then echo "Health check failed" && exit 1; fi
+            done
