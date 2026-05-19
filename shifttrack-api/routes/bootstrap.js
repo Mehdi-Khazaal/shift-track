@@ -22,7 +22,7 @@ router.get('/', auth, async (req, res) => {
         )
       : Promise.resolve({ rows: [{ has_older: false }] });
 
-    const [locsRes, shiftsRes, suppressedRes, baseRes, settingsRes, unavailRes, olderRes] = await Promise.all([
+    const [locsRes, shiftsRes, suppressedRes, baseRes, settingsRes, unavailRes, olderRes, meRes] = await Promise.all([
       db.query(`
         SELECT l.*,
                r.name           AS region_name,
@@ -57,6 +57,7 @@ router.get('/', auth, async (req, res) => {
         ORDER BY start_date, start_time NULLS FIRST
       `, [req.userId]),
       olderShiftsQuery,
+      db.query('SELECT work_type FROM users WHERE id=$1', [req.userId]),
     ]);
 
     res.json({
@@ -68,6 +69,7 @@ router.get('/', auth, async (req, res) => {
       settings:         settingsRes.rows[0] || { ot_threshold: 40, pp_anchor: DEFAULT_ANCHOR },
       unavailability:   unavailRes.rows,
       shifts_partial:   !!olderRes.rows[0]?.has_older,
+      work_type:        meRes.rows[0]?.work_type || 'regular',
     });
   } catch (err) {
     console.error('[bootstrap]', err);

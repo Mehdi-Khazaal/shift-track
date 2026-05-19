@@ -211,8 +211,9 @@ function baseToDate(base,weekDates){
 }
 
 function computePayForShifts(shifts,schedules,ymds,userId){
-  // Combine logged + base shifts for a given set of dates (two weeks = two separate OT windows)
   const suppressed = allSuppressed[userId] || new Set();
+  const user = allUsers.find(u=>u.id===userId);
+  const isBlock = user?.work_type === 'block';
   function weekShifts(wkYMDs){
     const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
     const logged=shifts.filter(s=>wkYMDs.includes(s.date));
@@ -223,7 +224,8 @@ function computePayForShifts(shifts,schedules,ymds,userId){
     let regRun=0,pay=0,hrs=0,ot=0;
     for(const s of all){
       const h=shiftHours(s.start,s.end);
-      const rate=s.payRateOverride ?? (s.rate||0);
+      const blockPremium=(isBlock&&s.isBase)?0.50:0;
+      const rate=(s.payRateOverride ?? (s.rate||0))+blockPremium;
       const reg=Math.max(0,Math.min(h,OT_THRESH-regRun));
       const otH=h-reg;
       pay+=reg*rate+otH*rate*1.5;
@@ -340,6 +342,10 @@ function renderUsers(){
               <select id="new-position"><option value="">None</option><option value="SRC">SRC</option><option value="DSP">DSP</option><option value="PRN">PRN</option></select>
             </div>
             <div class="form-group">
+              <label>Work type</label>
+              <select id="new-work-type"><option value="regular">Regular</option><option value="block">Block (+$0.50/hr base)</option></select>
+            </div>
+            <div class="form-group">
               <label>Main Location</label>
               <select id="new-location"><option value="">None</option></select>
             </div>
@@ -373,6 +379,7 @@ function userRowHTML(u){
       <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         ${u.name||'—'}
         ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+        ${u.work_type==='block'?'<span class="badge" style="background:rgba(255,140,0,.15);color:#ff8c00;border:1px solid rgba(255,140,0,.3)">block</span>':''}
         ${u.role==='admin'?'<span class="badge admin">admin</span>':u.role==='specialist'?'<span class="badge" style="background:rgba(197,119,255,.15);color:#c77dff;border:1px solid rgba(197,119,255,.3)">specialist</span>':''}
         ${inactive?'<span class="badge" style="background:rgba(255,95,109,.15);color:var(--red);border:1px solid rgba(255,95,109,.3)">inactive</span>':''}
       </div>
@@ -445,6 +452,8 @@ function renderUserDashboard(){
   const sched=allSchedules[viewUserId]||[];
 
   const suppressed=allSuppressed[viewUserId]||new Set();
+  const viewUser=allUsers.find(u=>u.id===viewUserId);
+  const isViewBlock=viewUser?.work_type==='block';
   function weekRows(wkYMDs){
     const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
     const logged=shifts.filter(s=>wkYMDs.includes(s.date));
@@ -452,7 +461,9 @@ function renderUserDashboard(){
     const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     let regRun=0,totPay=0,totHrs=0,totOt=0;
     const rows=all.map(s=>{
-      const h=shiftHours(s.start,s.end), rate=s.payRateOverride ?? (s.rate||0);
+      const h=shiftHours(s.start,s.end);
+      const blockPremium=(isViewBlock&&s.isBase)?0.50:0;
+      const rate=(s.payRateOverride ?? (s.rate||0))+blockPremium;
       const reg=Math.max(0,Math.min(h,OT_THRESH-regRun)), otH=h-reg;
       const p=reg*rate+otH*rate*1.5;
       regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
@@ -995,6 +1006,7 @@ function renderManageUsers(){
         <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px">
           ${u.name||'—'}
           ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+          ${u.work_type==='block'?'<span class="badge" style="background:rgba(255,140,0,.15);color:#ff8c00;border:1px solid rgba(255,140,0,.3)">block</span>':''}
         </div>
         <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
       </div>
@@ -1011,6 +1023,7 @@ function openEditUserModal(id){
   document.getElementById('edit-email').value=u.email;
   document.getElementById('edit-position').value=u.position||'';
   document.getElementById('edit-role').value=u.role;
+  document.getElementById('edit-work-type').value=u.work_type||'regular';
   document.getElementById('edit-password').value='';
   document.getElementById('edit-hire-date').value=u.hire_date?u.hire_date.slice(0,10):'';
   // Populate + set location
@@ -1030,6 +1043,7 @@ async function saveEditUser(){
   const position=document.getElementById('edit-position').value;
   const location_id=document.getElementById('edit-location').value||null;
   const role=document.getElementById('edit-role').value;
+  const work_type=document.getElementById('edit-work-type').value||'regular';
   const password=document.getElementById('edit-password').value.trim();
   const hire_date=document.getElementById('edit-hire-date').value;
   if(!name){ showToast('Enter a name',true); return; }
@@ -1037,7 +1051,7 @@ async function saveEditUser(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('Enter a valid email address',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
   if(password&&password.length<8){ showToast('Password must be at least 8 characters',true); return; }
-  const body={name,email,position,location_id,role,hire_date};
+  const body={name,email,position,location_id,role,hire_date,work_type};
   if(password) body.password=password;
   const res=await apiFetch(`/api/admin/users/${id}`,{method:'PATCH',body});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
@@ -1158,11 +1172,14 @@ function renderLocCard(l){
   const addrBtn=l.address
     ?`<div class="loc-addr-row"><button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="openMapAddress(this.dataset.addr)" style="display:inline-flex;align-items:center;gap:5px;color:var(--accent);background:none;border:none;cursor:pointer;font-size:11px;font-family:var(--mono);padding:0;max-width:100%;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.address}</span></button></div>`
     :'';
+  const posType=l.position_type||'none';
+  const posLabel={'tc':'TC','src':'SRC','dsp':'DSP'}[posType]||null;
+  const posBadge=posLabel?`<span style="background:rgba(255,255,255,.12);color:#fff;border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin-left:4px">${posLabel}</span>`:'';
   return `<div class="loc-card">
     <div class="loc-card-accent" style="background:${l.color}"></div>
     <div class="loc-card-content">
       <div class="loc-card-top">
-        <div class="loc-card-name">${l.name}</div>
+        <div class="loc-card-name">${l.name}${posBadge}</div>
         <button class="btn btn-ghost btn-xs" onclick="openLocModal('${l.id}')">Edit</button>
       </div>
       <div class="loc-stats">
@@ -1188,6 +1205,14 @@ function _populateLocModalDropdowns(presetRegionId=null){
   }
 }
 
+function onLocPosTypeChange(){
+  const pt=document.getElementById('loc-position-type').value;
+  const rateRow=document.getElementById('loc-rate-row');
+  if(rateRow) rateRow.style.display=(pt==='none')?'':'none';
+  const rateEl=document.getElementById('loc-rate');
+  if(pt==='tc'||pt==='src'){ if(rateEl) rateEl.value='22.25'; }
+  else if(pt==='dsp'){        if(rateEl) rateEl.value='19.25'; }
+}
 function openLocModal(id=null, presetRegionId=null){
   document.getElementById('loc-edit-id').value=id||'';
   document.getElementById('loc-modal-title').textContent=id?'Edit Location':'Add Location';
@@ -1199,6 +1224,7 @@ function openLocModal(id=null, presetRegionId=null){
   document.getElementById('loc-address').value='';
   document.getElementById('loc-phone').value='';
   document.getElementById('loc-consumers').value='0';
+  document.getElementById('loc-position-type').value='none';
   _populateLocModalDropdowns(presetRegionId);
   if(id){
     const loc=allLocs.find(l=>l.id===id);
@@ -1211,8 +1237,10 @@ function openLocModal(id=null, presetRegionId=null){
       document.querySelectorAll('.csw').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
       document.getElementById('loc-region').value=loc.region_id||'';
       document.getElementById('loc-specialist').value=loc.specialist_id||'';
+      document.getElementById('loc-position-type').value=loc.position_type||'none';
     }
   }
+  onLocPosTypeChange();
   document.getElementById('loc-modal').classList.add('open');
 }
 function closeLocModal(){ document.getElementById('loc-modal').classList.remove('open'); hideAddrSuggestions(); }
@@ -1283,6 +1311,7 @@ document.addEventListener('click',e=>{
 
 async function saveLoc(){
   const name=document.getElementById('loc-name').value.trim();
+  const position_type=document.getElementById('loc-position-type').value||'none';
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.csw.selected')?.dataset.c||'#5b8fff';
   const address=document.getElementById('loc-address').value.trim();
@@ -1291,10 +1320,10 @@ async function saveLoc(){
   const specialist_id=document.getElementById('loc-specialist').value||null;
   const consumer_count=parseInt(document.getElementById('loc-consumers').value)||0;
   if(!name){ showToast('Enter a name',true); return; }
-  if(isNaN(rate)||rate<0){ showToast('Enter a valid rate',true); return; }
+  if(position_type==='none'&&(isNaN(rate)||rate<0)){ showToast('Enter a valid rate',true); return; }
   const editId=document.getElementById('loc-edit-id').value;
   const res=await apiFetch(editId?`/api/locations/${editId}`:'/api/locations',
-    {method:editId?'PUT':'POST',body:{name,rate,color,address,phone,region_id,specialist_id,consumer_count}});
+    {method:editId?'PUT':'POST',body:{name,rate:isNaN(rate)?0:rate,color,address,phone,region_id,specialist_id,consumer_count,position_type}});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   closeLocModal(); await loadAll(); showToast('Location saved');
 }
@@ -1354,6 +1383,7 @@ async function createAccount(){
   const password=document.getElementById('new-pass').value;
   const role=document.getElementById('new-role').value;
   const position=document.getElementById('new-position').value;
+  const work_type=document.getElementById('new-work-type').value||'regular';
   const location_id=document.getElementById('new-location').value||null;
   const res=document.getElementById('create-result');
 
@@ -1363,7 +1393,7 @@ async function createAccount(){
   if(password.length<8){ showToast('Password must be at least 8 characters',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
 
-  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date,role}});
+  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date,role,work_type}});
   res.style.display='block';
   if(data?.ok){
     res.style.color='var(--green)';
@@ -1382,6 +1412,7 @@ function clearCreateForm(){
   ['new-name','new-email','new-pass','new-hire-date'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-role').value='user';
   document.getElementById('new-position').value='';
+  document.getElementById('new-work-type').value='regular';
   document.getElementById('new-location').value='';
   const r=document.getElementById('create-result');
   r.style.display='none'; r.textContent='';

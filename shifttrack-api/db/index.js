@@ -338,6 +338,10 @@ async function migrate() {
     await pool.query(`ALTER TABLE shift_pulls ADD COLUMN IF NOT EXISTS is_base_shift BOOLEAN NOT NULL DEFAULT FALSE`);
     await pool.query(`ALTER TABLE shift_pulls ADD COLUMN IF NOT EXISTS pay_rate_mode TEXT NOT NULL DEFAULT 'destination'`);
 
+    // Position type and work type
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS position_type TEXT NOT NULL DEFAULT 'none'`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS work_type TEXT NOT NULL DEFAULT 'regular'`);
+
     // -- Indexes on hot query paths -----------------------------------------------
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_id      ON shifts(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_date     ON shifts(user_id, date)`);
@@ -366,7 +370,7 @@ pool.connect((err, client, release) => {
   if (err) {
     console.error('ERROR  Database connection failed:', err.message);
   } else {
-    console.log('OK  Database connected (Neon PostgreSQL)');
+    console.log('OK  Database connected');
     dbStatus.connected = true;
     release();
     migrate();

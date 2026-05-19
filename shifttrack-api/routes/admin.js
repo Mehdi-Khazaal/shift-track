@@ -9,7 +9,7 @@ const bcrypt  = require('bcrypt');
 router.get('/users', auth, adminOnly, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id, u.email, u.name, u.role, u.position, u.location_id, u.hire_date, u.is_active, u.created_at,
+      `SELECT u.id, u.email, u.name, u.role, u.position, u.work_type, u.location_id, u.hire_date, u.is_active, u.created_at,
               l.name AS location_name, l.color AS location_color
        FROM users u
        LEFT JOIN locations l ON u.location_id = l.id
@@ -113,7 +113,7 @@ router.patch('/users/:id/reactivate', auth, adminOnly, async (req, res) => {
 
 // POST /api/admin/users - create account (admin only)
 router.post('/users', auth, adminOnly, async (req, res) => {
-  const { email, name, password, position, location_id, role = 'user' } = req.body;
+  const { email, name, password, position, location_id, role = 'user', work_type = 'regular' } = req.body;
   if (!email || !password)
     return res.status(400).json({ ok: false, error: 'email and password required' });
   if (!['admin', 'user', 'specialist'].includes(role))
@@ -122,6 +122,7 @@ router.post('/users', auth, adminOnly, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Invalid email address' });
   if (password.length < 8)
     return res.status(400).json({ ok: false, error: 'Password must be at least 8 characters' });
+  const workType = ['block', 'regular'].includes(work_type) ? work_type : 'regular';
   try {
     const existing = await db.query('SELECT id FROM users WHERE email=$1', [email]);
     if (existing.rows.length)
@@ -130,8 +131,8 @@ router.post('/users', auth, adminOnly, async (req, res) => {
     if (!hire_date) return res.status(400).json({ ok: false, error: 'Hire date is required' });
     const hash = await bcrypt.hash(password, 10);
     const result = await db.query(
-      'INSERT INTO users (email, name, password_hash, role, position, location_id, hire_date) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, email, name, role, position, location_id, hire_date',
-      [email, name || email.split('@')[0], hash, role, position || '', location_id || null, hire_date]
+      'INSERT INTO users (email, name, password_hash, role, position, location_id, hire_date, work_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, email, name, role, position, location_id, hire_date, work_type',
+      [email, name || email.split('@')[0], hash, role, position || '', location_id || null, hire_date, workType]
     );
     const user = result.rows[0];
     await db.query('INSERT INTO user_settings (user_id) VALUES ($1)', [user.id]);
@@ -144,25 +145,26 @@ router.post('/users', auth, adminOnly, async (req, res) => {
 
 // PATCH /api/admin/users/:id - update user info
 router.patch('/users/:id', auth, adminOnly, async (req, res) => {
-  const { name, email, role, position, location_id, password, hire_date } = req.body;
+  const { name, email, role, position, location_id, password, hire_date, work_type } = req.body;
   if (!name || !email)
     return res.status(400).json({ ok: false, error: 'name and email are required' });
   if (!['admin', 'user', 'specialist'].includes(role))
     return res.status(400).json({ ok: false, error: 'Invalid role' });
+  const workType = ['block', 'regular'].includes(work_type) ? work_type : 'regular';
   try {
     let result;
     if (password && password.length >= 8) {
       const hash = await bcrypt.hash(password, 10);
       result = await db.query(
-        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6, hire_date=$7
-         WHERE id=$8 RETURNING id, email, name, role, position, location_id, hire_date`,
-        [name, email, role, position || '', location_id || null, hash, hire_date || null, req.params.id]
+        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6, hire_date=$7, work_type=$8
+         WHERE id=$9 RETURNING id, email, name, role, position, location_id, hire_date, work_type`,
+        [name, email, role, position || '', location_id || null, hash, hire_date || null, workType, req.params.id]
       );
     } else {
       result = await db.query(
-        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, hire_date=$6
-         WHERE id=$7 RETURNING id, email, name, role, position, location_id, hire_date`,
-        [name, email, role, position || '', location_id || null, hire_date || null, req.params.id]
+        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, hire_date=$6, work_type=$7
+         WHERE id=$8 RETURNING id, email, name, role, position, location_id, hire_date, work_type`,
+        [name, email, role, position || '', location_id || null, hire_date || null, workType, req.params.id]
       );
     }
     if (!result.rows.length) return res.status(404).json({ ok: false, error: 'User not found' });

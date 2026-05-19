@@ -116,6 +116,11 @@ async function loadAllData(attempt=1){
     cache.unavailability  = res.unavailability.map(normalizeUnavail);
     cache.allShiftsLoaded = !res.shifts_partial;
     cache.loaded = true;
+    // Keep work_type in localStorage in sync with server (admin may have changed it)
+    if (res.work_type) {
+      const u = getUser();
+      if (u && u.work_type !== res.work_type) { u.work_type = res.work_type; setAuth(getToken(), u); }
+    }
     showToast('Ready ✓');
     renderDash();
     renderAllShifts();
@@ -158,7 +163,8 @@ async function loadAllShiftHistory(options={}){
 function normalizeLocation(l){
   return {
     id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate), address:l.address||'',
-    phone:l.phone||'', regionName:l.region_name||'', specialistName:l.specialist_name||'', consumerCount:l.consumer_count||0
+    phone:l.phone||'', regionName:l.region_name||'', specialistName:l.specialist_name||'', consumerCount:l.consumer_count||0,
+    positionType:l.position_type||'none', regionId:l.region_id||null
   };
 }
 function normalizeShift(s){
@@ -325,11 +331,13 @@ function baseToDate(base, weekDates){
 // ═══════════════════════════════════════
 function computeWeekPay(shifts){
   const thresh=getSettings().otThreshold;
+  const isBlock=(getUser()?.work_type==='block');
   let regRunning=0, totalPay=0;
   const sorted=[...shifts].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
   const breakdown=sorted.map(s=>{
     const loc=getLocById(s.locationId);
-    const rate=s.payRateOverride ?? (loc?loc.rate:0);
+    const blockPremium=(isBlock&&s.isBase)?0.50:0;
+    const rate=(s.payRateOverride ?? (loc?loc.rate:0))+blockPremium;
     const rawHrs=shiftHours(s.start,s.end);
     // Approved call-offs reduce worked hours (unpaid)
     const callOffHrs=leaveCache.loaded
@@ -483,6 +491,14 @@ document.querySelectorAll('.sheet-overlay').forEach(o=>{
 // ═══════════════════════════════════════
 //  LOCATIONS
 // ═══════════════════════════════════════
+function _updateLocRateVisibility(){
+  const pt=document.getElementById('loc-position-type')?.value||'none';
+  const rateRow=document.getElementById('loc-rate-row');
+  if(rateRow) rateRow.style.display=(pt==='none')?'':'none';
+  const rateEl=document.getElementById('loc-rate');
+  if(pt==='tc'||pt==='src') { if(rateEl) rateEl.value='22.25'; }
+  else if(pt==='dsp')       { if(rateEl) rateEl.value='19.25'; }
+}
 function openAddLocation(id=null){
   document.getElementById('edit-loc-id').value=id||'';
   document.getElementById('loc-name').value='';
@@ -491,6 +507,8 @@ function openAddLocation(id=null){
   document.getElementById('sheet-loc-title').textContent=id?'Edit Location':'Add Location';
   document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
   document.querySelector('.color-swatch').classList.add('selected');
+  const ptEl=document.getElementById('loc-position-type');
+  if(ptEl) ptEl.value='none';
   if(id){
     const loc=getLocById(id);
     if(loc){
@@ -498,8 +516,10 @@ function openAddLocation(id=null){
       document.getElementById('loc-rate').value=loc.rate;
       document.querySelectorAll('.color-swatch').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
       document.getElementById('delete-loc-btn').style.display='block';
+      if(ptEl) ptEl.value=loc.positionType||'none';
     }
   }
+  _updateLocRateVisibility();
   openSheet('sheet-location');
 }
 function pickColor(el){
@@ -508,14 +528,15 @@ function pickColor(el){
 }
 async function saveLocation(){
   const name=document.getElementById('loc-name').value.trim();
-  const rate=parseFloat(document.getElementById('loc-rate').value);
+  const position_type=document.getElementById('loc-position-type')?.value||'none';
   const color=document.querySelector('.color-swatch.selected')?.dataset.c||'#5b8fff';
   if(!name){ showToast('Enter a location name',true); return; }
-  if(isNaN(rate)||rate<0){ showToast('Enter a valid pay rate',true); return; }
+  let rate=parseFloat(document.getElementById('loc-rate').value);
+  if(position_type==='none'&&(isNaN(rate)||rate<0)){ showToast('Enter a valid pay rate',true); return; }
   const editId=document.getElementById('edit-loc-id').value;
   const res = await apiFetch(
     editId ? `/api/locations/${editId}` : '/api/locations',
-    { method: editId?'PUT':'POST', body:{name,rate,color} }
+    { method: editId?'PUT':'POST', body:{name,rate:isNaN(rate)?0:rate,color,position_type} }
   );
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   // Update cache

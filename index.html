@@ -419,7 +419,16 @@
     <div class="sheet-body">
       <input type="hidden" id="edit-loc-id"/>
       <div class="form-group"><label>House / Location name</label><input type="text" id="loc-name" placeholder="e.g. Oakland House"/></div>
-      <div class="form-group"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
+      <div class="form-group">
+        <label>Position type</label>
+        <select id="loc-position-type" onchange="_updateLocRateVisibility()">
+          <option value="none">None (manual rate)</option>
+          <option value="tc">TC — Teacher Counselor ($22.25/hr)</option>
+          <option value="src">SRC — Specialized Residential Counselor ($22.25/hr)</option>
+          <option value="dsp">DSP — Direct Support Professional ($19.25/hr)</option>
+        </select>
+      </div>
+      <div class="form-group" id="loc-rate-row"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
       <div class="form-group">
         <label>Color</label>
         <div class="color-row" id="color-picker">
