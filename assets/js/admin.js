@@ -346,6 +346,10 @@ function renderUsers(){
               <select id="new-work-type"><option value="regular">Regular</option><option value="block">Block (+$0.50/hr base)</option></select>
             </div>
             <div class="form-group">
+              <label>Gender</label>
+              <select id="new-gender"><option value="">— Not set —</option><option value="male">Male</option><option value="female">Female</option></select>
+            </div>
+            <div class="form-group">
               <label>Main Location</label>
               <select id="new-location"><option value="">None</option></select>
             </div>
@@ -380,6 +384,7 @@ function userRowHTML(u){
         ${u.name||'—'}
         ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
         ${u.work_type==='block'?'<span class="badge" style="background:rgba(255,140,0,.15);color:#ff8c00;border:1px solid rgba(255,140,0,.3)">block</span>':''}
+        ${u.gender==='male'?'<span class="badge" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.3)">♂ M</span>':u.gender==='female'?'<span class="badge" style="background:rgba(244,114,182,.12);color:#f472b6;border:1px solid rgba(244,114,182,.3)">♀ F</span>':''}
         ${u.role==='admin'?'<span class="badge admin">admin</span>':u.role==='specialist'?'<span class="badge" style="background:rgba(197,119,255,.15);color:#c77dff;border:1px solid rgba(197,119,255,.3)">specialist</span>':''}
         ${inactive?'<span class="badge" style="background:rgba(255,95,109,.15);color:var(--red);border:1px solid rgba(255,95,109,.3)">inactive</span>':''}
       </div>
@@ -1024,6 +1029,7 @@ function openEditUserModal(id){
   document.getElementById('edit-position').value=u.position||'';
   document.getElementById('edit-role').value=u.role;
   document.getElementById('edit-work-type').value=u.work_type||'regular';
+  document.getElementById('edit-gender').value=u.gender||'';
   document.getElementById('edit-password').value='';
   document.getElementById('edit-hire-date').value=u.hire_date?u.hire_date.slice(0,10):'';
   // Populate + set location
@@ -1044,6 +1050,7 @@ async function saveEditUser(){
   const location_id=document.getElementById('edit-location').value||null;
   const role=document.getElementById('edit-role').value;
   const work_type=document.getElementById('edit-work-type').value||'regular';
+  const gender=document.getElementById('edit-gender').value||'';
   const password=document.getElementById('edit-password').value.trim();
   const hire_date=document.getElementById('edit-hire-date').value;
   if(!name){ showToast('Enter a name',true); return; }
@@ -1051,7 +1058,7 @@ async function saveEditUser(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('Enter a valid email address',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
   if(password&&password.length<8){ showToast('Password must be at least 8 characters',true); return; }
-  const body={name,email,position,location_id,role,hire_date,work_type};
+  const body={name,email,position,location_id,role,hire_date,work_type,gender};
   if(password) body.password=password;
   const res=await apiFetch(`/api/admin/users/${id}`,{method:'PATCH',body});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
@@ -1175,11 +1182,13 @@ function renderLocCard(l){
   const posType=l.position_type||'none';
   const posLabel={'tc':'TC','src':'SRC','dsp':'DSP'}[posType]||null;
   const posBadge=posLabel?`<span style="background:rgba(255,255,255,.12);color:#fff;border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin-left:4px">${posLabel}</span>`:'';
+  const gtype=l.gender_type||'mixed';
+  const gBadge=gtype==='male'?`<span style="background:rgba(56,189,248,.15);color:#38bdf8;border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin-left:4px">♂ Male</span>`:gtype==='female'?`<span style="background:rgba(244,114,182,.15);color:#f472b6;border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin-left:4px">♀ Female</span>`:'';
   return `<div class="loc-card">
     <div class="loc-card-accent" style="background:${l.color}"></div>
     <div class="loc-card-content">
       <div class="loc-card-top">
-        <div class="loc-card-name">${l.name}${posBadge}</div>
+        <div class="loc-card-name">${l.name}${posBadge}${gBadge}</div>
         <button class="btn btn-ghost btn-xs" onclick="openLocModal('${l.id}')">Edit</button>
       </div>
       <div class="loc-stats">
@@ -1225,6 +1234,7 @@ function openLocModal(id=null, presetRegionId=null){
   document.getElementById('loc-phone').value='';
   document.getElementById('loc-consumers').value='0';
   document.getElementById('loc-position-type').value='none';
+  document.getElementById('loc-gender-type').value='mixed';
   _populateLocModalDropdowns(presetRegionId);
   if(id){
     const loc=allLocs.find(l=>l.id===id);
@@ -1238,6 +1248,7 @@ function openLocModal(id=null, presetRegionId=null){
       document.getElementById('loc-region').value=loc.region_id||'';
       document.getElementById('loc-specialist').value=loc.specialist_id||'';
       document.getElementById('loc-position-type').value=loc.position_type||'none';
+      document.getElementById('loc-gender-type').value=loc.gender_type||'mixed';
     }
   }
   onLocPosTypeChange();
@@ -1312,6 +1323,7 @@ document.addEventListener('click',e=>{
 async function saveLoc(){
   const name=document.getElementById('loc-name').value.trim();
   const position_type=document.getElementById('loc-position-type').value||'none';
+  const gender_type=document.getElementById('loc-gender-type').value||'mixed';
   const rate=parseFloat(document.getElementById('loc-rate').value);
   const color=document.querySelector('.csw.selected')?.dataset.c||'#5b8fff';
   const address=document.getElementById('loc-address').value.trim();
@@ -1323,7 +1335,7 @@ async function saveLoc(){
   if(position_type==='none'&&(isNaN(rate)||rate<0)){ showToast('Enter a valid rate',true); return; }
   const editId=document.getElementById('loc-edit-id').value;
   const res=await apiFetch(editId?`/api/locations/${editId}`:'/api/locations',
-    {method:editId?'PUT':'POST',body:{name,rate:isNaN(rate)?0:rate,color,address,phone,region_id,specialist_id,consumer_count,position_type}});
+    {method:editId?'PUT':'POST',body:{name,rate:isNaN(rate)?0:rate,color,address,phone,region_id,specialist_id,consumer_count,position_type,gender_type}});
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   closeLocModal(); await loadAll(); showToast('Location saved');
 }
@@ -1384,6 +1396,7 @@ async function createAccount(){
   const role=document.getElementById('new-role').value;
   const position=document.getElementById('new-position').value;
   const work_type=document.getElementById('new-work-type').value||'regular';
+  const gender=document.getElementById('new-gender').value||'';
   const location_id=document.getElementById('new-location').value||null;
   const res=document.getElementById('create-result');
 
@@ -1393,7 +1406,7 @@ async function createAccount(){
   if(password.length<8){ showToast('Password must be at least 8 characters',true); return; }
   if(!hire_date){ showToast('Hire date is required',true); return; }
 
-  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date,role,work_type}});
+  const data=await apiFetch('/api/admin/users',{method:'POST',body:{name,email,password,position,location_id,hire_date,role,work_type,gender}});
   res.style.display='block';
   if(data?.ok){
     res.style.color='var(--green)';
@@ -1413,6 +1426,7 @@ function clearCreateForm(){
   document.getElementById('new-role').value='user';
   document.getElementById('new-position').value='';
   document.getElementById('new-work-type').value='regular';
+  document.getElementById('new-gender').value='';
   document.getElementById('new-location').value='';
   const r=document.getElementById('create-result');
   r.style.display='none'; r.textContent='';

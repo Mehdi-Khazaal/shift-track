@@ -116,10 +116,13 @@ async function loadAllData(attempt=1){
     cache.unavailability  = res.unavailability.map(normalizeUnavail);
     cache.allShiftsLoaded = !res.shifts_partial;
     cache.loaded = true;
-    // Keep work_type in localStorage in sync with server (admin may have changed it)
-    if (res.work_type) {
-      const u = getUser();
-      if (u && u.work_type !== res.work_type) { u.work_type = res.work_type; setAuth(getToken(), u); }
+    // Keep work_type + gender in localStorage in sync with server (admin may have changed them)
+    const u = getUser();
+    if (u) {
+      let changed = false;
+      if (res.work_type && u.work_type !== res.work_type) { u.work_type = res.work_type; changed = true; }
+      if (res.gender !== undefined && u.gender !== res.gender) { u.gender = res.gender; changed = true; }
+      if (changed) setAuth(getToken(), u);
     }
     showToast('Ready ✓');
     renderDash();
@@ -164,7 +167,7 @@ function normalizeLocation(l){
   return {
     id:l.id, name:l.name, color:l.color, rate:parseFloat(l.rate), address:l.address||'',
     phone:l.phone||'', regionName:l.region_name||'', specialistName:l.specialist_name||'', consumerCount:l.consumer_count||0,
-    positionType:l.position_type||'none', regionId:l.region_id||null
+    positionType:l.position_type||'none', regionId:l.region_id||null, genderType:l.gender_type||'mixed'
   };
 }
 function normalizeShift(s){
@@ -508,7 +511,9 @@ function openAddLocation(id=null){
   document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));
   document.querySelector('.color-swatch').classList.add('selected');
   const ptEl=document.getElementById('loc-position-type');
+  const gtEl=document.getElementById('loc-gender-type');
   if(ptEl) ptEl.value='none';
+  if(gtEl) gtEl.value='mixed';
   if(id){
     const loc=getLocById(id);
     if(loc){
@@ -517,6 +522,7 @@ function openAddLocation(id=null){
       document.querySelectorAll('.color-swatch').forEach(s=>s.classList.toggle('selected',s.dataset.c===loc.color));
       document.getElementById('delete-loc-btn').style.display='block';
       if(ptEl) ptEl.value=loc.positionType||'none';
+      if(gtEl) gtEl.value=loc.genderType||'mixed';
     }
   }
   _updateLocRateVisibility();
@@ -529,6 +535,7 @@ function pickColor(el){
 async function saveLocation(){
   const name=document.getElementById('loc-name').value.trim();
   const position_type=document.getElementById('loc-position-type')?.value||'none';
+  const gender_type=document.getElementById('loc-gender-type')?.value||'mixed';
   const color=document.querySelector('.color-swatch.selected')?.dataset.c||'#5b8fff';
   if(!name){ showToast('Enter a location name',true); return; }
   let rate=parseFloat(document.getElementById('loc-rate').value);
@@ -536,7 +543,7 @@ async function saveLocation(){
   const editId=document.getElementById('edit-loc-id').value;
   const res = await apiFetch(
     editId ? `/api/locations/${editId}` : '/api/locations',
-    { method: editId?'PUT':'POST', body:{name,rate:isNaN(rate)?0:rate,color,position_type} }
+    { method: editId?'PUT':'POST', body:{name,rate:isNaN(rate)?0:rate,color,position_type,gender_type} }
   );
   if(!res?.ok){ showToast(res?.error||'Failed to save',true); return; }
   // Update cache
@@ -1127,19 +1134,25 @@ function renderSettings(){
   const label=document.getElementById('locations-summary-label');
   if(label) label.textContent=locs.length?`Locations (${locs.length})`:'Locations';
   if(!locs.length){ el.innerHTML='<div class="empty-state" style="padding:20px;font-size:12px">No locations yet</div>'; return; }
-  el.innerHTML=locs.map(l=>`
+  el.innerHTML=locs.map(l=>{
+    const ptLabel={'tc':'TC','src':'SRC','dsp':'DSP'}[l.positionType]||null;
+    const ptBadge=ptLabel?`<span style="background:rgba(255,255,255,.1);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px">${ptLabel}</span>`:'';
+    const gtLabel=l.genderType==='male'?'♂ Male only':l.genderType==='female'?'♀ Female only':null;
+    const gtBadge=gtLabel?`<span style="background:rgba(91,143,255,.12);color:var(--accent);border:1px solid rgba(91,143,255,.25);border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px">${gtLabel}</span>`:'';
+    return `
     <div class="shift-item" style="flex-direction:column;align-items:stretch;gap:0;padding:0">
       <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
         <div class="shift-dot" style="background:${l.color};flex-shrink:0"></div>
         <div class="shift-info" style="flex:1;min-width:0">
-          <div class="name">${l.name}</div>
+          <div class="name" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${l.name}${ptBadge}${gtBadge}</div>
           <div class="sub">${l.regionName?l.regionName+' · ':''}<span style="color:var(--green)">$${l.rate.toFixed(2)}/hr</span></div>
         </div>
         ${l.address?`<button data-addr="${l.address.replace(/"/g,'&quot;')}" onclick="event.stopPropagation();openMapAddress(this.dataset.addr)" title="Get directions to ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(91,143,255,.12);border:1px solid rgba(91,143,255,.25);color:var(--accent);flex-shrink:0;cursor:pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>`:''}
         ${l.phone?`<a href="tel:${l.phone.replace(/"/g,'&quot;')}" onclick="event.stopPropagation()" title="Call ${l.name}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;background:rgba(46,204,138,.12);border:1px solid rgba(46,204,138,.25);color:var(--green);flex-shrink:0;cursor:pointer;text-decoration:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.26h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 5.83 5.83l1.77-1.77a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg></a>`:''}
       </div>
       ${l.specialistName?`<div style="display:flex;align-items:center;gap:6px;padding:6px 14px 10px 38px;font-size:11px;font-family:var(--mono);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Specialist: <span style="color:var(--text);font-weight:600">${l.specialistName}</span></div>`:''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderSettingsProfile(){
@@ -1164,6 +1177,8 @@ function renderSettingsProfile(){
       <div><span>Assigned house</span><b>${loc?.name||user.location_name||'Not assigned'}</b></div>
       <div><span>Hire date</span><b>${hire}</b></div>
       <div><span>Role</span><b>${user.role==='admin'?'Admin':user.role==='specialist'?'Specialist':'Employee'}</b></div>
+      <div><span>Work type</span><b style="color:${user.work_type==='block'?'#ff8c00':'var(--text)'}">${user.work_type==='block'?'Block (+$0.50/hr base)':'Regular'}</b></div>
+      ${user.gender?`<div><span>Gender</span><b>${user.gender==='male'?'Male':'Female'}</b></div>`:''}
     </div>`;
 }
 

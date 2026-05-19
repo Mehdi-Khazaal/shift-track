@@ -74,7 +74,8 @@ router.post('/login', async (req, res) => {
         hire_date: user.hire_date || null,
         location_id: user.location_id || null,
         location_name: user.location_name || '',
-        work_type: user.work_type || 'regular'
+        work_type: user.work_type || 'regular',
+        gender: user.gender || ''
       }
     });
   } catch (err) {

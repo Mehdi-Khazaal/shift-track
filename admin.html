@@ -462,12 +462,22 @@
       <label>Hire Date <span style="color:var(--red);font-size:10px">*required</span></label>
       <input type="date" id="edit-hire-date"/>
     </div>
-    <div class="form-group">
-      <label>Work type</label>
-      <select id="edit-work-type">
-        <option value="regular">Regular</option>
-        <option value="block">Block (+$0.50/hr on base schedule)</option>
-      </select>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:130px">
+        <label>Work type</label>
+        <select id="edit-work-type">
+          <option value="regular">Regular</option>
+          <option value="block">Block (+$0.50/hr base)</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:130px">
+        <label>Gender</label>
+        <select id="edit-gender">
+          <option value="">— Not set —</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
     </div>
     <div class="form-group" style="margin-bottom:0">
       <label>New Password <span style="color:var(--dim);font-size:9px">(leave blank to keep current — shown so you can read it to them)</span></label>
@@ -498,6 +508,14 @@
       </div>
     </div>
     <div id="loc-rate-row" class="form-group"><label>Pay rate ($/hr)</label><input type="number" id="loc-rate" step="0.01" min="0" placeholder="15.00"/></div>
+    <div class="form-group">
+      <label>Gender type</label>
+      <select id="loc-gender-type">
+        <option value="mixed">Mixed (both)</option>
+        <option value="male">Male only</option>
+        <option value="female">Female only</option>
+      </select>
+    </div>
     <div class="form-group">
       <label>Region</label>
       <div style="display:flex;gap:8px;align-items:center">

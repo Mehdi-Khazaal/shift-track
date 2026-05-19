@@ -338,9 +338,11 @@ async function migrate() {
     await pool.query(`ALTER TABLE shift_pulls ADD COLUMN IF NOT EXISTS is_base_shift BOOLEAN NOT NULL DEFAULT FALSE`);
     await pool.query(`ALTER TABLE shift_pulls ADD COLUMN IF NOT EXISTS pay_rate_mode TEXT NOT NULL DEFAULT 'destination'`);
 
-    // Position type and work type
+    // Position type, gender type, and work type
     await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS position_type TEXT NOT NULL DEFAULT 'none'`);
+    await pool.query(`ALTER TABLE locations ADD COLUMN IF NOT EXISTS gender_type TEXT NOT NULL DEFAULT 'mixed'`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS work_type TEXT NOT NULL DEFAULT 'regular'`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT NOT NULL DEFAULT ''`);
 
     // -- Indexes on hot query paths -----------------------------------------------
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shifts_user_id      ON shifts(user_id)`);

@@ -57,7 +57,7 @@ router.get('/', auth, async (req, res) => {
         ORDER BY start_date, start_time NULLS FIRST
       `, [req.userId]),
       olderShiftsQuery,
-      db.query('SELECT work_type FROM users WHERE id=$1', [req.userId]),
+      db.query('SELECT work_type, gender FROM users WHERE id=$1', [req.userId]),
     ]);
 
     res.json({
@@ -70,6 +70,7 @@ router.get('/', auth, async (req, res) => {
       unavailability:   unavailRes.rows,
       shifts_partial:   !!olderRes.rows[0]?.has_older,
       work_type:        meRes.rows[0]?.work_type || 'regular',
+      gender:           meRes.rows[0]?.gender || '',
     });
   } catch (err) {
     console.error('[bootstrap]', err);

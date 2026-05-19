@@ -56,8 +56,9 @@ router.get('/', auth, async (req, res) => {
 
 // POST /api/locations
 router.post('/', auth, adminOnly, async (req, res) => {
-  let { name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type = 'none' } = req.body;
+  let { name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type = 'none', gender_type = 'mixed' } = req.body;
   position_type = ['tc', 'src', 'dsp'].includes(position_type) ? position_type : 'none';
+  gender_type   = ['male', 'female', 'mixed'].includes(gender_type) ? gender_type : 'mixed';
   if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
   if (POSITION_RATES[position_type] != null) {
     rate = POSITION_RATES[position_type];
@@ -69,9 +70,9 @@ router.post('/', auth, adminOnly, async (req, res) => {
       color = positionTypeColor(name, position_type) || '#5b8fff';
     }
     const result = await db.query(
-      `INSERT INTO locations (name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [name, color || '#5b8fff', parseFloat(rate), address || '', phone || '', region_id || null, specialist_id || null, consumer_count || 0, position_type, req.userId]
+      `INSERT INTO locations (name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type, gender_type, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [name, color || '#5b8fff', parseFloat(rate), address || '', phone || '', region_id || null, specialist_id || null, consumer_count || 0, position_type, gender_type, req.userId]
     );
     res.status(201).json({ ok: true, location: result.rows[0] });
   } catch(err) {
@@ -81,8 +82,9 @@ router.post('/', auth, adminOnly, async (req, res) => {
 
 // PUT /api/locations/:id
 router.put('/:id', auth, adminOnly, async (req, res) => {
-  let { name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type = 'none' } = req.body;
+  let { name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type = 'none', gender_type = 'mixed' } = req.body;
   position_type = ['tc', 'src', 'dsp'].includes(position_type) ? position_type : 'none';
+  gender_type   = ['male', 'female', 'mixed'].includes(gender_type) ? gender_type : 'mixed';
   if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
   if (POSITION_RATES[position_type] != null) {
     rate = POSITION_RATES[position_type];
@@ -95,9 +97,9 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
     }
     const result = await db.query(
       `UPDATE locations
-       SET name=$1, color=$2, rate=$3, address=$4, phone=$5, region_id=$6, specialist_id=$7, consumer_count=$8, position_type=$9
-       WHERE id=$10 RETURNING *`,
-      [name, color || '#5b8fff', parseFloat(rate), address || '', phone || '', region_id || null, specialist_id || null, consumer_count || 0, position_type, req.params.id]
+       SET name=$1, color=$2, rate=$3, address=$4, phone=$5, region_id=$6, specialist_id=$7, consumer_count=$8, position_type=$9, gender_type=$10
+       WHERE id=$11 RETURNING *`,
+      [name, color || '#5b8fff', parseFloat(rate), address || '', phone || '', region_id || null, specialist_id || null, consumer_count || 0, position_type, gender_type, req.params.id]
     );
     if(!result.rows.length) return res.status(404).json({ ok: false, error: 'Location not found' });
     res.json({ ok: true, location: result.rows[0] });
