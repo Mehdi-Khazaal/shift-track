@@ -66,8 +66,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
   }
   try {
     if (position_type !== 'none') {
-      const rr = region_id ? await db.query('SELECT name FROM regions WHERE id=$1', [region_id]) : { rows: [] };
-      color = positionTypeColor(rr.rows[0]?.name || '', position_type) || '#5b8fff';
+      color = positionTypeColor(name, position_type) || '#5b8fff';
     }
     const result = await db.query(
       `INSERT INTO locations (name, color, rate, address, phone, region_id, specialist_id, consumer_count, position_type, created_by)
@@ -92,8 +91,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
   }
   try {
     if (position_type !== 'none') {
-      const rr = region_id ? await db.query('SELECT name FROM regions WHERE id=$1', [region_id]) : { rows: [] };
-      color = positionTypeColor(rr.rows[0]?.name || '', position_type) || '#5b8fff';
+      color = positionTypeColor(name, position_type) || '#5b8fff';
     }
     const result = await db.query(
       `UPDATE locations
