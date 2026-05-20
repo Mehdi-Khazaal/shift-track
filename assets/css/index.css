@@ -134,14 +134,14 @@ select option{background:var(--bg3);}
 .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);padding:4px 10px 6px;gap:2px;}
 .cal-dow-row span{text-align:center;font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;}
 .cal-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 10px 16px;}
-.cal-cell{aspect-ratio:1;border-radius:8px;padding:4px 3px 0;cursor:pointer;transition:background .1s;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;}
+.cal-cell{aspect-ratio:1;border-radius:8px;padding:4px 3px 0;cursor:pointer;transition:background .1s;display:flex;flex-direction:column;align-items:center;position:relative;}
 .cal-cell:active{background:var(--bg3);}
 .cal-cell.other-month .cal-dn{color:var(--dim);}
 .cal-cell.today .cal-dn{background:var(--accent-gradient);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(91,143,255,.4);}
 .cal-cell.has-shift{background:var(--bg3);}
 .cal-dn{font-size:13px;font-weight:600;line-height:1;width:22px;height:22px;display:flex;align-items:center;justify-content:center;}
-.cal-timeline{position:absolute;bottom:0;left:0;right:0;height:5px;background:rgba(128,128,128,.08);}
-.cal-seg{position:absolute;top:0;bottom:0;min-width:2px;opacity:.88;}
+.cal-timeline{position:absolute;bottom:3px;left:3px;right:3px;height:5px;border-radius:3px;background:rgba(128,128,128,.14);overflow:hidden;z-index:1;}
+.cal-seg{position:absolute;top:0;bottom:0;min-width:2px;}
 .cal-dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:32px;}
 .cal-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
 .cal-dot.sq{border-radius:2px;}
@@ -672,7 +672,7 @@ body::before{display:none;}
 }
 
 /* ── Calendar: shift color — tinted background + colored bottom border ── */
-.cal-cell>*{position:relative;z-index:1;}
+.cal-cell>*:not(.cal-timeline){position:relative;z-index:1;}
 .cal-cell.has-shift::before{
   content:'';
   position:absolute;
