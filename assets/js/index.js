@@ -1304,27 +1304,54 @@ function renderCalMonth(){
     cells.push({date:d, otherMonth:true});
   }
 
+  // Pre-build timeline segments for all cells (handles overnight shift spillover)
+  const allYmds = cells.map(({date})=>toYMD(date));
+  const segMap = {};
+  for (const y of allYmds) segMap[y] = [];
+  for (const y of allYmds) {
+    for (const s of getShiftsForDate(y)) {
+      const loc = getLocById(s.locationId);
+      const color = loc?.color || '#888';
+      const sm = toMins(s.start);
+      const em = toMins(s.end);
+      if (em > sm) {
+        // Normal within-day shift
+        segMap[y].push({ left:(sm/1440)*100, width:((em-sm)/1440)*100, color });
+      } else if (em < sm) {
+        // Overnight: segment for this day (sm → midnight)
+        segMap[y].push({ left:(sm/1440)*100, width:((1440-sm)/1440)*100, color });
+        // Segment for next day (midnight → em)
+        const nd = new Date(y+'T12:00:00'); nd.setDate(nd.getDate()+1);
+        const ny = toYMD(nd);
+        if (segMap[ny] !== undefined)
+          segMap[ny].push({ left:0, width:(em/1440)*100, color });
+      } else {
+        // Equal means full 24h
+        segMap[y].push({ left:0, width:100, color });
+      }
+    }
+  }
+
   const grid = document.getElementById('cal-month-grid');
   grid.innerHTML = cells.map(({date,otherMonth})=>{
     const ymd = toYMD(date);
     const isToday = toYMD(date)===toYMD(today);
     const isSelected = ymd===calSelectedDate;
-    const shifts = getShiftsForDate(ymd);
+    const segs = segMap[ymd] || [];
+    const hasShift = segs.length > 0;
     const unavail = getUnavailForDate(ymd);
     const leaves  = getLeaveForDate(ymd);
     const leaveCls = leaves.length
       ? (leaves[0].type_name==='pto' ? ' leave-pto' : leaves[0].type_name==='sick_time' ? ' leave-sick' : ' leave-calloff')
       : '';
-    const dots = shifts.slice(0,4).map(s=>{
-      const loc=getLocById(s.locationId);
-      return `<div class="cal-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>`;
-    }).join('');
-    const firstColor = shifts.length ? (getLocById(shifts[0].locationId)?.color||null) : null;
-    const cellStyle = firstColor ? ` style="--cc:${firstColor}"` : '';
-    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${shifts.length?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}"${cellStyle} onclick="selectCalendarDay('${ymd}')">
+    const segHTML = segs.map(seg=>
+      `<div class="cal-seg" style="left:${seg.left.toFixed(2)}%;width:${seg.width.toFixed(2)}%;background:${seg.color}"></div>`
+    ).join('');
+    const timelineHTML = `<div class="cal-timeline">${segHTML}</div>`;
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${hasShift?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="selectCalendarDay('${ymd}')">
       <div class="cal-dn">${date.getDate()}</div>
       ${unavail.length?'<div class="unavail-stripe"></div>':''}
-      ${dots?`<div class="cal-dots">${dots}</div>`:''}
+      ${timelineHTML}
     </div>`;
   }).join('');
 }
