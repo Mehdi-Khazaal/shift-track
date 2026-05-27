@@ -267,6 +267,17 @@ router.delete('/schedule/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
+// DELETE /api/admin/users/:id/schedule - clear all base shifts for a user
+router.delete('/users/:id/schedule', auth, adminOnly, async (req, res) => {
+  try {
+    await db.query('DELETE FROM base_schedule WHERE user_id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin/users/:id/schedule DELETE]', err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
 // GET /api/admin/swaps - all swaps visible to admin
 router.get('/swaps', auth, adminOnly, async (req, res) => {
   try {

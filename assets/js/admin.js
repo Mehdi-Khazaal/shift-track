@@ -1456,6 +1456,7 @@ async function renderSchedList(){
   const res = await apiFetch(`/api/admin/users/${schedUserId}/schedule`);
   const sched = res?.ok ? res.schedule : [];
   const el = document.getElementById('sched-list');
+  document.getElementById('sched-clear-btn').style.display = sched.length ? '' : 'none';
   if(!sched.length){ el.innerHTML='<div class="empty" style="padding:14px">No base shifts yet</div>'; return; }
   el.innerHTML = sched.map(b=>`
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
@@ -1492,6 +1493,14 @@ async function deleteSchedEntry(id){
   if(!res?.ok){ showToast('Failed to delete',true); return; }
   await renderSchedList();
   showToast('Shift removed');
+}
+
+async function clearSchedEntries(){
+  if(!confirm('Clear all base shifts for this employee?')) return;
+  const res = await apiFetch(`/api/admin/users/${schedUserId}/schedule`,{method:'DELETE'});
+  if(!res?.ok){ showToast('Failed to clear schedule',true); return; }
+  await renderSchedList();
+  showToast('Schedule cleared');
 }
 
 function closeSchedModal(){ document.getElementById('sched-modal').classList.remove('open'); }
