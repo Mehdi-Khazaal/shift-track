@@ -2168,7 +2168,8 @@ function renderOpenShiftsList(shifts){
           </div>
           ${s.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
         </div>
-        ${s.status==='open'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}')">Cancel</button>`:''}
+        ${s.status==='open'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}','open')">Cancel</button>`:''}
+        ${s.status==='claimed'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}','claimed')">Undo</button>`:''}
       </div>
       <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${claimsHtml}</div>
     </div>`;
@@ -2234,11 +2235,16 @@ function renderOpenShiftsList(shifts){
   el.innerHTML=html;
 }
 
-async function cancelOpenShift(id){
-  if(!confirm('Cancel this open shift?')) return;
+async function cancelOpenShift(id, status='open'){
+  const msg = status==='claimed'
+    ? 'Undo this claimed shift? This will remove it from the employee\'s schedule.'
+    : 'Cancel this open shift?';
+  if(!confirm(msg)) return;
   const data = await apiFetch(`/api/open-shifts/admin/${id}`,{method:'DELETE'});
-  if(data?.ok){ showToast('Open shift cancelled'); loadOpenShifts(); }
-  else showToast(data?.error||'Failed to cancel',true);
+  if(data?.ok){
+    showToast(status==='claimed' ? 'Claimed shift undone' : 'Open shift cancelled');
+    loadOpenShifts();
+  } else showToast(data?.error||'Failed',true);
 }
 
 // ══════════════════════════════

@@ -147,9 +147,11 @@ router.get('/admin', auth, adminOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/open-shifts/admin/:id - cancel an open shift
+// DELETE /api/open-shifts/admin/:id - cancel or undo a claimed open shift
 router.delete('/admin/:id', auth, adminOnly, async (req, res) => {
   try {
+    // Remove the shift row created when this open shift was claimed (if any)
+    await db.query('DELETE FROM shifts WHERE open_shift_id=$1', [req.params.id]);
     await db.query('DELETE FROM open_shifts WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) {
