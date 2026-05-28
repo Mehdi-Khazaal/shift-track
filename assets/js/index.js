@@ -1319,6 +1319,7 @@ function renderCalMonth(){
   // Pre-build timeline segments for all cells (handles overnight shift spillover)
   const allYmds = cells.map(({date})=>toYMD(date));
   const segMap = {};
+  const startDates = new Set(); // only days where a shift actually starts
   for (const y of allYmds) segMap[y] = [];
   for (const y of allYmds) {
     for (const s of getShiftsForDate(y)) {
@@ -1326,13 +1327,14 @@ function renderCalMonth(){
       const color = loc?.color || '#888';
       const sm = toMins(s.start);
       const em = toMins(s.end);
+      startDates.add(y);
       if (em > sm) {
         // Normal within-day shift
         segMap[y].push({ left:(sm/1440)*100, width:((em-sm)/1440)*100, color });
       } else if (em < sm) {
         // Overnight: segment for this day (sm → midnight)
         segMap[y].push({ left:(sm/1440)*100, width:((1440-sm)/1440)*100, color });
-        // Segment for next day (midnight → em)
+        // Segment for next day (midnight → em) — spillover only, no background fill
         const nd = new Date(y+'T12:00:00'); nd.setDate(nd.getDate()+1);
         const ny = toYMD(nd);
         if (segMap[ny] !== undefined)
@@ -1350,7 +1352,7 @@ function renderCalMonth(){
     const isToday = toYMD(date)===toYMD(today);
     const isSelected = ymd===calSelectedDate;
     const segs = segMap[ymd] || [];
-    const hasShift = segs.length > 0;
+    const hasShift = startDates.has(ymd);
     const unavail = getUnavailForDate(ymd);
     const leaves  = getLeaveForDate(ymd);
     const leaveCls = leaves.length
