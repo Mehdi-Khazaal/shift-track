@@ -361,6 +361,18 @@ function computeWeekPay(shifts){
   return {totalHrs,totalPay,totalOt,breakdown};
 }
 
+// Shifts starting 23:55–23:59 count as midnight of the next day for pay/OT purposes.
+// Display (calendar) keeps the original date/time; only calc logic uses this.
+function normalizeCalcShift(s) {
+  const [h, m] = s.start.split(':').map(Number);
+  if (h === 23 && m >= 55) {
+    const d = new Date(s.date + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return { ...s, date: d.toISOString().slice(0, 10), start: '00:00' };
+  }
+  return s;
+}
+
 // ═══════════════════════════════════════
 //  CONFLICT CHECKER
 //  Returns error string or null
@@ -754,7 +766,7 @@ function renderDash(){
   document.getElementById('week-label').textContent=`${fmt(wkDates[0])}–${fmt(wkDates[6])}`;
 
   // Logged shifts this week
-  const logged=getShifts().filter(s=>wkYMDs.includes(s.date));
+  const logged=getShifts().map(normalizeCalcShift).filter(s=>wkYMDs.includes(s.date));
 
   // Base shifts this week
   const baseThisWeek=getBase()
@@ -783,7 +795,7 @@ function renderDash(){
   function ppWeekShifts(ymdSet){
     // Need the week dates for this set so we can resolve base shifts
     const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
-    const ppLogged=getShifts().filter(s=>ymdSet.includes(s.date));
+    const ppLogged=getShifts().map(normalizeCalcShift).filter(s=>ymdSet.includes(s.date));
     const ppBase=getBase()
       .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
       .filter(b=>b.date&&ymdSet.includes(b.date));
@@ -1729,7 +1741,7 @@ async function downloadPayPDF(offset){
 
   function weekBreakdown(ymdSet){
     const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
-    const logged=getShifts().filter(s=>ymdSet.includes(s.date));
+    const logged=getShifts().map(normalizeCalcShift).filter(s=>ymdSet.includes(s.date));
     const base=getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&ymdSet.includes(b.date));
     const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     const { otThreshold:thresh } = getSettings();

@@ -174,6 +174,15 @@ function shiftHours(start,end){
 }
 function formatPay(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 function toYMD(d){ if(!d||typeof d.toISOString!=='function') return null; return d.toISOString().slice(0,10); }
+function normalizeCalcShift(s) {
+  const [h, m] = s.start.split(':').map(Number);
+  if (h === 23 && m >= 55) {
+    const d = new Date(s.date + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return { ...s, date: d.toISOString().slice(0, 10), start: '00:00' };
+  }
+  return s;
+}
 function fmt(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function fmtShort(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
 
@@ -216,7 +225,7 @@ function computePayForShifts(shifts,schedules,ymds,userId){
   const isBlock = user?.work_type === 'block';
   function weekShifts(wkYMDs){
     const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
-    const logged=shifts.filter(s=>wkYMDs.includes(s.date));
+    const logged=shifts.map(normalizeCalcShift).filter(s=>wkYMDs.includes(s.date));
     const base=schedules
       .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
       .filter(b=>b.date&&wkYMDs.includes(b.date)&&!suppressed.has(b.date));
@@ -461,7 +470,7 @@ function renderUserDashboard(){
   const isViewBlock=viewUser?.work_type==='block';
   function weekRows(wkYMDs){
     const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
-    const logged=shifts.filter(s=>wkYMDs.includes(s.date));
+    const logged=shifts.map(normalizeCalcShift).filter(s=>wkYMDs.includes(s.date));
     const base=sched.map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkYMDs.includes(b.date)&&!suppressed.has(b.date));
     const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     let regRun=0,totPay=0,totHrs=0,totOt=0;
