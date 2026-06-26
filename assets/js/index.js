@@ -373,6 +373,45 @@ function normalizeCalcShift(s) {
   return s;
 }
 
+// When two shifts at the same location are exactly adjacent (first ends when second starts),
+// treat them as one continuous shift for OT/pay purposes.
+// The combined shift keeps the first shift's date/start; the second is absorbed.
+function mergeConsecutiveShifts(shifts) {
+  if (shifts.length < 2) return [...shifts];
+  const abs = shifts.map(s => {
+    const d = dateToDay(s.date) * 1440;
+    const sM = toMins(s.start);
+    let eM = toMins(s.end);
+    if (eM <= sM) eM += 1440;
+    return { ...s, _as: d + sM, _ae: d + eM };
+  });
+  abs.sort((a, b) => a._as - b._as);
+  const absorbed = new Set();
+  const result = [];
+  for (let i = 0; i < abs.length; i++) {
+    if (absorbed.has(i)) continue;
+    let cur = { ...abs[i] };
+    let extended = true;
+    while (extended) {
+      extended = false;
+      for (let j = 0; j < abs.length; j++) {
+        if (j === i || absorbed.has(j)) continue;
+        if (abs[j].locationId === cur.locationId && abs[j]._as === cur._ae) {
+          cur._ae = abs[j]._ae;
+          const em = cur._ae % 1440;
+          cur.end = `${String(Math.floor(em / 60)).padStart(2, '0')}:${String(em % 60).padStart(2, '0')}`;
+          absorbed.add(j);
+          extended = true;
+          break;
+        }
+      }
+    }
+    const { _as, _ae, ...clean } = cur;
+    result.push(clean);
+  }
+  return result;
+}
+
 // ═══════════════════════════════════════
 //  CONFLICT CHECKER
 //  Returns error string or null
@@ -673,17 +712,24 @@ async function saveShift(){
   if(!locationId||!date||!start||!end){ showToast('Fill in all required fields',true); return; }
   const err=checkConflicts({date,start,end,locationId},editId||null);
   if(err){ showToast(err,true); return; }
-  const res=await apiFetch(
-    editId?`/api/shifts/${editId}`:'/api/shifts',
-    { method:editId?'PUT':'POST', body:{location_id:locationId,date,start_time:start,end_time:end,notes} }
-  );
-  if(!res?.ok){ showToast(res?.error||'Failed to save shift',true); return; }
-  const norm=normalizeShift(res.shift);
-  if(editId){ const i=cache.shifts.findIndex(s=>s.id===editId); if(i>=0) cache.shifts[i]=norm; }
-  else { cache.shifts.push(norm); fireConfetti(); }
-  closeSheet('sheet-shift'); renderDash(); renderAllShifts();
-  if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
-  showToast('Shift saved ✓');
+  const btn=document.getElementById('save-shift-btn');
+  if(btn.disabled) return;
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const res=await apiFetch(
+      editId?`/api/shifts/${editId}`:'/api/shifts',
+      { method:editId?'PUT':'POST', body:{location_id:locationId,date,start_time:start,end_time:end,notes} }
+    );
+    if(!res?.ok){ showToast(res?.error||'Failed to save shift',true); return; }
+    const norm=normalizeShift(res.shift);
+    if(editId){ const i=cache.shifts.findIndex(s=>s.id===editId); if(i>=0) cache.shifts[i]=norm; }
+    else { cache.shifts.push(norm); fireConfetti(); }
+    closeSheet('sheet-shift'); renderDash(); renderAllShifts();
+    if(document.getElementById('screen-calendar').classList.contains('active')) renderCalendar();
+    showToast('Shift saved ✓');
+  } finally {
+    btn.disabled=false; btn.textContent='Save Shift';
+  }
 }
 
 async function deleteShift(){
@@ -774,7 +820,18 @@ function renderDash(){
     .filter(b=>b.date!==null);
 
   const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false}))];
-  const {totalHrs,totalPay,totalOt,breakdown}=computeWeekPay(allShifts);
+
+  // For OT/pay totals: extend range by one day to catch chains that cross into next week,
+  // merge same-location consecutive shifts, then filter back to this week's dates.
+  const nextWkDay0=toYMD(new Date(new Date(wkYMDs[6]+'T00:00:00').setDate(new Date(wkYMDs[6]+'T00:00:00').getDate()+1)));
+  const nextWkDates=getWeekDates(weekOffset+1);
+  const nextDayExtra=[
+    ...getShifts().map(normalizeCalcShift).filter(s=>s.date===nextWkDay0).map(s=>({...s,isBase:false})),
+    ...getBase().map(b=>({...b,date:baseToDate(b,nextWkDates),isBase:true})).filter(b=>b.date===nextWkDay0)
+  ];
+  const mergedWk=mergeConsecutiveShifts([...allShifts,...nextDayExtra]).filter(s=>wkYMDs.includes(s.date));
+  const {totalHrs,totalPay,totalOt}=computeWeekPay(mergedWk);
+  const {breakdown}=computeWeekPay(allShifts);
 
   countUp(document.getElementById('stat-hours'), totalHrs, 600, 'float1');
   countUp(document.getElementById('stat-pay'),   totalPay, 700, 'currency');
@@ -791,15 +848,14 @@ function renderDash(){
   const ppYMDs=[];
   for(let d=new Date(ppS);d<=ppE;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
   const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
-
+  const ppW1D=ppW1.map(y=>new Date(y+'T12:00:00')), ppW2D=ppW2.map(y=>new Date(y+'T12:00:00'));
+  const _ppMerged=mergeConsecutiveShifts([
+    ...getShifts().map(normalizeCalcShift).filter(s=>ppYMDs.includes(s.date)),
+    ...getBase().map(b=>({...b,date:baseToDate(b,ppW1D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date)),
+    ...getBase().map(b=>({...b,date:baseToDate(b,ppW2D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date))
+  ]);
   function ppWeekShifts(ymdSet){
-    // Need the week dates for this set so we can resolve base shifts
-    const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
-    const ppLogged=getShifts().map(normalizeCalcShift).filter(s=>ymdSet.includes(s.date));
-    const ppBase=getBase()
-      .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
-      .filter(b=>b.date&&ymdSet.includes(b.date));
-    return computeWeekPay([...ppLogged,...ppBase]);
+    return computeWeekPay(_ppMerged.filter(s=>ymdSet.includes(s.date)));
   }
   const r1=ppWeekShifts(ppW1), r2=ppWeekShifts(ppW2);
   const ppTotal=r1.totalPay+r2.totalPay;
@@ -1564,12 +1620,14 @@ async function renderHistory(){
     for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
     const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
 
+    const ppW1D=ppW1.map(y=>new Date(y+'T12:00:00')), ppW2D=ppW2.map(y=>new Date(y+'T12:00:00'));
+    const _histMerged=mergeConsecutiveShifts([
+      ...getShifts().filter(s=>ppYMDs.includes(s.date)),
+      ...getBase().map(b=>({...b,date:baseToDate(b,ppW1D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date)),
+      ...getBase().map(b=>({...b,date:baseToDate(b,ppW2D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date))
+    ]);
     function ppWkShifts(ymdSet){
-      const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
-      return computeWeekPay([
-        ...getShifts().filter(s=>ymdSet.includes(s.date)),
-        ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&ymdSet.includes(b.date))
-      ]);
+      return computeWeekPay(_histMerged.filter(s=>ymdSet.includes(s.date)));
     }
     const r1=ppWkShifts(ppW1), r2=ppWkShifts(ppW2);
     const total=r1.totalPay+r2.totalPay;
@@ -1740,12 +1798,15 @@ async function downloadPayPDF(offset){
   const ppYMDs=[];
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
   const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
+  const ppW1D=ppW1.map(y=>new Date(y+'T12:00:00')), ppW2D=ppW2.map(y=>new Date(y+'T12:00:00'));
+  const _pdfMerged=mergeConsecutiveShifts([
+    ...getShifts().map(normalizeCalcShift).filter(s=>ppYMDs.includes(s.date)),
+    ...getBase().map(b=>({...b,date:baseToDate(b,ppW1D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date)),
+    ...getBase().map(b=>({...b,date:baseToDate(b,ppW2D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date))
+  ]);
 
   function weekBreakdown(ymdSet){
-    const wkD=ymdSet.map(y=>new Date(y+'T12:00:00'));
-    const logged=getShifts().map(normalizeCalcShift).filter(s=>ymdSet.includes(s.date));
-    const base=getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&ymdSet.includes(b.date));
-    const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+    const all=_pdfMerged.filter(s=>ymdSet.includes(s.date)).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
     const { otThreshold:thresh } = getSettings();
     let regRun=0, rows=[], totPay=0, totHrs=0, totOt=0;
     for(const s of all){
