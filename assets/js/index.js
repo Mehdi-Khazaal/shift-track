@@ -267,6 +267,19 @@ function toYMD(d){
 }
 function getLocById(id){ return getLocations().find(l=>l.id===id); }
 
+// ── Payday ────────────────────────────────────────────
+// Pay lands biweekly, always on a Friday. The anchor MUST be a
+// known payday Friday — every 14 days before/after it (forever,
+// both directions) is then guaranteed to be a Friday too.
+const PAY_ANCHOR = new Date(2026, 6, 31); // Fri Jul 31 2026 (month is 0-based)
+const PAY_CYCLE_DAYS = 14;
+function isPayday(d){
+  if(!d) return false;
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((day - PAY_ANCHOR) / 86400000);
+  return (((diffDays % PAY_CYCLE_DAYS) + PAY_CYCLE_DAYS) % PAY_CYCLE_DAYS) === 0;
+}
+
 function getAssignedLocation(){
   const user=getUser();
   if(!user?.location_id) return null;
@@ -1409,6 +1422,7 @@ function renderCalMonth(){
     const isSelected = ymd===calSelectedDate;
     const segs = segMap[ymd] || [];
     const hasShift = startDates.has(ymd);
+    const isPay = isPayday(date);
     const unavail = getUnavailForDate(ymd);
     const leaves  = getLeaveForDate(ymd);
     const leaveCls = leaves.length
@@ -1420,6 +1434,7 @@ function renderCalMonth(){
     const timelineHTML = `<div class="cal-timeline">${segHTML}</div>`;
     return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${hasShift?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="selectCalendarDay('${ymd}')">
       <div class="cal-dn">${date.getDate()}</div>
+      ${isPay?'<div class="cal-payday" title="Payday">$</div>':''}
       ${unavail.length?'<div class="unavail-stripe"></div>':''}
       ${timelineHTML}
     </div>`;
@@ -1455,6 +1470,7 @@ function renderCalWeek(){
       <div class="cal-week-day-label${isToday?' today':''}">
         <div class="wd">${DAY_SHORT[i]}</div>
         <div class="dn">${d.getDate()}</div>
+        ${isPayday(d)?'<div class="cal-payday wk" title="Payday">$</div>':''}
       </div>
       <div class="cal-week-shifts">
         ${shifts.length?pillsHTML:`<div class="cal-week-empty">—</div>`}

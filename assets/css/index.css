@@ -191,6 +191,8 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 /* Unavailability calendar markers */
 .cal-cell.unavail{background:rgba(120,128,160,.13);}
 .unavail-stripe{width:calc(100% - 4px);height:3px;border-radius:1px;background:var(--muted);opacity:.45;margin-top:1px;}
+.cal-payday{position:absolute;top:2px;right:3px;z-index:2;width:13px;height:13px;border-radius:50%;background:#f4b942;color:#1a1205;font-size:9px;font-weight:800;line-height:13px;text-align:center;font-family:var(--mono);box-shadow:0 1px 4px rgba(244,185,66,.45);pointer-events:none;}
+.cal-payday.wk{position:static;display:inline-flex;align-items:center;justify-content:center;margin-top:2px;}
 /* PDF print div */
 #pdf-print{display:none;}
 @media print{
@@ -356,6 +358,7 @@ details#locations-dropdown[open] #loc-chevron{transform:rotate(180deg);}
 .legend-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
 .legend-dot.base{border-radius:2px;background:var(--muted);}
 .legend-dot.leave{background:#a78bfa;}
+.legend-dot.pay{background:#f4b942;}
 .legend-line{width:14px;height:3px;border-radius:2px;background:var(--muted);opacity:.7;}
 .cal-cell.selected{outline:1px solid var(--accent);background:rgba(91,143,255,.08);}
 .cal-week-row.selected{background:rgba(91,143,255,.07);}
@@ -671,7 +674,7 @@ body::before{display:none;}
 }
 
 /* ── Calendar: shift color — tinted background + colored bottom border ── */
-.cal-cell>*:not(.cal-timeline){position:relative;z-index:1;}
+.cal-cell>*:not(.cal-timeline):not(.cal-payday){position:relative;z-index:1;}
 .cal-cell.has-shift::before{
   content:'';
   position:absolute;
