@@ -5,6 +5,15 @@ const API = 'https://shift-track.duckdns.org';
 let PP_ANCHOR = '2026-03-22'; // overwritten after login from /api/settings
 const OT_THRESH = 40;
 
+// Escape user/DB-supplied strings before inserting into innerHTML.
+// Employee-submitted text (e.g. leave-request notes) renders in this admin
+// panel, so unescaped input would be stored XSS running with admin privileges.
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
 // ══════════════════════════════
 //  AUTH
 // ══════════════════════════════
@@ -25,7 +34,9 @@ async function apiFetch(path,opts={}){
   return data;
 }
 
-async function doLogin(){
+async function doLogin(e){
+  // The login is a real <form>, so guard against native submit/navigation.
+  if(e && typeof e.preventDefault==='function') e.preventDefault();
   const email=document.getElementById('l-email').value.trim();
   const pass=document.getElementById('l-pass').value;
   const errEl=document.getElementById('login-err');
@@ -37,13 +48,22 @@ async function doLogin(){
     if(!data?.ok){ errEl.textContent=data?.error||'Invalid credentials'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false; return; }
     if(data.user.role!=='admin'){ errEl.textContent='This account does not have admin access.'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false; return; }
     setAuth(data.token,data.user);
+    await saveCredential(email,pass);
     enterApp(data.user);
   }catch(e){
     errEl.textContent='Could not connect. Try again.'; errEl.style.display='block'; btn.textContent='Sign in as Admin'; btn.disabled=false;
   }
 }
 
-document.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+// Ask the browser / OS password manager to save the admin login (see index.js).
+async function saveCredential(email,password){
+  try{
+    if('PasswordCredential' in window && navigator.credentials?.store){
+      const cred=new window.PasswordCredential({ id:email, password, name:email });
+      await navigator.credentials.store(cred);
+    }
+  }catch(_){ /* unsupported or user declined — non-fatal */ }
+}
 
 function doLogout(){
   clearAuth();
@@ -2162,11 +2182,11 @@ function renderOpenShiftsList(shifts){
           <div style="font-family:var(--mono);font-size:13px;font-weight:600">${(s.date||'').slice(0,10)} &nbsp;${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</div>
           <div style="font-size:11px;font-family:var(--mono);color:${isPast?'var(--dim)':'var(--muted)'};margin-top:3px">
             Deadline: ${dlStr}${isPast?' (passed)':''}
-            ${s.claimed_by_name?` · <strong>${s.claimed_by_name}</strong>`:''}</div>
+            ${s.claimed_by_name?` · <strong>${escapeHtml(s.claimed_by_name)}</strong>`:''}</div>
           <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
             <span style="font-size:10px;padding:2px 7px;border-radius:99px;font-family:var(--mono);background:var(--bg3);color:var(--muted)">${targetLabel[s.target_type]||s.target_type}</span>
           </div>
-          ${s.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
+          ${s.notes?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${escapeHtml(s.notes)}</div>`:''}
         </div>
         ${s.status==='open'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}','open')">Cancel</button>`:''}
         ${s.status==='claimed'?`<button class="btn btn-danger btn-sm" onclick="cancelOpenShift('${s.id}','claimed')">Undo</button>`:''}
@@ -2385,7 +2405,7 @@ async function loadLeavePending() {
           <button class="btn btn-danger btn-sm" onclick="openDenyLeave('${r.id}')">Deny</button>
         </div>
       </div>
-      ${r.notes ? `<div style="margin-top:10px;font-size:12px;font-family:var(--mono);color:var(--muted);padding:8px 10px;background:var(--bg3);border-radius:6px">${r.notes}</div>` : ''}
+      ${r.notes ? `<div style="margin-top:10px;font-size:12px;font-family:var(--mono);color:var(--muted);padding:8px 10px;background:var(--bg3);border-radius:6px">${escapeHtml(r.notes)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2419,8 +2439,8 @@ async function loadLeaveAll() {
     const fmtDate = d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
     const color = r.type_color || '#888';
     const noteOrReason = r.status === 'denied' && r.denial_reason
-      ? `<span style="color:var(--red)">Denied: ${r.denial_reason}</span>`
-      : (r.notes || '—');
+      ? `<span style="color:var(--red)">Denied: ${escapeHtml(r.denial_reason)}</span>`
+      : (r.notes ? escapeHtml(r.notes) : '—');
 
     let actions = '';
     if (r.status === 'approved') {

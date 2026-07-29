@@ -20,7 +20,9 @@ async function apiFetch(path,options={}){
   return data;
 }
 
-async function doLogin(){
+async function doLogin(e){
+  // The login is a real <form>, so guard against native submit/navigation.
+  if(e && typeof e.preventDefault==='function') e.preventDefault();
   const email=document.getElementById('login-email').value.trim();
   const password=document.getElementById('login-password').value;
   const errEl=document.getElementById('login-error');
@@ -31,10 +33,26 @@ async function doLogin(){
     const data=await apiFetch('/api/auth/login',{method:'POST',body:{email,password}});
     if(!data?.ok){ errEl.textContent=data?.error||'Invalid email or password.'; errEl.style.display='block'; btn.textContent='Sign in'; btn.disabled=false; return; }
     setAuth(data.token,data.user);
+    await saveCredential(email,password);
     enterApp(data.user);
   }catch(e){
     errEl.textContent='Could not connect to server. Try again.'; errEl.style.display='block'; btn.textContent='Sign in'; btn.disabled=false;
   }
+}
+
+// Ask the browser / OS password manager (Chrome, iOS Keychain, installed PWA) to
+// save the login so users don't retype it after signing out. Best-effort:
+// - On supporting browsers we explicitly call the Credential Management API,
+//   which shows the "Save password?" prompt even though this is a SPA (no page nav).
+// - On iOS Safari (no PasswordCredential) the real <form> + autocomplete
+//   attributes let Keychain offer to save on submit.
+async function saveCredential(email,password){
+  try{
+    if('PasswordCredential' in window && navigator.credentials?.store){
+      const cred=new window.PasswordCredential({ id:email, password, name:email });
+      await navigator.credentials.store(cred);
+    }
+  }catch(_){ /* unsupported or user declined — non-fatal */ }
 }
 
 function doLogout(force=false){
@@ -63,9 +81,7 @@ function enterApp(user){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  ['login-email','login-password'].forEach(id=>{
-    document.getElementById(id)?.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-  });
+  // Login submits via the <form> (Enter key + button both fire onsubmit → doLogin).
   initRipples();
   requestAnimationFrame(updateNavIndicator);
   const token=getToken(), user=getUser();
@@ -81,7 +97,7 @@ const DEFAULT_ANCHOR = '2026-03-22';
 
 // ═══════════════════════════════════════
 //  DATA LAYER — API-backed with local cache
-//  All data lives in Neon via the Render API.
+//  All data lives in Supabase (Postgres), served by the API on Hetzner.
 //  We keep an in-memory cache so renders are instant.
 // ═══════════════════════════════════════
 const cache = { locations:[], shifts:[], base:[], settings:null, unavailability:[], suppressedBases:[], loaded:false, allShiftsLoaded:false };
@@ -100,7 +116,7 @@ function getSettings() {
 
 // Load all data via the bootstrap endpoint (1 request, 1 auth check, 6 parallel DB queries).
 // Shifts are filtered to the last 12 weeks on startup; older history loads on demand.
-// Retries up to 3 times with increasing delays (handles Render cold start).
+// Retries up to 3 times with increasing delays (handles transient network/server hiccups).
 async function loadAllData(attempt=1){
   const MAX = 3;
   showToast(attempt===1 ? 'Loading your data…' : `Connecting… (${attempt}/${MAX})`, false, 20000);
@@ -136,7 +152,7 @@ async function loadAllData(attempt=1){
     console.error('Failed to load data (attempt '+attempt+'):', e);
     if(attempt < MAX){
       const delay = attempt * 15000; // 15s, 30s
-      showToast(`Server waking up… retrying in ${delay/1000}s`, false, delay+2000);
+      showToast(`Connection issue… retrying in ${delay/1000}s`, false, delay+2000);
       setTimeout(() => loadAllData(attempt+1), delay);
     } else {
       showToast('Could not connect. Tap here to retry.', true);
@@ -213,14 +229,16 @@ function getUnavailForDate(dateStr){
   return cache.unavailability.filter(u=>dateStr>=u.startDate && dateStr<=u.endDate);
 }
 
-async function saveSettings(){
-  // Company-fixed settings — nothing to save
-}
-
 // ═══════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════
-function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+// Escape user/DB-supplied strings before inserting into innerHTML.
+// Prevents stored XSS (e.g. a shift/leave note running script in the admin panel).
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
 
 function parseTimeString(t){
   if(!t) return null;
@@ -268,16 +286,18 @@ function toYMD(d){
 function getLocById(id){ return getLocations().find(l=>l.id===id); }
 
 // ── Payday ────────────────────────────────────────────
-// Pay lands biweekly, always on a Friday. The anchor MUST be a
-// known payday Friday — every 14 days before/after it (forever,
-// both directions) is then guaranteed to be a Friday too.
-const PAY_ANCHOR = new Date(2026, 6, 31); // Fri Jul 31 2026 (month is 0-based)
-const PAY_CYCLE_DAYS = 14;
+// Derived from the pay-period anchor (the single, admin-configurable source of
+// truth in settings) — NOT a separate hardcoded date. If the pay-period anchor
+// ever moves, paydays follow automatically instead of silently drifting.
+// Pay lands once per 2-week period, PAY_OFFSET_DAYS after the period starts.
+// The current anchor is a Sunday, so + 5 days lands on Friday (e.g. Fri Jul 31 2026).
+const PAY_OFFSET_DAYS = 5;
 function isPayday(d){
   if(!d) return false;
+  const anchor = new Date(getSettings().ppAnchor + 'T00:00:00');
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((day - PAY_ANCHOR) / 86400000);
-  return (((diffDays % PAY_CYCLE_DAYS) + PAY_CYCLE_DAYS) % PAY_CYCLE_DAYS) === 0;
+  const diffDays = Math.round((day - anchor) / 86400000);
+  return ((((diffDays - PAY_OFFSET_DAYS) % 14) + 14) % 14) === 0;
 }
 
 function getAssignedLocation(){
@@ -1148,8 +1168,8 @@ function shiftItemHTML(s,bd,swapId=null){
   const click=s.isBase?`showToast('Base shifts are set by your administrator',false)`:`openAddShift('${s.id}')`;
   const payStr=formatPay(pay);
   const schedLabel=s.isBase?` <span style="font-size:10px;opacity:.6">(schedule)</span>`:'';
-  const awardedTag=s.locked&&s.awardedBy?`<div class="notes-chip" style="color:var(--accent)">Awarded by ${s.awardedBy}</div>`:'';
-  const adminNotesChip=s.adminNotes?`<div class="notes-chip">${s.adminNotes.slice(0,40)}${s.adminNotes.length>40?'…':''}</div>`:'';
+  const awardedTag=s.locked&&s.awardedBy?`<div class="notes-chip" style="color:var(--accent)">Awarded by ${escapeHtml(s.awardedBy)}</div>`:'';
+  const adminNotesChip=s.adminNotes?`<div class="notes-chip">${escapeHtml(s.adminNotes.slice(0,40))}${s.adminNotes.length>40?'…':''}</div>`:'';
 
   const itemClass=`shift-item${s.isBase?' base-item':''}${shiftState==='done'?' done':''}${shiftState==='active'?' active-shift':''}`;
 
@@ -1166,7 +1186,7 @@ function shiftItemHTML(s,bd,swapId=null){
       ${otNote}
       ${pullNote}
       ${awardedTag}
-      ${s.notes?`<div class="notes-chip">${s.notes.slice(0,40)}${s.notes.length>40?'…':''}</div>`:''}
+      ${s.notes?`<div class="notes-chip">${escapeHtml(s.notes.slice(0,40))}${s.notes.length>40?'…':''}</div>`:''}
       ${adminNotesChip}
       ${cancelSwapBtn}
     </div>
@@ -1282,7 +1302,7 @@ function renderSettingsAvailability(){
       <div class="settings-unavail-mark"></div>
       <div class="settings-unavail-main">
         <div>${dateText}</div>
-        <span>${timeText}${u.note?' · '+u.note:''}</span>
+        <span>${timeText}${u.note?' · '+escapeHtml(u.note):''}</span>
       </div>
       <button onclick="deleteUnavail('${u.id}')" class="settings-unavail-remove">Remove</button>
     </div>`;
@@ -1533,7 +1553,7 @@ function openDaySheet(dateStr){
       <div style="width:10px;height:10px;border-radius:2px;background:var(--muted);flex-shrink:0;opacity:.6"></div>
       <div style="flex:1">
         <div style="font-size:13px;color:var(--muted)">Unavailable${u.startTime?` · ${fmtTime(u.startTime)}–${fmtTime(u.endTime)}`:' · All day'}</div>
-        ${u.note?`<div style="font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px">${u.note}</div>`:''}
+        ${u.note?`<div style="font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px">${escapeHtml(u.note)}</div>`:''}
       </div>
       <button onclick="deleteUnavail('${u.id}')" style="background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:4px 6px;line-height:1" title="Remove">✕</button>
     </div>`).join('');
@@ -2130,7 +2150,7 @@ function renderOpenShifts(){
         ${isHouse?`<span class="os-badge" style="background:rgba(245,166,35,.1);color:var(--orange)">Seniority</span>`:'<span class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">First come</span>'}
       </div>
       <div class="os-deadline">${dlStr}</div>
-      ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${s.notes}</div>`:''}
+      ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${escapeHtml(s.notes)}</div>`:''}
       <div class="os-actions">${actionsHtml}</div>
     </div>`;
   }).join('');
@@ -2188,7 +2208,7 @@ function renderSwaps(){
     let actionsHtml;
     if(iAmInitiator){
       actionsHtml = `
-        <span class="badge" style="background:rgba(91,143,255,.1);color:var(--accent);border:1px solid rgba(91,143,255,.3)">Awaiting ${s.target_name}</span>
+        <span class="badge" style="background:rgba(91,143,255,.1);color:var(--accent);border:1px solid rgba(91,143,255,.3)">Awaiting ${escapeHtml(s.target_name)}</span>
         <button class="btn btn-ghost btn-sm" onclick="cancelSwap('${s.id}')">Cancel</button>`;
     } else {
       actionsHtml = `
@@ -2199,13 +2219,13 @@ function renderSwaps(){
     return `<div class="os-card">
       <div class="os-card-hd">
         <div style="width:10px;height:10px;border-radius:2px;background:${iColor};flex-shrink:0"></div>
-        <div class="os-loc">${s.initiator_name}</div>
+        <div class="os-loc">${escapeHtml(s.initiator_name)}</div>
         <span class="os-badge" style="background:rgba(91,143,255,.1);color:var(--accent)">Swap</span>
       </div>
       <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin:6px 0 4px;line-height:1.6">
-        <span style="color:var(--text)">${s.initiator_name}</span> · <span style="color:${iColor}">${s.initiator_location_name}</span> · ${fmtD(iDate)}<br>
+        <span style="color:var(--text)">${escapeHtml(s.initiator_name)}</span> · <span style="color:${iColor}">${escapeHtml(s.initiator_location_name)}</span> · ${fmtD(iDate)}<br>
         <span style="color:var(--dim)">↕</span><br>
-        <span style="color:var(--text)">${s.target_name}</span> · <span style="color:${tColor}">${s.target_location_name}</span> · ${fmtD(tDate)}
+        <span style="color:var(--text)">${escapeHtml(s.target_name)}</span> · <span style="color:${tColor}">${escapeHtml(s.target_location_name)}</span> · ${fmtD(tDate)}
       </div>
       <div class="os-actions">${actionsHtml}</div>
     </div>`;
@@ -2308,7 +2328,7 @@ async function openSwapPropose(){
     showToast('No other employees found', true);
     return;
   }
-  targetSel.innerHTML = _swapUsers.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  targetSel.innerHTML = _swapUsers.map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
 
   // Reset
   document.getElementById('swap-their-date').value = '';
@@ -2670,7 +2690,7 @@ function renderLeaveRequests() {
       <div class="leave-req-dot" style="background:${color}"></div>
       <div class="leave-req-info">
         <div class="leave-req-type">${r.type_label}</div>
-        <div class="leave-req-meta">${fmtDate}${r.notes ? ' · ' + r.notes : ''}</div>
+        <div class="leave-req-meta">${fmtDate}${r.notes ? ' · ' + escapeHtml(r.notes) : ''}</div>
         ${timeRange}
         ${extra}
         ${cancelBtn}

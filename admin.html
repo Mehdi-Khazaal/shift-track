@@ -15,12 +15,12 @@
   <div class="login-badge">Admin Access</div>
   <div class="login-logo">Shift<span>Track</span></div>
   <div class="login-sub">Passavant Memorial Homes · Admin Panel</div>
-  <div class="login-form">
+  <form class="login-form" id="login-form" onsubmit="doLogin(event);return false;">
     <div class="login-err" id="login-err"></div>
-    <div class="form-group"><label>Email</label><input type="email" id="l-email" placeholder="admin@email.com"/></div>
-    <div class="form-group"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"/></div>
-    <button class="btn btn-primary" style="width:100%;padding:13px" id="l-btn" onclick="doLogin()">Sign in as Admin</button>
-  </div>
+    <div class="form-group"><label for="l-email">Email</label><input type="email" id="l-email" name="username" placeholder="admin@email.com" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required/></div>
+    <div class="form-group"><label for="l-pass">Password</label><input type="password" id="l-pass" name="password" placeholder="••••••••" autocomplete="current-password" required/></div>
+    <button class="btn btn-primary" style="width:100%;padding:13px" id="l-btn" type="submit">Sign in as Admin</button>
+  </form>
 </div>
 
 <!-- APP -->
