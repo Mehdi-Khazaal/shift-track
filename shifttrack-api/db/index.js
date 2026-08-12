@@ -1,4 +1,6 @@
 const { Pool, types } = require('pg');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 // Return DATE columns as plain "YYYY-MM-DD" strings instead of JS Date objects.
@@ -11,6 +13,28 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }, // required for Supabase
 });
+
+// Supabase publishes every table in `public` through PostgREST to the anon and
+// authenticated roles, and its default privileges grant those roles ALL on each
+// newly created table. Because the CREATE TABLE statements below run on every
+// boot, a one-off manual lockdown would be undone the moment a new table is
+// added — so the lockdown is re-applied here, after the schema settles.
+// See db/migrations/001_rls_lockdown.sql for the full rationale.
+async function applyRlsLockdown() {
+  const file = path.join(__dirname, 'migrations', '001_rls_lockdown.sql');
+  try {
+    await pool.query(fs.readFileSync(file, 'utf8'));
+    console.log('OK  RLS lockdown applied');
+    dbStatus.rlsLocked = true;
+  } catch (err) {
+    // Deliberately non-fatal: the API connects as the table owner and is
+    // unaffected either way, so failing the health check here would turn a
+    // hardening step into an outage. Loud enough to catch in pm2 logs, and
+    // `npm run verify:rls` is the authoritative gate.
+    console.error('WARNING  RLS lockdown FAILED — public schema may be exposed via PostgREST:', err.message);
+    dbStatus.rlsError = err.message;
+  }
+}
 
 async function addConstraintIfMissing(name, sql) {
   await pool.query(`
@@ -358,6 +382,9 @@ async function migrate() {
 
     console.log('OK  Migrations applied');
     dbStatus.migrated = true;
+
+    // Must run last: it locks down every table the statements above created.
+    await applyRlsLockdown();
   } catch (err) {
     console.error('ERROR  Migration failed:', err.message);
     dbStatus.migrationError = err.message;
@@ -365,7 +392,7 @@ async function migrate() {
 }
 
 // Exposed so /health can report real migration state.
-const dbStatus = { connected: false, migrated: false, migrationError: null };
+const dbStatus = { connected: false, migrated: false, migrationError: null, rlsLocked: false, rlsError: null };
 
 // Test the connection on startup then run migrations.
 pool.connect((err, client, release) => {

@@ -1,7 +1,11 @@
 // ══════════════════════════════
 //  CONFIG
 // ══════════════════════════════
-const API = 'https://shift-track.duckdns.org';
+// Served from localhost during development (e.g. Live Server on :5500), where
+// the API runs locally on :3000. Any other host is production.
+const API = ['localhost','127.0.0.1','[::1]'].includes(location.hostname)
+  ? 'http://localhost:3000'
+  : 'https://shift-track.duckdns.org';
 let PP_ANCHOR = '2026-03-22'; // overwritten after login from /api/settings
 const OT_THRESH = 40;
 

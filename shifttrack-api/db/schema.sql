@@ -252,3 +252,15 @@ CREATE TABLE IF NOT EXISTS regions (
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS region_id      UUID REFERENCES regions(id) ON DELETE SET NULL;
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS specialist_id  UUID REFERENCES users(id)   ON DELETE SET NULL;
 ALTER TABLE locations ADD COLUMN IF NOT EXISTS consumer_count INTEGER DEFAULT 0;
+
+-- =============================================================================
+-- SECURITY: Row Level Security lockdown
+-- =============================================================================
+-- Keep this LAST. It locks every table above against Supabase's auto-generated
+-- PostgREST API (the anon / authenticated roles), which ShiftTrack never uses.
+-- The Express API connects as `postgres` — table owner, rolbypassrls — so it is
+-- unaffected. Full rationale in db/migrations/001_rls_lockdown.sql.
+--
+-- Applied automatically on every API boot by db/index.js migrate().
+-- Verify at any time with: npm run verify:rls
+-- \i db/migrations/001_rls_lockdown.sql

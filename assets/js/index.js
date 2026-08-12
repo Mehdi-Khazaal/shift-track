@@ -1,7 +1,11 @@
 // ═══════════════════════════════════════
 //  CONFIG & AUTH
 // ═══════════════════════════════════════
-const API = 'https://shift-track.duckdns.org';
+// Served from localhost during development (e.g. Live Server on :5500), where
+// the API runs locally on :3000. Any other host is production.
+const API = ['localhost','127.0.0.1','[::1]'].includes(location.hostname)
+  ? 'http://localhost:3000'
+  : 'https://shift-track.duckdns.org';
 
 function getToken(){ return localStorage.getItem('st_token'); }
 function getUser(){ try{ return JSON.parse(localStorage.getItem('st_user')||'null'); }catch(e){ return null; } }

@@ -56,6 +56,9 @@ app.get('/health', (req, res) => {
     db_connected: dbStatus.connected,
     db_migrated:  dbStatus.migrated,
     migration_error: dbStatus.migrationError,
+    // Reported but intentionally not part of `ok` — see applyRlsLockdown().
+    rls_locked: dbStatus.rlsLocked,
+    rls_error:  dbStatus.rlsError,
     time: new Date().toISOString(),
   });
 });
