@@ -1630,8 +1630,28 @@ function openAddShiftForDateStr(dateStr){
 // ═══════════════════════════════════════
 //  PHASE 2: PAY HISTORY
 // ═══════════════════════════════════════
-async function renderHistory(){
+// How many pay-period cards to add per "Show older" click. Nothing is ever
+// dropped from history — this only limits how much is in the DOM at once.
+const HISTORY_PAGE = 12;
+let historyShown = HISTORY_PAGE;
+
+// Index of the oldest pay period worth showing: the anchor period (n=0, when
+// pay periods began) or, if any logged shift predates it, that shift's period.
+function oldestHistoryN(anchor){
+  let oldest = 0;
+  for(const s of getShifts()){
+    if(!s.date) continue;
+    const d = new Date(s.date+'T00:00:00');
+    const diff = Math.round((d-anchor)/86400000);
+    const n = diff<0 ? Math.ceil((diff-13)/14) : Math.floor(diff/14);
+    if(n < oldest) oldest = n;
+  }
+  return oldest;
+}
+
+async function renderHistory(reset=true){
   const el = document.getElementById('history-list');
+  if(reset) historyShown = HISTORY_PAGE;
   if(!cache.allShiftsLoaded){
     el.innerHTML = '<div class="empty-state" style="padding:16px;font-size:12px">Loading full pay history...</div>';
     const loaded = await loadAllShiftHistory({ render:false });
@@ -1649,9 +1669,13 @@ async function renderHistory(){
   const diffDays = Math.round((today-anchor)/86400000);
   const currentN = diffDays<0 ? Math.ceil(diffDays/14) : Math.floor(diffDays/14);
 
-  // Show current period + 11 past ones
+  // Every period from the current one back to the oldest with data is kept.
+  // We only render `historyShown` of them at a time to keep the page fast.
+  const totalPeriods = currentN - oldestHistoryN(anchor) + 1;
+  const shown = Math.min(historyShown, totalPeriods);
+
   const cards = [];
-  for(let offset=0; offset>=-11; offset--){
+  for(let offset=0; offset>-shown; offset--){
     const n = currentN+offset;
     const start = new Date(anchor); start.setDate(anchor.getDate()+n*14);
     const end   = new Date(start);  end.setDate(start.getDate()+13);
@@ -1694,7 +1718,18 @@ async function renderHistory(){
       </div>
     </div>`);
   }
-  el.innerHTML = cards.join('');
+
+  const remaining = totalPeriods - shown;
+  el.innerHTML = cards.join('') + (remaining > 0
+    ? `<div style="text-align:center;padding:18px 0 6px">
+        <button class="btn" style="font-size:13px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:10px;padding:8px 20px;cursor:pointer" onclick="showOlderHistory()">Show older pay periods (${remaining})</button>
+       </div>`
+    : '');
+}
+
+function showOlderHistory(){
+  historyShown += HISTORY_PAGE;
+  renderHistory(false);
 }
 
 // ═══════════════════════════════════════
@@ -1823,7 +1858,7 @@ async function downloadPayPDF(offset){
   if(!cache.allShiftsLoaded){
     const loaded = await loadAllShiftHistory({ render:false });
     if(!loaded) return;
-    renderHistory();
+    renderHistory(false);
   }
 
   const { ppAnchor } = getSettings();
