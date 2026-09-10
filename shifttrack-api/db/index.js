@@ -9,9 +9,20 @@ require('dotenv').config();
 // any subsequent SQL DATE parameter.
 types.setTypeParser(1082, val => val);
 
+// Supabase requires SSL; the local sandbox Postgres (docker-compose.yml) does
+// not speak it at all and refuses the connection outright. Decide per host.
+function isLocalDb(connectionString) {
+  try {
+    const host = new URL(connectionString).hostname.replace(/^\[|\]$/g, '');
+    return ['localhost', '127.0.0.1', '::1', 'db', 'postgres'].includes(host);
+  } catch {
+    return false; // unparseable: assume remote and keep SSL on
+  }
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // required for Supabase
+  ssl: isLocalDb(process.env.DATABASE_URL || '') ? false : { rejectUnauthorized: false },
 });
 
 // Supabase publishes every table in `public` through PostgREST to the anon and

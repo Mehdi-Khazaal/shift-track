@@ -140,14 +140,6 @@ tbody td.muted{color:var(--muted);font-family:var(--mono);}
 /* ── Empty ── */
 .empty{text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:13px;}
 
-/* ── User cards (mobile) ── */
-.user-cards{display:none;flex-direction:column;gap:10px;}
-.user-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
-.user-card-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
-.user-card-name{font-weight:700;font-size:14px;}
-.user-card-email{font-size:11px;font-family:var(--mono);color:var(--muted);margin-top:2px;}
-.user-card-stats{display:flex;gap:16px;margin-bottom:12px;font-family:var(--mono);font-size:12px;color:var(--muted);}
-.user-card-actions{display:flex;gap:6px;flex-wrap:wrap;}
 
 /* ── Section divider label ── */
 .section-label{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
@@ -292,9 +284,6 @@ tbody tr{animation:rowIn .2s ease both;}
   .btn-sm{padding:5px 10px;font-size:11px;}
   /* Pay period cards */
   .pay-period-list{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
-  /* Users: swap table for cards */
-  #users-table{display:none;}
-  .user-cards{display:flex;}
   /* Staffing: smaller cells on mobile */
   .stf-mcell{min-height:32px;padding:3px 2px;}
   .stf-mcell-dn{font-size:9px;}
@@ -1143,3 +1132,185 @@ body{
 body::before{
   display:none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE REWORK
+   admin.css is cascade-ordered (later blocks win), so this sits last
+   on purpose and overrides the earlier mobile blocks at :266/:865.
+   Breakpoint note: the shell flips to the mobile layout at 980px, so
+   the card/table/modal treatment below matches it. Previously that
+   treatment only existed at <=640px, leaving 641-980px untreated.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Employee rows (Users tab) ──────────────────────────────────────
+   Was inline-styled with flex-shrink:0 on the action group, so the
+   buttons overflowed and were clipped by .card{overflow:hidden}. */
+.user-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);}
+.user-row:last-child{border-bottom:none;}
+.user-row.is-inactive{opacity:.5;}
+.user-row-main{display:flex;align-items:center;gap:12px;flex:1;min-width:0;}
+.user-row-id{flex:1;min-width:0;}
+.user-row-name{font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.user-row-email{font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+
+/* ── Shift rows rendered as cards (mobile only) ───────────────────── */
+.udash-table-wrap table{width:100%;}
+
+@media(max-width:980px){
+
+  /* ── Bottom tab bar: 7 tabs needed 570px, phones give ~355px.
+     Stack icon over label and let tabs shrink (was flex:1 0 auto). ── */
+  .tabs{
+    gap:2px;
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    bottom:8px;
+    overflow-x:visible;
+  }
+  .tab{
+    position:relative;
+    flex:1 1 0;
+    min-width:0;
+    flex-direction:column;
+    gap:3px;
+    padding:7px 2px;
+  }
+  .tab span{
+    font-size:9px;
+    line-height:1.15;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .tab svg{width:19px;height:19px;}
+  /* Pending-leave badge would otherwise take its own line in a column flex */
+  .tab #leave-pending-badge{
+    position:absolute;
+    top:2px;
+    right:max(4px, calc(50% - 22px));
+    margin-left:0 !important;
+  }
+  .content{padding-bottom:calc(104px + env(safe-area-inset-bottom));}
+
+  /* ── Employee rows stack; actions get a full-width row of their own ── */
+  .user-row{flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px;}
+  .user-row-actions{justify-content:flex-start;}
+  .user-row-actions .btn{flex:1 1 auto;justify-content:center;}
+
+  /* ── View-employee modal becomes a bottom sheet ──
+     Inline styles on the element require !important here. */
+  #user-dash-modal{align-items:flex-end;padding:0;}
+  #user-dash-modal .modal{
+    max-width:100% !important;
+    width:100%;
+    max-height:92dvh !important;
+    border-radius:22px 22px 0 0;
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom)) !important;
+    animation:sheetUp .28s cubic-bezier(.32,1,.4,1);
+  }
+  #user-dash-modal .modal::before{
+    content:"";
+    display:block;
+    width:38px;
+    height:4px;
+    border-radius:2px;
+    background:var(--border2);
+    margin:0 auto 14px;
+  }
+  #udash-name{font-size:17px !important;}
+  #udash-pp-label{min-width:0 !important;flex:1;}
+  .arr-btn{width:40px;height:40px;flex-shrink:0;}
+
+  /* ── Stat tiles: 2-up instead of a ragged auto-fit grid ── */
+  .stat-row{grid-template-columns:1fr 1fr;}
+
+  /* ── The 7-column shift table becomes stacked cards.
+     Kills the horizontal scroll; .tbl-wrap's max-height also created a
+     scroll region nested inside the modal's own scroll region. ── */
+  #user-dash-modal .tbl-wrap{
+    max-height:none;
+    border:none;
+    box-shadow:none;
+    overflow-x:visible;
+    background:none;
+  }
+  #user-dash-modal .tbl-wrap thead{display:none;}
+  #user-dash-modal .tbl-wrap table,
+  #user-dash-modal .tbl-wrap tbody,
+  #user-dash-modal .tbl-wrap tr,
+  #user-dash-modal .tbl-wrap td{display:block;width:auto;}
+  #user-dash-modal .tbl-wrap tr{
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:var(--radius-sm);
+    padding:10px 12px;
+    margin-bottom:8px;
+  }
+  #user-dash-modal .tbl-wrap td{
+    border:none;
+    padding:3px 0;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    font-size:12px;
+  }
+  #user-dash-modal .tbl-wrap td::before{
+    content:attr(data-label);
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--dim);
+    flex-shrink:0;
+  }
+  /* Date leads the card like a heading; empty action cell shouldn't reserve space */
+  #user-dash-modal .tbl-wrap td[data-label="Date"]{
+    font-size:13px;
+    font-weight:600;
+    padding-bottom:6px;
+    margin-bottom:4px;
+    border-bottom:1px solid var(--border);
+  }
+  #user-dash-modal .tbl-wrap td:empty{display:none;}
+
+  /* ── Modal form fields: the min-width escape hatch previously existed
+     only for #sched-modal, so every other modal overflowed. ── */
+  .modal-overlay .modal{max-width:min(100%,560px);}
+  .modal-overlay [style*="min-width:120px"],
+  .modal-overlay [style*="min-width:140px"],
+  .modal-overlay [style*="min-width:160px"],
+  .modal-overlay [style*="min-width:180px"]{min-width:100% !important;}
+
+  /* ── Grids that never collapsed at any breakpoint ── */
+  .stf-gap-list{grid-template-columns:1fr;}
+  .stf-day-grid .stf-card-inner{grid-template-columns:1fr;}
+}
+
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+
+/* ── View-employee refinements ─────────────────────────────────────── */
+@media(max-width:980px){
+  /* Action cell: keep the note/delete buttons together on the right rather
+     than letting space-between fling them apart. */
+  #user-dash-modal .tbl-wrap td[data-label=""]{justify-content:flex-end;gap:2px;padding-top:6px;}
+  #user-dash-modal .tbl-wrap td[data-label=""]::before{display:none;}
+}
+@media(max-width:560px){
+  /* Give the name its own full-width line so it stops wrapping around the
+     button group, and let the buttons share the row evenly beneath it. */
+  .udash-head-id{flex:1 1 100% !important;}
+  .udash-head-actions{width:100%;}
+  .udash-head-actions .btn{flex:1;justify-content:center;}
+}
+
+/* ── Modal stacking ─────────────────────────────────────────────────────
+   Every .modal-overlay shares z-index:300, so with equal stacking the one
+   later in the DOM wins. #user-dash-modal sits below #assign-shift-modal in
+   admin.html, which meant "Assign shift" opened BEHIND the employee panel it
+   was launched from. These are opened on top of another modal, so they need
+   to outrank it explicitly. */
+#assign-shift-modal{z-index:340;}
+#sched-modal{z-index:340;}
+#pull-modal{z-index:340;}

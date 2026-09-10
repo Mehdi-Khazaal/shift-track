@@ -4,6 +4,15 @@ const db      = require('../db/index');
 const auth = require('../middleware/auth');
 const { adminOnly, invalidateUserCache } = require('../middleware/auth');
 const bcrypt  = require('bcrypt');
+const { sendPushToUser } = require('../utils/push');
+const {
+  MAX_SHIFT_MINS,
+  shiftDurationMins,
+  checkConsecutiveHours,
+  overlapsExistingShift,
+  overlapsBaseSchedule,
+  isAcceptedSwapShift,
+} = require('../utils/shiftRules');
 
 // GET /api/admin/users - all users (active and inactive) with basic info
 router.get('/users', auth, adminOnly, async (req, res) => {
@@ -229,6 +238,126 @@ router.patch('/shifts/:id/notes', auth, adminOnly, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('[admin/shifts/notes PATCH]', err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// POST /api/admin/shifts - assign a one-off dated shift to any employee.
+// Runs the same validation as the employee-facing POST /api/shifts (shared via
+// utils/shiftRules) so an admin cannot create a shift the employee app rejects.
+router.post('/shifts', auth, adminOnly, async (req, res) => {
+  const { user_id, location_id, date, start_time, end_time, notes } = req.body;
+  if (!user_id || !location_id || !date || !start_time || !end_time)
+    return res.status(400).json({ ok: false, error: 'user_id, location_id, date, start_time, end_time are required' });
+
+  if (shiftDurationMins(start_time, end_time) > MAX_SHIFT_MINS)
+    return res.status(400).json({ ok: false, error: 'A single shift cannot exceed 18 hours.' });
+
+  try {
+    // Catches overnight shifts and shifts on the adjacent day that spill past
+    // midnight, not just same-date clock-time collisions.
+    if (await overlapsExistingShift(user_id, date, start_time, end_time))
+      return res.status(409).json({ ok: false, error: 'This employee already has a shift that overlaps those hours' });
+
+    if (await overlapsBaseSchedule(user_id, date, start_time, end_time))
+      return res.status(409).json({ ok: false, error: 'This shift overlaps their base schedule on that day' });
+
+    const chainErr = await checkConsecutiveHours(user_id, date, start_time, end_time);
+    if (chainErr)
+      return res.status(409).json({ ok: false, error: chainErr });
+
+    const result = await db.query(
+      `INSERT INTO shifts (user_id, location_id, date, start_time, end_time, notes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [user_id, location_id, date, start_time, end_time, notes || '']
+    );
+
+    const locRes  = await db.query('SELECT name FROM locations WHERE id=$1', [location_id]);
+    const locName = locRes.rows[0]?.name || 'a location';
+    sendPushToUser(
+      user_id,
+      'Shift Assigned',
+      `You've been assigned a shift at ${locName} on ${date}, ${start_time.slice(0, 5)}-${end_time.slice(0, 5)}.`
+    ).catch(e => console.error('[admin/shifts POST] push failed:', e.message));
+
+    res.status(201).json({ ok: true, shift: result.rows[0] });
+  } catch (err) {
+    console.error('[admin/shifts POST]', err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/shifts/:id - remove any employee's one-off shift.
+// Unlike the employee route this DOES allow deleting awarded (open-shift) shifts,
+// which is the case the employee app defers to an admin for. Pulled and swapped
+// shifts are still refused: their rows in pulls / shift_swaps reference this
+// shift, and the dedicated undo flows unwind both sides transactionally.
+router.delete('/shifts/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const check = await db.query(
+      'SELECT user_id, date, is_pulled FROM shifts WHERE id=$1',
+      [req.params.id]
+    );
+    if (!check.rows.length) return res.json({ ok: true });
+    const shift = check.rows[0];
+
+    if (shift.is_pulled)
+      return res.status(409).json({ ok: false, error: 'This is a pulled shift - undo the pull instead.' });
+    if (await isAcceptedSwapShift(shift.user_id, req.params.id))
+      return res.status(409).json({ ok: false, error: 'This shift came from an accepted swap - reject the swap instead.' });
+
+    await db.query('DELETE FROM shifts WHERE id=$1', [req.params.id]);
+
+    const dateStr = String(shift.date).slice(0, 10);
+    sendPushToUser(
+      shift.user_id,
+      'Shift Removed',
+      `Your shift on ${dateStr} has been removed by an administrator.`
+    ).catch(e => console.error('[admin/shifts DELETE] push failed:', e.message));
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin/shifts DELETE]', err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// POST /api/admin/suppress-date - cancel ONE occurrence of a user's recurring
+// base schedule without touching the recurring pattern itself. Same mechanism
+// pulls already use (routes/pulls.js).
+router.post('/suppress-date', auth, adminOnly, async (req, res) => {
+  const { user_id, date } = req.body;
+  if (!user_id || !date)
+    return res.status(400).json({ ok: false, error: 'user_id and date are required' });
+  try {
+    await db.query(
+      'INSERT INTO base_suppressed_dates (user_id, date) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [user_id, date]
+    );
+    sendPushToUser(
+      user_id,
+      'Shift Removed',
+      `Your scheduled shift on ${date} has been cancelled by an administrator.`
+    ).catch(e => console.error('[admin/suppress-date POST] push failed:', e.message));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin/suppress-date POST]', err);
+    res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/suppress-date - restore a cancelled base occurrence.
+// Makes the cancel above reversible.
+router.delete('/suppress-date', auth, adminOnly, async (req, res) => {
+  const { user_id, date } = req.body;
+  if (!user_id || !date)
+    return res.status(400).json({ ok: false, error: 'user_id and date are required' });
+  try {
+    await db.query('DELETE FROM base_suppressed_dates WHERE user_id=$1 AND date=$2', [user_id, date]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[admin/suppress-date DELETE]', err);
     res.status(500).json({ ok: false, error: 'Server error' });
   }
 });

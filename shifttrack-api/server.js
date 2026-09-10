@@ -23,10 +23,12 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   : defaultOrigins;
 app.use(cors({ origin: allowedOrigins }));
 
-// Brute-force protection: max 10 auth attempts per IP per 15 minutes
+// Brute-force protection: max 10 auth attempts per IP per 15 minutes.
+// AUTH_RATE_LIMIT raises the ceiling for the local test suite, which logs in
+// many times per run from a single IP. Left unset in production.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: Number(process.env.AUTH_RATE_LIMIT) || 10,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => res.status(429).json({ ok: false, error: 'Too many attempts. Try again in 15 minutes.' }),

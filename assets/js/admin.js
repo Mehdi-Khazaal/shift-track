@@ -410,20 +410,22 @@ function renderUsers(){
 function userRowHTML(u){
   const safeName=(u.name||u.email.split('@')[0]).replace(/'/g,"\\'");
   const inactive = u.is_active === false;
-  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);${inactive?'opacity:.5':''}">
-    ${makeAvatar(u.name||u.email.split('@')[0])}
-    <div style="flex:1;min-width:0">
-      <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        ${u.name||'—'}
-        ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
-        ${u.work_type==='block'?'<span class="badge" style="background:rgba(255,140,0,.15);color:#ff8c00;border:1px solid rgba(255,140,0,.3)">block</span>':''}
-        ${u.gender==='male'?'<span class="badge" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.3)">♂ M</span>':u.gender==='female'?'<span class="badge" style="background:rgba(244,114,182,.12);color:#f472b6;border:1px solid rgba(244,114,182,.3)">♀ F</span>':''}
-        ${u.role==='admin'?'<span class="badge admin">admin</span>':u.role==='specialist'?'<span class="badge" style="background:rgba(197,119,255,.15);color:#c77dff;border:1px solid rgba(197,119,255,.3)">specialist</span>':''}
-        ${inactive?'<span class="badge" style="background:rgba(255,95,109,.15);color:var(--red);border:1px solid rgba(255,95,109,.3)">inactive</span>':''}
+  return `<div class="user-row${inactive?' is-inactive':''}">
+    <div class="user-row-main">
+      ${makeAvatar(u.name||u.email.split('@')[0])}
+      <div class="user-row-id">
+        <div class="user-row-name">
+          ${u.name||'—'}
+          ${u.position?`<span class="badge ${POSITIONS.includes(u.position)?u.position.toLowerCase():'pos'}">${u.position}</span>`:''}
+          ${u.work_type==='block'?'<span class="badge" style="background:rgba(255,140,0,.15);color:#ff8c00;border:1px solid rgba(255,140,0,.3)">block</span>':''}
+          ${u.gender==='male'?'<span class="badge" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.3)">♂ M</span>':u.gender==='female'?'<span class="badge" style="background:rgba(244,114,182,.12);color:#f472b6;border:1px solid rgba(244,114,182,.3)">♀ F</span>':''}
+          ${u.role==='admin'?'<span class="badge admin">admin</span>':u.role==='specialist'?'<span class="badge" style="background:rgba(197,119,255,.15);color:#c77dff;border:1px solid rgba(197,119,255,.3)">specialist</span>':''}
+          ${inactive?'<span class="badge" style="background:rgba(255,95,109,.15);color:var(--red);border:1px solid rgba(255,95,109,.3)">inactive</span>':''}
+        </div>
+        <div class="user-row-email">${u.email}</div>
       </div>
-      <div style="font-size:11px;font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
     </div>
-    <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+    <div class="user-row-actions">
       ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openUserDashboard('${u.id}')">View</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.id}')">Edit</button>
       ${!inactive?`<button class="btn btn-ghost btn-sm" onclick="openScheduleModal('${u.id}','${safeName}')">Schedule</button>`:''}
@@ -536,6 +538,8 @@ function renderUserDashboard(){
     const loc=allLocs.find(l=>l.id===s.locationId);
     const d=new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     const noteBtn=s.isBase?'':`<button title="${s.adminNotes?s.adminNotes.slice(0,40):'Add admin note'}" onclick="editShiftNote('${s.id}',event)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:${s.adminNotes?'var(--accent)':'var(--dim)'}">${s.adminNotes?'📝':'＋'}</button>`;
+    // Pulled shifts are refused by the API (undo the pull instead), so no button.
+    const delBtn=s.isPulled?'':`<button title="Remove this shift" onclick="removeShiftFromDash('${s.id}','${s.date}',${!!s.isBase},event)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:var(--dim)">✕</button>`;
     const pullBadge=s.isPulled?`<span style="background:rgba(255,140,0,.15);color:#ff8c00;border:1px solid rgba(255,140,0,.3);border-radius:3px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin-left:4px">PULL</span>`:'';
     const locCell=s.isPulled&&s.pulledFromLocationName
       ?`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div style="width:8px;height:8px;border-radius:2px;background:${loc?.color||'#888'};flex-shrink:0"></div><span style="text-decoration:line-through;opacity:.45;font-size:11px">${s.pulledFromLocationName}</span><span style="font-size:11px;color:var(--muted)">→</span>${loc?.name||'—'}</div>`
@@ -544,15 +548,103 @@ function renderUserDashboard(){
       ?`${formatPay(s.p)} <span style="color:#ff8c00;font-size:10px">+$${s.pullBonus.toFixed(0)}</span>`
       :formatPay(s.p);
     return `<tr>
-      <td class="mono" style="white-space:nowrap">${d}${s.isBase?` <span style="font-size:9px;color:var(--dim);font-family:var(--mono);margin-left:4px">base</span>`:''}${pullBadge}</td>
-      <td>${locCell}</td>
-      <td class="mono">${s.start}</td>
-      <td class="mono">${s.end}</td>
-      <td class="mono">${s.h.toFixed(1)}h${s.otH>0?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
-      <td class="mono" style="color:var(--green)">${payCell}</td>
-      <td style="text-align:center">${noteBtn}</td>
+      <td class="mono" data-label="Date" style="white-space:nowrap">${d}${s.isBase?` <span style="font-size:9px;color:var(--dim);font-family:var(--mono);margin-left:4px">base</span>`:''}${pullBadge}</td>
+      <td data-label="Location">${locCell}</td>
+      <td class="mono" data-label="Start">${s.start}</td>
+      <td class="mono" data-label="End">${s.end}</td>
+      <td class="mono" data-label="Hours">${s.h.toFixed(1)}h${s.otH>0?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
+      <td class="mono" data-label="Est. Pay" style="color:var(--green)">${payCell}</td>
+      <td data-label="" style="text-align:center;white-space:nowrap">${noteBtn}${delBtn}</td>
     </tr>`;
   }).join('');
+}
+
+// ══════════════════════════════
+//  ADMIN SHIFT ASSIGN / REMOVE
+// ══════════════════════════════
+// loadAll() refetches shifts + schedule for EVERY user, so these paths patch the
+// local caches (or refetch one user) rather than triggering a full reload.
+
+async function refreshUserShifts(userId){
+  const sr = await apiFetch(`/api/admin/users/${userId}/shifts`);
+  if(sr?.ok) allShifts[userId] = sr.shifts.map(normalizeShift);
+}
+
+// Base-schedule occurrences are cancelled for that one date only — the recurring
+// pattern is left intact. Concrete shifts are deleted outright. Both notify the
+// employee (handled server-side).
+async function removeShiftFromDash(id, date, isBase, event){
+  if(event) event.stopPropagation();
+  const label = new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const msg = isBase
+    ? `Cancel the scheduled shift on ${label}?\n\nOnly this date is removed — their recurring schedule stays as it is.`
+    : `Delete the shift on ${label}?\n\nThe employee will be notified.`;
+  if(!confirm(msg)) return;
+
+  if(isBase){
+    const res = await apiFetch('/api/admin/suppress-date',{method:'POST',body:{user_id:viewUserId, date}});
+    if(!res?.ok){ showToast(res?.error||'Could not cancel that shift',true); return; }
+    if(!allSuppressed[viewUserId]) allSuppressed[viewUserId] = new Set();
+    allSuppressed[viewUserId].add(date);
+    showToast('Shift cancelled for that date');
+  } else {
+    const res = await apiFetch(`/api/admin/shifts/${id}`,{method:'DELETE'});
+    if(!res?.ok){ showToast(res?.error||'Could not delete that shift',true); return; }
+    allShifts[viewUserId] = (allShifts[viewUserId]||[]).filter(s=>s.id!==id);
+    showToast('Shift deleted');
+  }
+  renderUserDashboard();
+  loadUserProfileExtras(viewUserId);
+}
+
+function openAssignShiftModal(){
+  if(!viewUserId){ showToast('Open an employee first',true); return; }
+  const user = allUsers.find(u=>u.id===viewUserId);
+  const name = user ? (user.name||user.email.split('@')[0]) : 'employee';
+  document.getElementById('assign-shift-title').textContent = `Assign shift — ${name}`;
+  const sel = document.getElementById('assign-loc');
+  sel.innerHTML = allLocs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  if(user?.location_id) sel.value = user.location_id;
+  // Local date, not toYMD() — that is UTC-based and would roll to tomorrow
+  // during evening hours in US timezones.
+  const now = new Date();
+  document.getElementById('assign-date').value =
+    `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  document.getElementById('assign-start').value = '07:00';
+  document.getElementById('assign-end').value   = '15:00';
+  document.getElementById('assign-notes').value = '';
+  document.getElementById('assign-shift-modal').classList.add('open');
+}
+
+function closeAssignShiftModal(){
+  document.getElementById('assign-shift-modal').classList.remove('open');
+}
+
+async function saveAssignedShift(){
+  const btn = document.getElementById('assign-save-btn');
+  const locationId = document.getElementById('assign-loc').value;
+  const date       = document.getElementById('assign-date').value;
+  const start      = document.getElementById('assign-start').value;
+  const end        = document.getElementById('assign-end').value;
+  const notes      = document.getElementById('assign-notes').value.trim();
+  if(!locationId||!date||!start||!end){ showToast('Fill in all fields',true); return; }
+
+  btn.disabled = true; btn.style.opacity = '.6';
+  try{
+    const res = await apiFetch('/api/admin/shifts',{
+      method:'POST',
+      body:{ user_id:viewUserId, location_id:locationId, date, start_time:start, end_time:end, notes }
+    });
+    if(!res?.ok){ showToast(res?.error||'Could not assign that shift',true); return; }
+    // The POST returns the bare row (no location join), so refetch this one user.
+    await refreshUserShifts(viewUserId);
+    closeAssignShiftModal();
+    renderUserDashboard();
+    loadUserProfileExtras(viewUserId);
+    showToast('Shift assigned — employee notified');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1';
+  }
 }
 
 async function loadUserProfileExtras(userId){

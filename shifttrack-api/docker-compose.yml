@@ -1,0 +1,35 @@
+# Local Postgres for the ShiftTrack sandbox.
+#
+# Port 5433, not 5432, because this machine already runs Postgres 18 locally
+# and we must not collide with it.
+#
+# Two databases: shifttrack_dev (the one you click through in the browser)
+# and shifttrack_test (wiped by the test suite on every run, so tests never
+# destroy the data you were poking at).
+#
+#   npm run db:up     start
+#   npm run db:down   stop
+#   npm run db:nuke   stop and delete the volume
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: shifttrack-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shifttrack
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: shifttrack_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - shifttrack-pgdata:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shifttrack -d shifttrack_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  shifttrack-pgdata:

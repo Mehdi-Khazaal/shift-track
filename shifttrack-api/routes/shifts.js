@@ -2,139 +2,15 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db/index');
 const auth    = require('../middleware/auth');
-const { payWeekOf } = require('../utils/ppAnchor');
 
-const MAX_SHIFT_MINS = 18 * 60;
-const GAP_LIMIT_MINS = 60;
-
-function timeToMins(t) {
-  const [h, m] = t.slice(0, 5).split(':').map(Number);
-  return h * 60 + m;
-}
-
-function shiftDurationMins(start, end) {
-  let s = timeToMins(start), e = timeToMins(end);
-  if (e <= s) e += 1440;
-  return e - s;
-}
-
-function toAbsRange(dateStr, startStr, endStr) {
-  const epoch = Date.UTC(2020, 0, 1);
-  const [y, mo, d] = dateStr.slice(0, 10).split('-').map(Number);
-  const dayBase = Math.round((Date.UTC(y, mo - 1, d) - epoch) / 60000);
-  const s = timeToMins(startStr);
-  let e = timeToMins(endStr);
-  if (e <= s) e += 1440;
-  return { startMins: dayBase + s, endMins: dayBase + e };
-}
-
-// Returns an error string if adding this shift would create a consecutive block >18h
-// (shifts within 60 min of each other count as the same block).
-// Checks both logged shifts and base schedule shifts.
-async function checkConsecutiveHours(userId, date, start, end, excludeId = null) {
-  const params = [userId, date];
-  const excludeClause = excludeId ? `AND id != $${params.push(excludeId)}` : '';
-
-  const [{ rows: loggedRows }, { rows: baseRows }, { rows: settingsRows }] = await Promise.all([
-    db.query(
-      `SELECT date, start_time, end_time FROM shifts
-       WHERE user_id=$1
-         AND date BETWEEN $2::date - interval '2 days' AND $2::date + interval '2 days'
-         ${excludeClause}`,
-      params
-    ),
-    db.query('SELECT week, day_of_week, start_time, end_time FROM base_schedule WHERE user_id=$1', [userId]),
-    db.query('SELECT pp_anchor FROM user_settings WHERE user_id=$1', [userId]),
-  ]);
-
-  const anchor = settingsRows[0]?.pp_anchor?.slice(0, 10) || '2026-03-22';
-  const anchorMs = Date.UTC(...anchor.split('-').map((v,i)=>i===1?Number(v)-1:Number(v)));
-
-  // Resolve base schedule entries to actual dates within ±2 days
-  const baseRanges = [];
-  for (let offset = -2; offset <= 2; offset++) {
-    const d = new Date(date + 'T00:00:00Z');
-    d.setUTCDate(d.getUTCDate() + offset);
-    const dateStr = d.toISOString().slice(0, 10);
-    const diff = Math.round((d.getTime() - anchorMs) / 86400000);
-    const week = ((diff % 14) + 14) % 14 < 7 ? 1 : 2;
-    const dow  = d.getUTCDay();
-    for (const b of baseRows) {
-      if (b.week === week && b.day_of_week === dow)
-        baseRanges.push(toAbsRange(dateStr, b.start_time, b.end_time));
-    }
-  }
-
-  const newRange = toAbsRange(date, start, end);
-  const allRanges = [
-    ...loggedRows.map(r => toAbsRange(r.date.slice(0, 10), r.start_time, r.end_time)),
-    ...baseRanges,
-    newRange
-  ];
-
-  const visited = new Set([newRange]);
-  const queue = [newRange];
-  let minStart = newRange.startMins, maxEnd = newRange.endMins;
-
-  while (queue.length) {
-    const curr = queue.shift();
-    for (const other of allRanges) {
-      if (visited.has(other)) continue;
-      const g1 = other.startMins - curr.endMins;
-      const g2 = curr.startMins - other.endMins;
-      if ((g1 >= 0 && g1 < GAP_LIMIT_MINS) || (g2 >= 0 && g2 < GAP_LIMIT_MINS)) {
-        visited.add(other);
-        queue.push(other);
-        minStart = Math.min(minStart, other.startMins);
-        maxEnd   = Math.max(maxEnd,   other.endMins);
-      }
-    }
-  }
-
-  const span = maxEnd - minStart;
-  if (span > MAX_SHIFT_MINS) {
-    const h = Math.floor(span / 60), m = span % 60;
-    const label = m > 0 ? `${h}h ${m}m` : `${h}h`;
-    return `These shifts total ${label} consecutive (max 18h; shifts within 1h of each other count as one block).`;
-  }
-  return null;
-}
-
-// Returns true if a new concrete shift overlaps the user's base schedule on that date
-async function overlapsBaseSchedule(userId, date, start_time, end_time) {
-  const [settingsRes, suppressedRes] = await Promise.all([
-    db.query('SELECT pp_anchor FROM user_settings WHERE user_id=$1', [userId]),
-    db.query('SELECT id FROM base_suppressed_dates WHERE user_id=$1 AND date=$2', [userId, date]),
-  ]);
-  if (suppressedRes.rows.length) return false; // base schedule suppressed for this date
-
-  const anchor    = settingsRes.rows[0]?.pp_anchor?.slice(0, 10) || '2026-03-22';
-  const dayOfWeek = new Date(date + 'T12:00:00').getDay();
-  const weekNum   = payWeekOf(date, anchor);
-
-  const baseOverlap = await db.query(
-    `SELECT id FROM base_schedule
-     WHERE user_id=$1 AND week=$2 AND day_of_week=$3
-       AND start_time < $5::time AND end_time > $4::time`,
-    [userId, weekNum, dayOfWeek, start_time, end_time]
-  );
-  return baseOverlap.rows.length > 0;
-}
-
-async function isAcceptedSwapShift(userId, shiftId) {
-  const result = await db.query(
-    `SELECT id FROM shift_swaps
-     WHERE status='accepted'
-       AND (
-         (initiator_id=$1 AND swapped_initiator_shift_id=$2)
-         OR
-         (target_id=$1 AND swapped_target_shift_id=$2)
-       )
-     LIMIT 1`,
-    [userId, shiftId]
-  );
-  return result.rows.length > 0;
-}
+const {
+  MAX_SHIFT_MINS,
+  shiftDurationMins,
+  checkConsecutiveHours,
+  overlapsExistingShift,
+  overlapsBaseSchedule,
+  isAcceptedSwapShift,
+} = require('../utils/shiftRules');
 
 // GET /api/shifts - get shifts for logged-in user + suppressed base dates
 // Optional ?from=YYYY-MM-DD limits shifts to that date onward (used by bootstrap for initial load).
@@ -177,14 +53,8 @@ router.post('/', auth, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'A single shift cannot exceed 18 hours.' });
 
   try {
-    const overlap = await db.query(
-      `SELECT id FROM shifts
-       WHERE user_id=$1 AND date=$2
-         AND start_time < $4::time AND end_time > $3::time`,
-      [req.userId, date, start_time, end_time]
-    );
-    if (overlap.rows.length)
-      return res.status(409).json({ ok: false, error: 'This shift overlaps an existing one on the same day' });
+    if (await overlapsExistingShift(req.userId, date, start_time, end_time))
+      return res.status(409).json({ ok: false, error: 'This shift overlaps another shift you have already logged' });
 
     if (await overlapsBaseSchedule(req.userId, date, start_time, end_time))
       return res.status(409).json({ ok: false, error: 'This shift overlaps your base schedule on that day' });
@@ -221,15 +91,8 @@ router.put('/:id', auth, async (req, res) => {
     if (await isAcceptedSwapShift(req.userId, req.params.id))
       return res.status(403).json({ ok: false, error: 'Swapped shifts cannot be modified' });
 
-    const overlap = await db.query(
-      `SELECT id FROM shifts
-       WHERE user_id=$1 AND date=$2
-         AND start_time < $4::time AND end_time > $3::time
-         AND id != $5`,
-      [req.userId, date, start_time, end_time, req.params.id]
-    );
-    if (overlap.rows.length)
-      return res.status(409).json({ ok: false, error: 'This shift overlaps an existing one on the same day' });
+    if (await overlapsExistingShift(req.userId, date, start_time, end_time, req.params.id))
+      return res.status(409).json({ ok: false, error: 'This shift overlaps another shift you have already logged' });
 
     if (await overlapsBaseSchedule(req.userId, date, start_time, end_time))
       return res.status(409).json({ ok: false, error: 'This shift overlaps your base schedule on that day' });
