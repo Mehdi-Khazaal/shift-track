@@ -28,6 +28,15 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000,
 });
 
+// When the database drops a connection that is sitting idle in the pool (a
+// Supabase restart, a network blip), pg emits 'error' on the pool. With no
+// listener Node treats that as fatal and kills the whole process. That is what
+// took production down on 2026-10-27. The broken client is already discarded
+// by the pool; the next query simply opens a fresh connection.
+pool.on('error', (err) => {
+  console.error('ERROR  Idle database connection lost (app keeps running):', err.message || err.code);
+});
+
 // Supabase publishes every table in `public` through PostgREST to the anon and
 // authenticated roles, and its default privileges grant those roles ALL on each
 // newly created table. Because the CREATE TABLE statements below run on every
