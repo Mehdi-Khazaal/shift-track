@@ -50,12 +50,32 @@ app.use('/api/shift-swaps',   require('./routes/swaps'));
 app.use('/api/leave',         require('./routes/leave'));
 app.use('/api/pulls',         require('./routes/pulls'));
 
-// Health check — used by deploy workflow to confirm the app came up cleanly
-app.get('/health', (req, res) => {
-  const ok = dbStatus.connected && dbStatus.migrated;
+// Asks the database right now. The startup flag alone said only whether the
+// first connection attempt worked, which can be wrong hours later in either
+// direction.
+async function pingDb(timeoutMs = 3000) {
+  let timer;
+  try {
+    await Promise.race([
+      db.query('SELECT 1'),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), timeoutMs); }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Health check: used by the deploy workflow to confirm the app came up cleanly,
+// and by UptimeRobot to alert when it goes down.
+app.get('/health', async (req, res) => {
+  const dbReachable = await pingDb();
+  const ok = dbReachable && dbStatus.migrated;
   res.status(ok ? 200 : 503).json({
     ok,
-    db_connected: dbStatus.connected,
+    db_connected: dbReachable,
     db_migrated:  dbStatus.migrated,
     migration_error: dbStatus.migrationError,
     // Reported but intentionally not part of `ok` — see applyRlsLockdown().

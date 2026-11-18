@@ -23,6 +23,9 @@ function isLocalDb(connectionString) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isLocalDb(process.env.DATABASE_URL || '') ? false : { rejectUnauthorized: false },
+  // Without this a connection attempt to an unreachable database waits forever,
+  // so neither the startup retry below nor /health could ever give up and report.
+  connectionTimeoutMillis: 10000,
 });
 
 // Supabase publishes every table in `public` through PostgREST to the anon and
@@ -405,17 +408,29 @@ async function migrate() {
 // Exposed so /health can report real migration state.
 const dbStatus = { connected: false, migrated: false, migrationError: null, rlsLocked: false, rlsError: null };
 
-// Test the connection on startup then run migrations.
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('ERROR  Database connection failed:', err.message);
-  } else {
+// Connect on startup, then run migrations, retrying until the database answers.
+//
+// This used to be a single attempt. If the database was unreachable at that one
+// moment (seen in production in 2026: the server restarted during a database
+// blip), connected stayed false and migrate() never ran for the life of the
+// process. The app itself kept working, since every query opens its own
+// connection, but /health reported it down for weeks.
+function connectAndMigrate(attempt = 1) {
+  pool.connect((err, client, release) => {
+    if (err) {
+      const delay = Math.min(30000, 2000 * attempt);
+      console.error(`ERROR  Database connection failed (attempt ${attempt}, retrying in ${delay / 1000}s):`, err.message || err.code || String(err));
+      // unref so one-off scripts that import this file can still exit.
+      setTimeout(() => connectAndMigrate(attempt + 1), delay).unref();
+      return;
+    }
     console.log('OK  Database connected');
     dbStatus.connected = true;
     release();
     migrate();
-  }
-});
+  });
+}
+connectAndMigrate();
 
 module.exports = pool;
 module.exports.dbStatus = dbStatus;
