@@ -1,17 +1,73 @@
 name: Deploy Backend
 
+# Every push that touches the API runs the full test suite first. Only a push to
+# main that passes the tests is deployed. Pushes to other branches just run the
+# tests, which is how a change can be checked in CI without touching production.
 on:
   push:
-    branches: [main]
     paths:
       - 'shifttrack-api/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:   # "Run workflow" button: tests, then redeploys if run on main
+
+# Never let two deploys run against the server at the same time.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        # Production runs Supabase on Postgres 17, so CI tests against 17.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: shifttrack
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: shifttrack_test
+        ports:
+          - 5433:5432   # same port .env.test.example points at
+        options: >-
+          --health-cmd "pg_isready -U shifttrack -d shifttrack_test"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+
+    defaults:
+      run:
+        working-directory: shifttrack-api
 
     steps:
-      - name: Deploy to Hetzner
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: shifttrack-api/package-lock.json
+
+      - run: npm ci
+
+      - name: Create .env.test (throwaway values, local database only)
+        run: |
+          cp .env.test.example .env.test
+          npx web-push generate-vapid-keys --json > "$RUNNER_TEMP/vapid.json"
+          PUB=$(node -p "require('$RUNNER_TEMP/vapid.json').publicKey")
+          PRIV=$(node -p "require('$RUNNER_TEMP/vapid.json').privateKey")
+          sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$PUB|; s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$PRIV|" .env.test
+
+      - name: Syntax check and integration tests
+        run: npm test
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy to Hetzner (rolls back automatically if unhealthy)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -20,15 +76,42 @@ jobs:
           script: |
             set -e
             cd /var/www/repo
+            PREV=$(git rev-parse HEAD)
+            echo "Currently running: $PREV"
             git fetch origin main
             git reset --hard origin/main
+            echo "Deploying: $(git rev-parse HEAD)"
             cd /var/www/repo/shifttrack-api
             npm install --omit=dev
             pm2 restart shifttrack-api
-            for i in 1 2 3 4 5 6; do
-              sleep 5
-              result=$(curl -sf "http://localhost:3000/health" 2>/dev/null || true)
-              echo "$result" | grep -q '"ok":true' && echo "Health check passed" && break
-              echo "Attempt $i/6 failed, retrying..."
-              if [ "$i" = "6" ]; then echo "Health check failed" && exit 1; fi
-            done
+
+            healthy() {
+              for i in 1 2 3 4 5 6; do
+                sleep 5
+                if curl -s "http://localhost:3000/health" | grep -q '"ok":true'; then return 0; fi
+                echo "Health attempt $i/6 failed"
+              done
+              return 1
+            }
+
+            if healthy; then
+              echo "Health check passed"
+              exit 0
+            fi
+
+            # The new version did not come up healthy. Put the previous one back
+            # so users are not left on a broken build. Migrations are additive,
+            # so the old code runs fine against the new schema.
+            echo "New version unhealthy. Rolling back to $PREV"
+            pm2 logs shifttrack-api --lines 40 --nostream || true
+            cd /var/www/repo
+            git reset --hard "$PREV"
+            cd /var/www/repo/shifttrack-api
+            npm install --omit=dev
+            pm2 restart shifttrack-api
+            if healthy; then
+              echo "Rolled back to $PREV, which is healthy. The deploy is marked failed."
+            else
+              echo "ROLLBACK IS ALSO UNHEALTHY. Likely the database or server, not the code."
+            fi
+            exit 1
