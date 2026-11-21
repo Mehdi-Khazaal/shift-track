@@ -65,6 +65,9 @@
     </div>
   </div>
 
+  <!-- HOLIDAY COUNTDOWN (shown 10 days ahead; see renderHolidayBanner) -->
+  <div id="holiday-banner" style="display:none"></div>
+
   <!-- LIVE TICKER -->
   <div id="live-ticker-card">
     <div class="ticker-inner">
@@ -362,6 +365,7 @@
         <div class="calc-row"><span style="color:var(--muted)">Duration</span><span id="calc-dur">—</span></div>
         <div class="calc-row"><span style="color:var(--muted)">Rate</span><span id="calc-rate">—</span></div>
         <div class="calc-row" id="calc-ot-row" style="display:none"><span style="color:var(--muted)">OT portion</span><span id="calc-ot-hrs" style="color:var(--orange)">—</span></div>
+        <div class="calc-row" id="calc-hol-row" style="display:none"><span style="color:var(--muted)">Holiday portion</span><span id="calc-hol-hrs" class="holiday-text">—</span></div>
         <div class="calc-row total"><span style="color:var(--muted)">Est. pay</span><span id="calc-pay" style="color:var(--green);font-weight:700">—</span></div>
       </div>
       <button class="btn btn-primary" id="save-shift-btn" onclick="saveShift()">Save Shift</button>
@@ -646,6 +650,7 @@
 <div id="toast"></div>
 <canvas id="confetti-canvas"></canvas>
 
+<script src="assets/js/holidays.js"></script>
 <script src="assets/js/pay-engine.js"></script>
 <script src="assets/js/display-blocks.js"></script>
 <script src="assets/js/index.js"></script>

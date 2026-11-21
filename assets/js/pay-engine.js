@@ -20,6 +20,11 @@
 
   const BLOCK_PREMIUM = 0.50;   // per hour, base shifts only, 'block' workers
   const OT_MULTIPLIER = 1.5;
+  const HOLIDAY_MULTIPLIER = 1.5;   // every hour worked on a holiday date (holidays.js)
+
+  // Paid holidays come from holidays.js, loaded before this file in the
+  // browser and required here under Node.
+  const Holidays = root.Holidays || (typeof require === 'function' ? require('./holidays.js') : null);
 
   // ── Time primitives ──────────────────────────────────────────────────────
   // Accepts 07:00, 7:00, 15:00:00, 3:00 PM. Mirrors parseTimeString in index.js.
@@ -143,9 +148,57 @@
     });
   }
 
+  // ── Holiday hours ────────────────────────────────────────────────────────
+  // Decided 2026-11-21: every hour worked on a holiday DATE, midnight to
+  // midnight, pays 1.5x. Sep 6 22:00 -> Sep 7 08:00 on Labor Day is 8 holiday
+  // hours and 2 normal ones. Holiday and OT do not stack (an hour that is both
+  // pays 1.5x once), holiday hours count toward the weekly OT threshold, and
+  // each chain leg is judged by its own date even though the chain is paid in
+  // the week its first leg starts.
+
+  // Trims floating-point noise (7.999999999 -> 8) without coarsening real
+  // fractions. Rounding the holiday/OT split to 0.1h instead mispriced shifts
+  // under a fractional OT threshold (40.25: 0.25 holiday-regular hours became
+  // 0.2). Display code rounds for the screen; the money uses these values.
+  const trim = x => Math.round(x * 1e6) / 1e6;
+
+  // Day number (as dayNumber() produces) back to YYYY-MM-DD.
+  function dateOfDay(day) {
+    return new Date(day * 86400000).toISOString().slice(0, 10);
+  }
+
+  // Where a row's holiday time falls, as [from, to) positions in hours from
+  // the row's start. Exact clock minutes are scaled onto the row's rounded
+  // length, so the positions line up with the hours the rest of the engine
+  // uses. Half-open: a shift ending exactly at midnight before a holiday has
+  // none; one starting at that midnight is all holiday.
+  function holidaySlices(seg, rawHrs, holidayOn) {
+    const r = absRange(seg);
+    const total = r.end - r.start;
+    const out = { slices: [], names: [] };
+    if (!(total > 0) || !(rawHrs > 0)) return out;
+    for (let day = Math.floor(r.start / 1440); day * 1440 < r.end; day++) {
+      const h = holidayOn(dateOfDay(day));
+      if (!h) continue;
+      const a = Math.max(r.start, day * 1440), b = Math.min(r.end, (day + 1) * 1440);
+      if (b <= a) continue;
+      out.slices.push([(a - r.start) / total * rawHrs, (b - r.start) / total * rawHrs]);
+      if (!out.names.includes(h.name)) out.names.push(h.name);
+    }
+    return out;
+  }
+
+  // Hours of the slices inside [from, to).
+  function overlapHours(slices, from, to) {
+    let sum = 0;
+    for (const [a, b] of slices) sum += Math.max(0, Math.min(b, to) - Math.max(a, from));
+    return sum;
+  }
+
   // ── The OT engine ────────────────────────────────────────────────────────
   //  segments : prepared segments, already filtered to one pay week
-  //  options  : { otThreshold, isBlock, rateOf, callOffHoursByDate }
+  //  options  : { otThreshold, isBlock, rateOf, callOffHoursByDate, holidayOn }
+  //             holidayOn(date) -> {name} | null defaults to holidays.js
   //
   //  rateOf(segment) resolves the base hourly rate. The employee app looks the
   //  location up in its cache; the admin app reads the rate denormalised onto
@@ -159,6 +212,8 @@
     const isBlock = !!opts.isBlock;
     const rateOf = typeof opts.rateOf === 'function' ? opts.rateOf : () => 0;
     const callOffs = opts.callOffHoursByDate || {};
+    const holidayOn = typeof opts.holidayOn === 'function' ? opts.holidayOn
+      : (Holidays ? Holidays.holidayOn : () => null);
 
     const sorted = segments.slice().sort(
       (a, b) => (a._absStart != null && b._absStart != null)
@@ -188,10 +243,24 @@
       const regHrs = Math.max(0, Math.min(hrs, thresh - regRunning));
       const otHrs = hrs - regHrs;
       const pullBonus = s.pullBonus || 0;
-      const pay = regHrs * rate + otHrs * rate * OT_MULTIPLIER + pullBonus;
+
+      // Along the row: a call-off removes its EARLIEST hours (the engine knows
+      // hours, not clock times), and OT is its LAST hours. So paid time runs
+      // [callOffHrs, rawHrs) and the OT part is the tail of that.
+      const hol = holidaySlices(s, rawHrs, holidayOn);
+      const holidayHrs = Math.min(hrs, trim(overlapHours(hol.slices, callOffHrs, rawHrs)));
+      const holidayOtHrs = Math.min(otHrs, holidayHrs, trim(overlapHours(hol.slices, callOffHrs + regHrs, rawHrs)));
+      const holidayRegHrs = Math.min(regHrs, Math.max(0, trim(holidayHrs - holidayOtHrs)));
+      // No stacking: holiday hours already paid as OT get nothing extra.
+      const holidayPay = holidayRegHrs * rate * (HOLIDAY_MULTIPLIER - 1);
+
+      const pay = regHrs * rate + otHrs * rate * OT_MULTIPLIER + holidayPay + pullBonus;
 
       regRunning += regHrs;
-      return Object.assign({}, s, { hrs, rawHrs, callOffHrs, regHrs, otHrs, rate, pullBonus, pay });
+      return Object.assign({}, s, {
+        hrs, rawHrs, callOffHrs, regHrs, otHrs, rate, pullBonus, pay,
+        holidayHrs, holidayRegHrs, holidayOtHrs, holidayPay, holidayNames: hol.names,
+      });
     });
 
     return {
@@ -199,6 +268,7 @@
       totalHrs: rows.reduce((a, r) => a + r.hrs, 0),
       totalPay: rows.reduce((a, r) => a + r.pay, 0),
       totalOt:  rows.reduce((a, r) => a + r.otHrs, 0),
+      totalHoliday: rows.reduce((a, r) => a + r.holidayHrs, 0),
     };
   }
 
@@ -214,7 +284,7 @@
   }
 
   const PayEngine = {
-    BLOCK_PREMIUM, OT_MULTIPLIER,
+    BLOCK_PREMIUM, OT_MULTIPLIER, HOLIDAY_MULTIPLIER,
     parseTime, shiftHours, dayNumber, addDays, ymd, weekSundayOf, absRange,
     normalizeCalcShift, buildChains, payWeekOf, prepare, computePay, callOffMap,
   };

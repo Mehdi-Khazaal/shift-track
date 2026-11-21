@@ -578,7 +578,7 @@ function renderUserDashboard(){
       <td data-label="Location">${locCell}</td>
       <td class="mono" data-label="Start">${s.start}</td>
       <td class="mono" data-label="End">${s.end}</td>
-      <td class="mono" data-label="Hours">${s.h.toFixed(1)}h${s.otH>0?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}</td>
+      <td class="mono" data-label="Hours">${s.h.toFixed(1)}h${s.otH>0?` <span style="color:var(--orange);font-size:11px">(${s.otH.toFixed(1)}h OT)</span>`:''}${s.holidayHrs>0?` <span style="color:#f472b6;font-size:11px" title="${(s.holidayNames||[]).join(', ')} · 1.5×">(${s.holidayHrs.toFixed(1)}h holiday)</span>`:''}</td>
       <td class="mono" data-label="Est. Pay" style="color:var(--green)">${payCell}</td>
       <td data-label="" style="text-align:center;white-space:nowrap">${noteBtn}${delBtn}</td>
     </tr>`;
@@ -1114,7 +1114,7 @@ function exportPayrollPDF(){
         <td>${s.isPulled&&s.pulledFromLocationName?`<span style="text-decoration:line-through;opacity:.5">${s.pulledFromLocationName}</span> → `:''}${s.location_name||'—'}</td>
         <td class="mono">${s.start}</td>
         <td class="mono">${s.end}</td>
-        <td class="mono">${s.h.toFixed(2)}h${s.otH>0?` <span style="color:#c07000">(${s.otH.toFixed(2)}h OT)</span>`:''}</td>
+        <td class="mono">${s.h.toFixed(2)}h${s.otH>0?` <span style="color:#c07000">(${s.otH.toFixed(2)}h OT)</span>`:''}${s.holidayHrs>0?` <span style="color:#be185d">(${s.holidayHrs.toFixed(2)}h holiday)</span>`:''}</td>
         <td class="mono green">${formatPay(s.p)}</td>
       </tr>`).join('')}
     </tbody>

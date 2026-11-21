@@ -721,7 +721,16 @@ function updateCalc(){
   const otRow=document.getElementById('calc-ot-row');
   if(otHrs>0){ otRow.style.display='flex'; document.getElementById('calc-ot-hrs').textContent=otHrs.toFixed(1)+' hrs @ 1.5×'; }
   else { otRow.style.display='none'; }
-  document.getElementById('calc-pay').textContent=formatPay(pay)+(otHrs>0?' (incl. OT)':'');
+  const holHrs=entry?(entry.holidayHrs||0):0;
+  const holRow=document.getElementById('calc-hol-row');
+  if(holRow){
+    if(holHrs>0){
+      holRow.style.display='flex';
+      document.getElementById('calc-hol-hrs').textContent=`${holHrs.toFixed(1)} hrs @ 1.5× · ${(entry.holidayNames||[]).join(', ')}`;
+    } else holRow.style.display='none';
+  }
+  const incl=[otHrs>0?'OT':'', holHrs>0?'holiday':''].filter(Boolean).join(' + ');
+  document.getElementById('calc-pay').textContent=formatPay(pay)+(incl?` (incl. ${incl})`:'');
 }
 
 async function saveShift(){
@@ -823,7 +832,74 @@ async function deleteBase(){
 // ═══════════════════════════════════════
 //  RENDER: DASHBOARD
 // ═══════════════════════════════════════
+// ── Holiday countdown banner ──
+// Shows from 10 days before a paid holiday (holidays.js) until the day itself:
+// "Thanksgiving is in 5 days". If the employee is scheduled on it, it says how
+// many holiday hours, worked out by the same pay engine as everything else, so
+// an overnight shift running into the holiday counts. Closing it hides it
+// until the day itself, when it shows once more. That choice is remembered on
+// this device only.
+const HOLIDAY_BANNER_DAYS=10;
+const HOLIDAY_EMOJI={"New Year's Day":'🎉','Martin Luther King Jr. Day':'🕊️','Easter Sunday':'🐣','Memorial Day':'🇺🇸',
+  'Juneteenth':'✊','Independence Day':'🎆','Labor Day':'🛠️','Thanksgiving':'🦃','Christmas Day':'🎄'};
+
+function nextHolidayWithin(days){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const y=today.getFullYear();
+  for(const h of [...Holidays.holidaysForYear(y),...Holidays.holidaysForYear(y+1)]){
+    const n=Math.round((new Date(h.date+'T00:00:00')-today)/86400000);
+    if(n>=0&&n<=days) return {...h, daysAway:n};
+  }
+  return null;
+}
+
+// Holiday hours this employee is scheduled for on that holiday (logged + base).
+function scheduledHolidayHours(h){
+  const wkY=weekDatesForDate(h.date).map(toYMD);
+  const prevY=weekDatesForDate(PayEngine.addDays(wkY[0],-7)).map(toYMD);
+  const prepared=preparedSegmentsFor([...prevY,...wkY]);
+  return [...weekPayFrom(prepared,prevY[0]).rows,...weekPayFrom(prepared,wkY[0]).rows]
+    .filter(r=>(r.holidayNames||[]).includes(h.name))
+    .reduce((a,r)=>a+(r.holidayHrs||0),0);
+}
+
+function holidayBannerKey(h){ return `st_holiday_banner_${h.date}_${h.daysAway===0?'day':'before'}`; }
+function dismissHolidayBanner(key){
+  try{ localStorage.setItem(key,'1'); }catch(e){}
+  const el=document.getElementById('holiday-banner'); if(el) el.style.display='none';
+}
+
+function renderHolidayBanner(){
+  const el=document.getElementById('holiday-banner');
+  if(!el) return;
+  const h=nextHolidayWithin(HOLIDAY_BANNER_DAYS);
+  let dismissed=false;
+  if(h){ try{ dismissed=localStorage.getItem(holidayBannerKey(h))==='1'; }catch(e){} }
+  if(!h||dismissed){ el.style.display='none'; el.innerHTML=''; return; }
+
+  const emoji=HOLIDAY_EMOJI[h.name]||'★';
+  const when=new Date(h.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const title=h.daysAway===0?`Today is ${h.name}`
+    :h.daysAway===1?`${h.name} is tomorrow`
+    :`${h.name} is in ${h.daysAway} days`;
+  const detail=h.daysAway===0?'Every hour you work today pays 1.5×'
+    :h.daysAway===1?'Holiday pay 1.5× all day'
+    :`${when} · holiday pay 1.5×`;
+  const hrs=cache.loaded?scheduledHolidayHours(h):0;
+  const mine=hrs>0?`<div class="hb-mine">You're scheduled for ${hrs.toFixed(1)} holiday hour${hrs===1?'':'s'}</div>`:'';
+
+  el.innerHTML=`<div class="hb-emoji" aria-hidden="true">${emoji}</div>
+    <div class="hb-text">
+      <div class="hb-title">${escapeHtml(title)}</div>
+      <div class="hb-detail">${escapeHtml(detail)}</div>
+      ${mine}
+    </div>
+    <button class="hb-close" aria-label="Hide" onclick="dismissHolidayBanner('${holidayBannerKey(h)}')">✕</button>`;
+  el.style.display='flex';
+}
+
 function renderDash(){
+  renderHolidayBanner();
   const settings=getSettings();
   const thresh=settings.otThreshold;
   const wkDates=getWeekDates(weekOffset);
@@ -860,10 +936,12 @@ function renderDash(){
   const ppTotal=r1.totalPay+r2.totalPay;
   const ppHrs  =r1.totalHrs+r2.totalHrs;
   const ppOt   =r1.totalOt +r2.totalOt;
+  const ppHol  =(r1.totalHoliday||0)+(r2.totalHoliday||0);
 
   countUp(document.getElementById('pp-pay'), ppTotal, 800, 'currency');
   document.getElementById('pp-hrs').textContent   =ppHrs.toFixed(1)+' hrs total';
-  document.getElementById('pp-ot-label').textContent=ppOt>0?`${ppOt.toFixed(1)} hrs OT`:'';
+  document.getElementById('pp-ot-label').textContent=
+    [ppOt>0?`${ppOt.toFixed(1)} hrs OT`:'', ppHol>0?`${ppHol.toFixed(1)} hrs holiday`:''].filter(Boolean).join(' · ');
   document.getElementById('pp-dates').textContent =fmt(ppS)+' – '+fmt(ppE);
   document.getElementById('pp-nav-label').textContent = payPeriodOffset===0 ? 'Current' : (payPeriodOffset<0 ? `${Math.abs(payPeriodOffset)} back` : `+${payPeriodOffset}`);
   document.getElementById('prog-pp').style.width  =Math.min(100,(ppHrs/(thresh*2))*100)+'%';
@@ -1125,11 +1203,11 @@ function blockHTML(block, opts={}){
   }
   const loc=getLocById(block.locationId);
   const color=loc?.color||'#888';
-  let hrs=0, pay=0, ot=0;
+  let hrs=0, pay=0, ot=0, hol=0;
   for(const p of block.parts){
     const bd=bdFor(p);
     const h=bd?bd.hrs:shiftHours(p.start,p.end);
-    hrs+=h; ot+=bd?bd.otHrs:0;
+    hrs+=h; ot+=bd?bd.otHrs:0; hol+=bd?(bd.holidayHrs||0):0;
     pay+=bd?bd.pay:h*(p.payRateOverride ?? (getLocById(p.locationId)?.rate||0));
   }
   const states=block.parts.map(shiftStateOf);
@@ -1160,7 +1238,7 @@ function blockHTML(block, opts={}){
       <div class="shift-right">
         <div class="pay">${formatPay(pay)}</div>
         <div class="hrs">${hrs.toFixed(1)} hrs</div>
-        ${badge}
+        ${badge}${hol>0?'<span class="badge holiday">HOLIDAY</span>':''}
       </div>
     </div>
     <div class="block-parts">${partsHTML}</div>
@@ -1223,6 +1301,12 @@ function shiftItemHTML(s,bd,swapId=null,opts={}){
 
   const otNote=otHrs>0
     ?`<div class="ot-note">${(effectiveHrs-otHrs).toFixed(1)}h reg · ${otHrs.toFixed(1)}h OT @ 1.5×</div>`:'';
+  // Holiday hours pay 1.5x. Hours that are also OT are paid 1.5x once, and the
+  // note says so, so it never reads as 2.25x.
+  const holHrs=bd?.holidayHrs||0, holOt=bd?.holidayOtHrs||0;
+  const holidayNote=holHrs>0
+    ?`<div class="ot-note holiday-note">${holHrs.toFixed(1)}h holiday @ 1.5× · ${escapeHtml((bd.holidayNames||[]).join(', '))}${holOt>0?` · ${holOt.toFixed(1)}h also OT, paid once`:''}</div>`:'';
+  const holidayBadge=holHrs>0?'<span class="badge holiday">HOLIDAY</span>':'';
   const pullNote=s.isPulled
     ?`<div class="ot-note" style="color:#ff8c00">Pulled${s.pulledFromLocationName?` from ${s.pulledFromLocationName}`:''}${s.pullBonus>0?` · +$${s.pullBonus.toFixed(0)} pull bonus`:''}</div>`
     :'';
@@ -1250,6 +1334,7 @@ function shiftItemHTML(s,bd,swapId=null,opts={}){
       <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
       ${leaveNote}
       ${otNote}
+      ${holidayNote}
       ${pullNote}
       ${awardedTag}
       ${s.notes?`<div class="notes-chip">${escapeHtml(s.notes.slice(0,40))}${s.notes.length>40?'…':''}</div>`:''}
@@ -1259,7 +1344,7 @@ function shiftItemHTML(s,bd,swapId=null,opts={}){
     <div class="shift-right">
       <div class="pay">${payStr}</div>
       <div class="hrs">${hrsDisplay}</div>
-      ${badge}
+      ${badge}${holidayBadge}
     </div>
   </div>`;
 }
@@ -1518,8 +1603,9 @@ function renderCalMonth(){
       `<div class="cal-seg" style="left:${seg.left.toFixed(2)}%;width:${seg.width.toFixed(2)}%;background:${seg.color}"></div>`
     ).join('');
     const timelineHTML = `<div class="cal-timeline">${segHTML}</div>`;
-    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${hasShift?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}" onclick="selectCalendarDay('${ymd}')">
-      <div class="cal-dn">${date.getDate()}</div>
+    const hol = Holidays.holidayOn(ymd);   // paid holiday (1.5x), shown even with no shift
+    return `<div class="cal-cell${otherMonth?' other-month':''}${isToday?' today':''}${isSelected?' selected':''}${hasShift?' has-shift':''}${unavail.length?' unavail':''}${leaveCls}${hol?' holiday':''}" onclick="selectCalendarDay('${ymd}')"${hol?` title="${escapeHtml(hol.name)} · holiday pay 1.5×"`:''}>
+      <div class="cal-dn">${date.getDate()}${hol?'<span class="cal-holiday-star" aria-label="Holiday">★</span>':''}</div>
       ${isPay?'<div class="cal-payday" title="Payday">$</div>':''}
       ${unavail.length?'<div class="unavail-stripe"></div>':''}
       ${timelineHTML}
@@ -1564,6 +1650,8 @@ function renderCalWeek(){
     }).join('');
     const shifts = dayBlocks;
     const addBtn = `<div class="cal-add-pill" onclick="event.stopPropagation();openAddShiftForDateStr('${ymd}')">+ add</div>`;
+    const hol = Holidays.holidayOn(ymd);
+    const holChip = hol ? `<div class="cal-holiday-chip">★ ${escapeHtml(hol.name)} · 1.5×</div>` : '';
     return `<div class="cal-week-row${isToday?' today':''}${ymd===calSelectedDate?' selected':''}" onclick="selectCalendarDay('${ymd}')">
       <div class="cal-week-day-label${isToday?' today':''}">
         <div class="wd">${DAY_SHORT[i]}</div>
@@ -1571,7 +1659,8 @@ function renderCalWeek(){
         ${isPayday(d)?'<div class="cal-payday wk" title="Payday">$</div>':''}
       </div>
       <div class="cal-week-shifts">
-        ${shifts.length?pillsHTML:`<div class="cal-week-empty">—</div>`}
+        ${holChip}
+        ${shifts.length?pillsHTML:(hol?'':`<div class="cal-week-empty">—</div>`)}
         ${addBtn}
       </div>
     </div>`;
@@ -1614,8 +1703,11 @@ function renderCalDayPreview(dateStr){
   unavails.forEach(u=>{
     rows.push(`<div class="cal-preview-row muted"><span class="preview-mark unavailable"></span><span>Unavailable</span><b>${u.startTime?`${fmtTime(u.startTime)}-${fmtTime(u.endTime)}`:'All day'}</b></div>`);
   });
+  // The holiday line is information about the day, not an item to count.
+  const hol=Holidays.holidayOn(dateStr);
+  const holLine=hol?`<div class="cal-preview-holiday">★ ${escapeHtml(hol.name)} · holiday pay 1.5×</div>`:'';
   el.innerHTML=`<div class="cal-preview-hd">
-      <div><div class="cal-preview-title">${title}</div><div class="cal-preview-meta">${rows.length?`${rows.length} item${rows.length!==1?'s':''}`:'No shifts or requests'}</div></div>
+      <div><div class="cal-preview-title">${title}</div>${holLine}<div class="cal-preview-meta">${rows.length?`${rows.length} item${rows.length!==1?'s':''}`:'No shifts or requests'}</div></div>
       <button class="btn btn-ghost btn-sm" onclick="openDaySheet('${dateStr}')">Open</button>
     </div>
     ${rows.length?`<div class="cal-preview-list">${rows.join('')}</div>`:'<div class="cal-preview-empty">Tap Open to log a shift, mark unavailable, or request leave.</div>'}`;
@@ -1627,7 +1719,9 @@ function openDaySheet(dateStr){
   daySheetDate = dateStr;
   const d = new Date(dateStr+'T12:00:00');
   const title = d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
-  document.getElementById('day-sheet-title').textContent = title;
+  const hol = Holidays.holidayOn(dateStr);
+  document.getElementById('day-sheet-title').innerHTML = escapeHtml(title)
+    + (hol ? ` <span class="badge holiday" title="Holiday pay 1.5×">★ ${escapeHtml(hol.name)}</span>` : '');
 
   const shifts = getShiftsForDate(dateStr);
   const listEl = document.getElementById('day-shift-list');
@@ -1788,6 +1882,7 @@ async function renderHistory(reset=true){
     const total=r1.totalPay+r2.totalPay;
     const hrs  =r1.totalHrs+r2.totalHrs;
     const ot   =r1.totalOt +r2.totalOt;
+    const hol  =(r1.totalHoliday||0)+(r2.totalHoliday||0);
 
     const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
     const isCurrent=offset===0;
@@ -1802,6 +1897,7 @@ async function renderHistory(reset=true){
           <div class="hist-meta">
             <div class="hist-chip"><span>${hrs.toFixed(1)}h</span> total</div>
             ${ot>0?`<div class="hist-chip ot"><span>${ot.toFixed(1)}h</span> OT</div>`:''}
+            ${hol>0?`<div class="hist-chip hol"><span>${hol.toFixed(1)}h</span> holiday</div>`:''}
             <div class="hist-chip"><span>${r1.totalHrs.toFixed(1)}h</span> wk1 · <span>${r2.totalHrs.toFixed(1)}h</span> wk2</div>
           </div>
         </div>
@@ -2081,6 +2177,12 @@ async function downloadPayPDF(offset){
   const w1=weekPayFrom(pdfPrepared,ppW1[0]), w2=weekPayFrom(pdfPrepared,ppW2[0]);
   const allRows=[...w1.rows,...w2.rows].map(s=>({...s,h:s.hrs,otH:s.otHrs,p:s.pay,loc:getLocById(s.locationId)}));
   const totPay=w1.totalPay+w2.totalPay, totHrs=w1.totalHrs+w2.totalHrs, totOt=w1.totalOt+w2.totalOt;
+  const totHol=(w1.totalHoliday||0)+(w2.totalHoliday||0);
+  // "8.0h (2.0h OT, 8.0h holiday)": the same wording for rows and totals.
+  const hrsText=(h,ot,hol)=>{
+    const extra=[ot>0?`${ot.toFixed(1)}h OT`:'', hol>0?`${hol.toFixed(1)}h holiday`:''].filter(Boolean).join(', ');
+    return `${h.toFixed(1)}h${extra?` (${extra})`:''}`;
+  };
   const pullBonusTotal=allRows.reduce((sum,s)=>sum+(s.pullBonus||0),0);
   const shiftOnlyPay=totPay-pullBonusTotal;
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -2100,7 +2202,7 @@ async function downloadPayPDF(offset){
       <td>${locCell}</td>
       <td>${s.start}</td>
       <td>${s.end}</td>
-      <td>${s.h.toFixed(1)}h${s.otH>0?` (${s.otH.toFixed(1)}h OT)`:''}</td>
+      <td>${hrsText(s.h,s.otH,s.holidayHrs||0)}</td>
       <td style="text-align:right">${formatPay(s.p)}${s.pullBonus>0?`<br><span style="font-size:10px;color:#c07000">incl. +$${s.pullBonus.toFixed(0)} pull</span>`:''}</td>
     </tr>`;
   }).join('');
@@ -2108,7 +2210,7 @@ async function downloadPayPDF(offset){
   document.getElementById('pdf-tfoot').innerHTML=pullBonusTotal>0?`
     <tr class="pdf-total">
       <td colspan="4"><strong>Shift Subtotal</strong></td>
-      <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>
+      <td><strong>${hrsText(totHrs,totOt,totHol)}</strong></td>
       <td style="text-align:right"><strong>${formatPay(shiftOnlyPay)}</strong></td>
     </tr>
     <tr><td colspan="5">Pull Bonus</td><td style="text-align:right;color:#c07000">+${formatPay(pullBonusTotal)}</td></tr>
@@ -2119,7 +2221,7 @@ async function downloadPayPDF(offset){
     </tr>`:`
     <tr class="pdf-total">
       <td colspan="4"><strong>Total</strong></td>
-      <td><strong>${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}</strong></td>
+      <td><strong>${hrsText(totHrs,totOt,totHol)}</strong></td>
       <td style="text-align:right"><strong>${formatPay(totPay)}</strong></td>
     </tr>`;
 
@@ -2145,7 +2247,7 @@ async function downloadPayPDF(offset){
   // build a real PDF from the same figures and open the share sheet instead.
   if(isInstalledApp()){
     const dayLabel=s=>new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const hoursCell=`${totHrs.toFixed(1)}h${totOt>0?' ('+totOt.toFixed(1)+'h OT)':''}`;
+    const hoursCell=hrsText(totHrs,totOt,totHol);
     const pdfData={
       dates:`${fmt(start)} - ${fmt(end)}`,
       employee:[user?.name||user?.email||'', user?.email&&user?.name?user.email:''].filter(Boolean).join('  ·  '),
@@ -2153,7 +2255,7 @@ async function downloadPayPDF(offset){
         dayLabel(s)+(s.isPulled?'  PULL':''),
         s.isPulled&&s.pulledFromLocationName?`${s.pulledFromLocationName} -> ${s.loc?.name||'-'}`:(s.loc?.name||'-'),
         s.start, s.end,
-        `${s.h.toFixed(1)}h${s.otH>0?` (${s.otH.toFixed(1)}h OT)`:''}`,
+        hrsText(s.h,s.otH,s.holidayHrs||0),
         formatPay(s.p)+(s.pullBonus>0?` (incl. +$${s.pullBonus.toFixed(0)} pull)`:''),
       ]),
       foot:pullBonusTotal>0?[
@@ -2689,8 +2791,8 @@ function updateLiveTicker() {
   const wkD = weekDatesForDate(todayStr);
   const wkDYest = weekDatesForDate(yesterdayStr);
   const activeBase = [
-    ...getBase().map(b => ({ ...b, date: baseToDate(b, wkD) })).filter(b => b.date === todayStr && isActive(b)),
-    ...getBase().map(b => ({ ...b, date: baseToDate(b, wkDYest) })).filter(b => b.date === yesterdayStr && isOvernightCarryover(b)),
+    ...getBase().map(b => ({ ...b, date: baseToDate(b, wkD), isBase: true })).filter(b => b.date === todayStr && isActive(b)),
+    ...getBase().map(b => ({ ...b, date: baseToDate(b, wkDYest), isBase: true })).filter(b => b.date === yesterdayStr && isOvernightCarryover(b)),
   ];
   const all = [...activeLogged, ...activeBase];
   if (!all.length) { card.style.display = 'none'; return; }
@@ -2724,8 +2826,12 @@ function updateLiveTicker() {
   // identical time for `otActive`, every single second.
   let earned = 0;
   let otActive = false;
+  let holidayNow = null;
+  const isBlock = !!payOptions().isBlock;
   for (const active of all) {
-    const rate = active.payRateOverride ?? (getLocById(active.locationId)?.rate || 0);
+    // Same rate the shift card uses: block workers get the premium on base shifts.
+    const rate = (active.payRateOverride ?? (getLocById(active.locationId)?.rate || 0))
+      + (isBlock && active.isBase ? PayEngine.BLOCK_PREMIUM : 0);
     const elapsedHrs = elapsedHoursForActive(active);
 
     // Reg hours already banked by shifts that started before this one
@@ -2740,10 +2846,27 @@ function updateLiveTicker() {
     const otElapsed  = Math.max(0, elapsedHrs - regElapsed);
     earned += regElapsed * rate + otElapsed * rate * 1.5;
     if (rate && elapsedHrs > regRemaining) otActive = true;
+
+    // Holiday hours so far. Only the regular ones get the extra 0.5x: hours
+    // already at the OT rate are paid 1.5x once (holiday and OT don't stack).
+    // In hours from the shift's start, its own date runs until midnight and the
+    // next date takes over from there.
+    const st = parseTimeString(active.start);
+    if (st) {
+      const toMidnight = (1440 - st.total) / 60;
+      const days = [[active.date, 0, toMidnight], [PayEngine.addDays(active.date, 1), toMidnight, toMidnight + 24]];
+      for (const [d, from, to] of days) {
+        const h = Holidays.holidayOn(d);
+        if (!h) continue;
+        earned += Math.max(0, Math.min(to, regElapsed) - from) * rate * (PayEngine.HOLIDAY_MULTIPLIER - 1);
+        if (elapsedHrs >= from && elapsedHrs < to) holidayNow = h;
+      }
+    }
   }
 
   const sub = all.map(s => { const loc = getLocById(s.locationId); return `${loc?.name||'?'} · ${fmtTime(s.start)} – ${fmtTime(s.end)}`; }).join(' / ')
-    + (otActive ? ' · OT rate active' : '');
+    + (otActive ? ' · OT rate active' : '')
+    + (holidayNow ? ` · ${holidayNow.name} 1.5×` : '');
   card.style.display = 'block';
   document.getElementById('ticker-amount').textContent = '$' + earned.toFixed(2);
   document.getElementById('ticker-sub').textContent = sub;

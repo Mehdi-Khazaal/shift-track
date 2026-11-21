@@ -235,3 +235,162 @@ describe('time primitives', () => {
     assert.strictEqual(PayEngine.weekSundayOf(SAT), '2026-08-30');
   });
 });
+
+// ── Holiday pay (decided 2026-11-21) ─────────────────────────────────────────
+// Every hour worked on a holiday date pays 1.5x. Holiday and OT do not stack,
+// holiday hours count toward the 40h threshold, a call-off removes a shift's
+// earliest hours, and each chain leg is judged by its own date.
+// HOUSE_A pays $20/h, HOUSE_B $30/h.
+describe('holiday pay', () => {
+  const one = (seg, opts) =>
+    PayEngine.computePay(PayEngine.prepare([seg]), Object.assign({ rateOf }, opts)).rows[0];
+  const week = segs => PayEngine.computePay(PayEngine.prepare(segs), { rateOf });
+
+  test('Labor Day overnight: Sep 6 22:00 -> Sep 7 08:00 is 8 holiday hours and 2 normal', () => {
+    const r = one(shift('2026-09-06', '22:00', '08:00'));
+    assert.strictEqual(r.hrs, 10);
+    assert.strictEqual(r.holidayHrs, 8);
+    assert.deepStrictEqual(r.holidayNames, ['Labor Day']);
+    assert.strictEqual(r.pay, 10 * 20 + 8 * 20 * 0.5);      // $280
+  });
+
+  test('a shift running off the end of the holiday: Sep 7 20:00 -> Sep 8 04:00 is 4 holiday hours', () => {
+    const r = one(shift('2026-09-07', '20:00', '04:00'));
+    assert.strictEqual(r.holidayHrs, 4);
+    assert.strictEqual(r.pay, 8 * 20 + 4 * 20 * 0.5);
+  });
+
+  test('a whole shift on the holiday pays 1.5x throughout', () => {
+    const r = one(shift('2026-11-26', '08:00', '16:00'));
+    assert.strictEqual(r.holidayHrs, 8);
+    assert.strictEqual(r.pay, 8 * 20 * 1.5);
+  });
+
+  test('ending exactly at the midnight a holiday starts earns none; starting at it earns all', () => {
+    assert.strictEqual(one(shift('2026-09-06', '16:00', '00:00')).holidayHrs, 0);
+    assert.strictEqual(one(shift('2026-09-07', '00:00', '08:00')).holidayHrs, 8);
+  });
+
+  test('New Year: Dec 31 22:00 -> Jan 1 06:00 is 6 holiday hours', () => {
+    const r = one(shift('2026-12-31', '22:00', '06:00'));
+    assert.strictEqual(r.holidayHrs, 6);
+    assert.deepStrictEqual(r.holidayNames, ["New Year's Day"]);
+  });
+
+  test('a 23:57 punch counted from midnight lands wholly on the holiday', () => {
+    assert.strictEqual(one(shift('2026-12-31', '23:57', '08:00')).holidayHrs, 8);
+  });
+
+  test('ordinary days earn nothing extra', () => {
+    const r = one(shift('2026-09-08', '08:00', '16:00'));
+    assert.strictEqual(r.holidayHrs, 0);
+    assert.strictEqual(r.pay, 8 * 20);
+  });
+
+  test('when the 40th hour falls inside a holiday shift, the OT part is not paid twice', () => {
+    // Thanksgiving week: 38h Sunday-Wednesday, then 8h on Thanksgiving.
+    const { rows } = week([
+      shift('2026-11-22', '06:00', '16:00'), shift('2026-11-23', '06:00', '16:00'),
+      shift('2026-11-24', '06:00', '16:00'), shift('2026-11-25', '08:00', '16:00'),
+      shift('2026-11-26', '08:00', '16:00'),
+    ]);
+    const thu = rows[rows.length - 1];
+    assert.strictEqual(thu.regHrs, 2);
+    assert.strictEqual(thu.otHrs, 6);
+    assert.strictEqual(thu.holidayRegHrs, 2);
+    assert.strictEqual(thu.holidayOtHrs, 6);
+    assert.strictEqual(thu.pay, 8 * 20 * 1.5, 'every hour 1.5x once, never 2.25x');
+  });
+
+  test('a holiday shift that is all overtime gets nothing extra on top', () => {
+    const thu = week([
+      shift('2026-11-22', '06:00', '16:00'), shift('2026-11-23', '06:00', '16:00'),
+      shift('2026-11-24', '06:00', '16:00'), shift('2026-11-25', '06:00', '16:00'),
+      shift('2026-11-26', '08:00', '16:00'),
+    ]).rows[4];
+    assert.strictEqual(thu.otHrs, 8);
+    assert.strictEqual(thu.holidayRegHrs, 0);
+    assert.strictEqual(thu.pay, 8 * 20 * 1.5);
+  });
+
+  test('holiday hours count toward the 40', () => {
+    // 32h, then 8 holiday hours (reaching 40), so Friday is all OT.
+    const { rows, totalOt } = week([
+      shift('2026-11-22', '08:00', '16:00'), shift('2026-11-23', '08:00', '16:00'),
+      shift('2026-11-24', '08:00', '16:00'), shift('2026-11-25', '08:00', '16:00'),
+      shift('2026-11-26', '08:00', '16:00'), shift('2026-11-27', '08:00', '16:00'),
+    ]);
+    assert.strictEqual(rows[4].otHrs, 0);
+    assert.strictEqual(rows[5].otHrs, 8);
+    assert.strictEqual(totalOt, 8);
+  });
+
+  test('the block premium is part of the rate holiday pay multiplies, like OT', () => {
+    const r = one(shift('2026-11-26', '08:00', '16:00', { isBase: true }), { isBlock: true });
+    assert.strictEqual(r.rate, 20.5);
+    assert.strictEqual(r.pay, 8 * 20.5 * 1.5);
+  });
+
+  test('a pull bonus stays flat', () => {
+    const r = one(shift('2026-11-26', '08:00', '16:00', { pullBonus: 25 }));
+    assert.strictEqual(r.pay, 8 * 20 * 1.5 + 25);
+  });
+
+  test('a call-off removes the earliest hours: 4h off a 06:00-12:00 holiday shift leaves 2 holiday hours', () => {
+    const r = one(shift('2026-09-07', '06:00', '12:00'), { callOffHoursByDate: { '2026-09-07': 4 } });
+    assert.strictEqual(r.hrs, 2);
+    assert.strictEqual(r.holidayHrs, 2);
+    assert.strictEqual(r.pay, 2 * 20 * 1.5);
+  });
+
+  test('a call-off on the evening before takes the non-holiday hours first', () => {
+    const r = one(shift('2026-09-06', '22:00', '08:00'), { callOffHoursByDate: { '2026-09-06': 2 } });
+    assert.strictEqual(r.hrs, 8);
+    assert.strictEqual(r.holidayHrs, 8);
+    assert.strictEqual(r.pay, 8 * 20 * 1.5);
+  });
+
+  test("a chain into Easter Sunday is paid in Saturday's week, and its Sunday hours are holiday hours", () => {
+    const night = shift('2026-04-04', '22:00', '08:00', { isBase: true });            // HOUSE_A $20
+    const morning = shift('2026-04-05', '08:00', '16:00', { locationId: HOUSE_B });   // HOUSE_B $30
+    const prepared = PayEngine.prepare([night, morning]);
+    assert.ok(prepared.every(s => s.payWeek === '2026-03-29'), "both legs in Saturday's week");
+    const { rows } = PayEngine.computePay(prepared, { rateOf });
+    assert.strictEqual(rows[0].holidayHrs, 8);
+    assert.strictEqual(rows[0].pay, 10 * 20 + 8 * 20 * 0.5);
+    assert.strictEqual(rows[1].holidayHrs, 8);
+    assert.strictEqual(rows[1].pay, 8 * 30 * 1.5, 'each leg keeps its own house rate');
+  });
+
+  test('totals are the sums of the rows', () => {
+    const res = week([
+      shift('2026-09-06', '22:00', '08:00'), shift('2026-09-07', '20:00', '04:00'),
+      shift('2026-09-09', '08:00', '16:00'),
+    ]);
+    assert.strictEqual(res.totalHoliday, res.rows.reduce((a, r) => a + r.holidayHrs, 0));
+    assert.strictEqual(res.totalHoliday, 12);
+    assert.strictEqual(res.totalPay, res.rows.reduce((a, r) => a + r.pay, 0));
+  });
+
+  test('a fractional OT threshold keeps the holiday/OT split exact (no 0.1h rounding)', () => {
+    // Threshold 40.25, 40h before Thanksgiving evening. Thu 20:00 -> Fri 04:00:
+    // 0.25 regular + 7.75 OT; the first 4 hours are Thanksgiving. Every hour is
+    // then worth 1.5x exactly once: 8 x $30 = $240 (rounding gave $239.50).
+    const { rows } = PayEngine.computePay(PayEngine.prepare([
+      shift('2026-11-22', '06:00', '16:00'), shift('2026-11-23', '06:00', '16:00'),
+      shift('2026-11-24', '06:00', '16:00'), shift('2026-11-25', '06:00', '16:00'),
+      shift('2026-11-26', '20:00', '04:00'),
+    ]), { rateOf, otThreshold: 40.25 });
+    const thu = rows[4];
+    assert.strictEqual(thu.regHrs, 0.25);
+    assert.strictEqual(thu.holidayRegHrs, 0.25);
+    assert.strictEqual(thu.holidayOtHrs, 3.75);
+    assert.strictEqual(thu.pay, 240);
+  });
+
+  test('the holiday calendar can be swapped out (tests, or a future policy change)', () => {
+    const r = one(shift('2026-11-26', '08:00', '16:00'), { holidayOn: () => null });
+    assert.strictEqual(r.holidayHrs, 0);
+    assert.strictEqual(r.pay, 8 * 20);
+  });
+});
