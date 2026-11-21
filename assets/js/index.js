@@ -394,14 +394,16 @@ function payOptions(){
 //
 // Callers filter the result by `payWeek`, never by the segment's own date —
 // that is what keeps a Saturday-night chain out of the Sunday week.
-function preparedSegmentsFor(ymds){
+//  opts.excludeId  leave this logged shift out (the one being edited)
+//  opts.add        extra segments to include (an unsaved preview shift)
+function preparedSegmentsFor(ymds,opts={}){
   if(!ymds.length) return [];
   const window=new Set(ymds);
   window.add(PayEngine.addDays(ymds[0],-1));
   window.add(PayEngine.addDays(ymds[ymds.length-1],1));
 
   const logged=getShifts()
-    .filter(s=>window.has(s.date))
+    .filter(s=>window.has(s.date)&&s.id!==opts.excludeId)
     .map(s=>({...s,isBase:false}));
 
   // Base entries resolve through the week they fall in, so collect the weeks
@@ -418,7 +420,7 @@ function preparedSegmentsFor(ymds){
       if(bd&&window.has(bd)) base.push({...b,date:bd,isBase:true});
     });
   }
-  return PayEngine.prepare([...logged,...base]);
+  return PayEngine.prepare([...logged,...base,...(opts.add||[])]);
 }
 
 // Pay for one calendar week, given segments already prepared by the helper above.
@@ -692,17 +694,18 @@ function updateCalc(){
   }
   if(!start||!end||!loc) return;
 
-  // OT preview: insert this shift into the full week and let the OT engine sort chronologically
+  // OT preview: place this shift among the two weeks around it and let the
+  // engine chain and price it exactly as the dashboard will. The previous week
+  // matters: a Sunday shift that continues a Saturday-night shift is paid, and
+  // counts toward OT, in Saturday's week. The old one-week window could not see
+  // that, so the preview said $184 regular for a shift paid $276 overtime.
   const hrs=shiftHours(start,end);
-  const wkDates=weekDatesForDate(date||toYMD(new Date()));
-  const wkYMDs=wkDates.map(toYMD);
+  const d0=date||toYMD(new Date());
+  const wkYMDs=weekDatesForDate(d0).map(toYMD);
+  const prevYMDs=weekDatesForDate(PayEngine.addDays(wkYMDs[0],-7)).map(toYMD);
   const PREVIEW_ID='__preview__';
-  const otherLogged=getShifts().filter(s=>wkYMDs.includes(s.date)&&s.id!==(editId||PREVIEW_ID));
-  const baseShifts=getBase()
-    .map(b=>({...b,date:baseToDate(b,wkDates)}))
-    .filter(b=>b.date&&wkYMDs.includes(b.date));
-  const previewShift={id:PREVIEW_ID,locationId:locId,date,start,end,isBase:false};
-  const previewPrepared=PayEngine.prepare([...otherLogged,...baseShifts,previewShift]);
+  const previewShift={id:PREVIEW_ID,locationId:locId,date:d0,start,end,isBase:false};
+  const previewPrepared=preparedSegmentsFor([...prevYMDs,...wkYMDs],{excludeId:editId||PREVIEW_ID, add:[previewShift]});
   const previewKey=previewPrepared.find(s=>s.id===PREVIEW_ID)?.payWeek;
   const {rows:breakdown}=PayEngine.computePay(
     previewPrepared.filter(s=>s.payWeek===previewKey), payOptions()
@@ -893,15 +896,9 @@ function renderDash(){
     listEl.innerHTML='<div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>';
     return;
   }
-  const myId=getUser()?.id;
-  const dashSwapDateMap={};
-  swapsData.filter(sw=>sw.status==='accepted').forEach(sw=>{
-    const myDate=sw.initiator_id===myId?(sw.target_date||'').slice(0,10):(sw.initiator_date||'').slice(0,10);
-    dashSwapDateMap[myDate]=sw.id;
-  });
-  listEl.innerHTML=breakdown.map(s=>
-    shiftItemHTML(s,s,(!s.isBase&&dashSwapDateMap[s.date])||null)
-  ).join('');
+  // Back-to-back shifts at the same house show as one combined card (display
+  // only). Each breakdown row is already priced, so every part is its own row.
+  listEl.innerHTML=DisplayBlocks.build(breakdown).map(b=>blockHTML(b,{bdFor:p=>p})).join('');
 }
 
 // ═══════════════════════════════════════
@@ -952,16 +949,15 @@ function renderAllShifts(){
 
     const isCurrentWk=key===currentWkKey;
     const weekLabel=`${fmt(wkD[0])} – ${fmt(wkD[6])}`;
-    const myId=getUser()?.id;
-    const acceptedSwapDateMap={};
-    swapsData.filter(sw=>sw.status==='accepted').forEach(sw=>{
-      const myDate=sw.initiator_id===myId?(sw.target_date||'').slice(0,10):(sw.initiator_date||'').slice(0,10);
-      acceptedSwapDateMap[myDate]=sw.id;
-    });
-    const shiftsHtml=wkShifts.map(s=>{
-      const bd=loggedRows.find(b=>b.id===s.id);
-      return shiftItemHTML({...s,isBase:false},bd,acceptedSwapDateMap[s.date]||null);
-    }).join('');
+    // Back-to-back shifts at the same house combine into one card. A base shift
+    // joins only when one of these logged shifts continues it, and shows locked;
+    // the week totals above still count logged shifts only, as before.
+    const baseRows=breakdown.filter(b=>b.isBase);
+    const shiftsHtml=DisplayBlocks.build([...wkShifts.map(s=>({...s,isBase:false})),...baseRows])
+      .filter(b=>b.parts.some(p=>!p.isBase))
+      .reverse()   // newest first, as this list always was
+      .map(b=>blockHTML(b,{bdFor:p=>p.isBase?p:loggedRows.find(r=>r.id===p.id)}))
+      .join('');
 
     return `<div class="wk-group" id="wkg-${key}">
       <div class="wk-group-hd${isCurrentWk?' open':''}" onclick="toggleWeek('${key}')">
@@ -1037,17 +1033,29 @@ function renderShiftActionInbox(){
     </div>`);
   });
 
-  getShiftsForDateRange(now, 2)
-    .filter(s=>!getLeaveForDate(s.date).length)
+  // One "Upcoming" item per stretch: back-to-back shifts at the same house are
+  // one trip to work. Starting a day early lets a stretch already under way be
+  // recognised, so its later parts are not listed as upcoming. Shifts that have
+  // started are dropped BEFORE taking three (it used to be after, so a finished
+  // morning shift could push a real upcoming one off the list).
+  const yest=new Date(now); yest.setDate(yest.getDate()-1);
+  DisplayBlocks.build(getShiftsForDateRange(yest, 3))
+    .filter(b=>{
+      const start=new Date(`${b.date}T${b.start}:00`).getTime();
+      return start>=now.getTime() && start<=now.getTime()+172800000 && !getLeaveForDate(b.date).length;
+    })
     .slice(0,3)
-    .forEach(s=>{
-      const start=new Date(`${s.date}T${s.start}:00`).getTime();
-      if(start<now.getTime() || start>now.getTime()+172800000) return;
-      const loc=getLocById(s.locationId);
+    .forEach(b=>{
+      const loc=getLocById(b.locationId);
+      const endY=DisplayBlocks.endDate(b);
+      const end=endY!==b.date
+        ?`${new Date(endY+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'})} ${fmtTime(b.end)}`
+        :fmtTime(b.end);
+      const count=b.combined?` · ${b.parts.length} shifts`:'';
       items.push(`<div class="inbox-item">
         <div class="inbox-icon soon">UP</div>
-        <div class="inbox-main"><div class="inbox-title">Upcoming shift</div><div class="inbox-detail">${fmtD(s.date)} · ${loc?.name||'Unknown'} · ${fmtTime(s.start)}-${fmtTime(s.end)}</div></div>
-        <div class="inbox-actions"><button class="btn btn-ghost btn-sm" onclick="openDaySheet('${s.date}')">View</button></div>
+        <div class="inbox-main"><div class="inbox-title">Upcoming shift</div><div class="inbox-detail">${fmtD(b.date)} · ${loc?.name||'Unknown'} · ${fmtTime(b.start)}-${end}${count}</div></div>
+        <div class="inbox-actions"><button class="btn btn-ghost btn-sm" onclick="openDaySheet('${b.date}')">View</button></div>
       </div>`);
     });
 
@@ -1056,20 +1064,8 @@ function renderShiftActionInbox(){
   box.innerHTML=`<div class="section-hd"><h2>Action Inbox</h2></div><div class="action-inbox-card">${items.join('')}</div>`;
 }
 
-function shiftItemHTML(s,bd,swapId=null){
-  const loc  =getLocById(s.locationId);
-  const color=loc?.color||'#888';
-  const name =loc?.name||'Unknown';
-  const rate =s.payRateOverride ?? (loc?.rate||0);
-  const rawHrs=shiftHours(s.start,s.end);
-  // bd.hrs already accounts for call-off deduction via the pay engine
-  const effectiveHrs=bd?bd.hrs:rawHrs;
-  const pay  =bd?bd.pay:effectiveHrs*rate;
-  const otHrs=bd?bd.otHrs:0;
-  const d    =new Date(s.date+'T12:00:00');
-  const ds   =d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-
-  // Determine shift state: done / active / upcoming
+// done / active / upcoming, relative to now.
+function shiftStateOf(s){
   const now = new Date();
   const todayLocal = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const yestD = new Date(now); yestD.setDate(yestD.getDate() - 1);
@@ -1088,6 +1084,103 @@ function shiftItemHTML(s,bd,swapId=null){
     if(nowMins >= enM)            shiftState = 'done';
     else if(nowMins >= stP.total) shiftState = 'active';
   }
+  return shiftState;
+}
+
+// The accepted swap that produced THIS shift, by shift id. Matching by date
+// (the old approach) tagged every shift on that date as swapped, which is
+// wrong when two shifts share a day, as combined back-to-back shifts often do.
+// Swaps from before the shift-id columns existed fall back to the date.
+function acceptedSwapIdFor(s){
+  if(!s||s.isBase) return null;
+  const myId=getUser()?.id;
+  for(const sw of swapsData){
+    if(sw.status!=='accepted') continue;
+    const mine=sw.initiator_id===myId?sw.swapped_initiator_shift_id:sw.swapped_target_shift_id;
+    if(mine){ if(mine===s.id) return sw.id; continue; }
+    const myDate=sw.initiator_id===myId?(sw.target_date||'').slice(0,10):(sw.initiator_date||'').slice(0,10);
+    if(myDate===s.date) return sw.id;
+  }
+  return null;
+}
+
+// ── Combined back-to-back shifts (display only) ──
+// Shown as one summary card that opens to list its parts. Each part keeps its
+// own row, badges, pay and edit permission. See assets/js/display-blocks.js.
+const openBlocks=new Set();
+function blockDomId(key){ let h=0; for(const c of key) h=(h*31+c.charCodeAt(0))|0; return 'blk'+(h>>>0).toString(36); }
+function toggleBlock(domId){
+  const open=!openBlocks.has(domId);
+  if(open) openBlocks.add(domId); else openBlocks.delete(domId);
+  document.querySelectorAll(`.shift-block[data-block="${domId}"]`).forEach(el=>el.classList.toggle('open',open));
+}
+
+//  opts.bdFor(part)        priced pay-engine row for a part (or undefined)
+//  opts.continuesFrom      set on the 2nd day of a block that began the day before
+function blockHTML(block, opts={}){
+  const bdFor=opts.bdFor||(()=>undefined);
+  if(!block.combined){
+    const s=block.parts[0];
+    return shiftItemHTML(s, bdFor(s), acceptedSwapIdFor(s));
+  }
+  const loc=getLocById(block.locationId);
+  const color=loc?.color||'#888';
+  let hrs=0, pay=0, ot=0;
+  for(const p of block.parts){
+    const bd=bdFor(p);
+    const h=bd?bd.hrs:shiftHours(p.start,p.end);
+    hrs+=h; ot+=bd?bd.otHrs:0;
+    pay+=bd?bd.pay:h*(p.payRateOverride ?? (getLocById(p.locationId)?.rate||0));
+  }
+  const states=block.parts.map(shiftStateOf);
+  const live=states.includes('active');
+  const done=states.every(st=>st==='done');
+  const startD=new Date(block.date+'T12:00:00');
+  const endY=DisplayBlocks.endDate(block);
+  const day=d=>d.toLocaleDateString('en-US',{weekday:'short'});
+  const ds=startD.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const endLabel=endY!==block.date?`${day(new Date(endY+'T12:00:00'))} ${fmtTime(block.end)}`:fmtTime(block.end);
+  const sub=opts.continuesFrom
+    ?`Continues from ${day(startD)} ${fmtTime(block.start)} · until ${endLabel}`
+    :`${ds} · ${fmtTime(block.start)} – ${endLabel}`;
+  const badge=live?'<span class="badge live">● LIVE</span>'
+    :ot>0&&ot>=hrs?'<span class="badge ot">OT</span>'
+    :ot>0?'<span class="badge mix">REG+OT</span>':'';
+  const id=blockDomId(block.key);
+  const isOpen=openBlocks.has(id);
+  const partsHTML=block.parts.map(p=>shiftItemHTML(p, bdFor(p), acceptedSwapIdFor(p), {asPart:true})).join('');
+  return `<div class="shift-block${isOpen?' open':''}${done?' done':''}${live?' active-block':''}" data-block="${id}">
+    <div class="shift-item block-hd" onclick="toggleBlock('${id}')">
+      <div class="shift-dot" style="background:${color}"></div>
+      <div class="shift-info">
+        <div class="name">${loc?.name||'Unknown'}</div>
+        <div class="sub">${sub}</div>
+        <div class="block-count">${block.parts.length} shifts combined <svg class="block-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 4 10 8 6 12"/></svg></div>
+      </div>
+      <div class="shift-right">
+        <div class="pay">${formatPay(pay)}</div>
+        <div class="hrs">${hrs.toFixed(1)} hrs</div>
+        ${badge}
+      </div>
+    </div>
+    <div class="block-parts">${partsHTML}</div>
+  </div>`;
+}
+
+function shiftItemHTML(s,bd,swapId=null,opts={}){
+  const loc  =getLocById(s.locationId);
+  const color=loc?.color||'#888';
+  const name =loc?.name||'Unknown';
+  const rate =s.payRateOverride ?? (loc?.rate||0);
+  const rawHrs=shiftHours(s.start,s.end);
+  // bd.hrs already accounts for call-off deduction via the pay engine
+  const effectiveHrs=bd?bd.hrs:rawHrs;
+  const pay  =bd?bd.pay:effectiveHrs*rate;
+  const otHrs=bd?bd.otHrs:0;
+  const d    =new Date(s.date+'T12:00:00');
+  const ds   =d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
+  const shiftState = shiftStateOf(s);
 
   // Approved leave for this date
   const leaves=getLeaveForDate(s.date);
@@ -1140,7 +1233,11 @@ function shiftItemHTML(s,bd,swapId=null){
   const awardedTag=s.locked&&s.awardedBy?`<div class="notes-chip" style="color:var(--accent)">Awarded by ${escapeHtml(s.awardedBy)}</div>`:'';
   const adminNotesChip=s.adminNotes?`<div class="notes-chip">${escapeHtml(s.adminNotes.slice(0,40))}${s.adminNotes.length>40?'…':''}</div>`:'';
 
-  const itemClass=`shift-item${s.isBase?' base-item':''}${shiftState==='done'?' done':''}${shiftState==='active'?' active-shift':''}`;
+  const itemClass=`shift-item${s.isBase?' base-item':''}${shiftState==='done'?' done':''}${shiftState==='active'?' active-shift':''}${opts.asPart?' block-part':''}`;
+  // Inside a combined card, say up front whether this part can be edited.
+  const partIcon=opts.asPart
+    ?((s.isBase||s.locked)?'<span class="part-icon" title="Set by your administrator">🔒</span>':'<span class="part-icon" title="Tap to edit">✎</span>')
+    :'';
 
   const cancelSwapBtn = swapId
     ? `<button class="cancel-swap-btn" onclick="event.stopPropagation();cancelAcceptedSwap('${swapId}')">Cancel swap</button>`
@@ -1149,7 +1246,7 @@ function shiftItemHTML(s,bd,swapId=null){
   return `<div class="${itemClass}" onclick="${click}">
     <div class="shift-dot${s.isBase?' sq':''}" style="background:${color}"></div>
     <div class="shift-info">
-      <div class="name">${name}${schedLabel}</div>
+      <div class="name">${partIcon}${name}${schedLabel}</div>
       <div class="sub">${ds} · ${fmtTime(s.start)}–${fmtTime(s.end)}</div>
       ${leaveNote}
       ${otNote}
@@ -1442,18 +1539,30 @@ function renderCalWeek(){
 
   const DAY_SHORT=['Su','Mo','Tu','We','Th','Fr','Sa'];
   const grid = document.getElementById('cal-week-grid');
+  // Combined back-to-back shifts: one pill per stretch on the day it starts,
+  // and a "continues" pill on a later day it runs into. A day either side is
+  // included so stretches crossing the week's edges are recognised.
+  const wkParts = [];
+  for(let i=-1;i<=7;i++) wkParts.push(...getShiftsForDate(PayEngine.addDays(toYMD(wkDates[0]),i)));
+  const wkBlocks = DisplayBlocks.build(wkParts);
   grid.innerHTML = wkDates.map((d,i)=>{
     const ymd = toYMD(d);
     const isToday = ymd===toYMD(today);
-    const shifts = getShiftsForDate(ymd);
-    const pillsHTML = shifts.map(s=>{
-      const loc=getLocById(s.locationId);
+    const dayBlocks = wkBlocks.filter(b=>b.parts.some(p=>p.date===ymd));
+    const pillsHTML = dayBlocks.map(b=>{
+      const loc=getLocById(b.locationId);
+      const cont=b.date<ymd;
+      const allBase=b.parts.every(p=>p.isBase);
+      const label=cont
+        ?`↳ ${loc?.name||'—'}`
+        :`${loc?.name||'—'}${allBase?' (base)':''}${b.combined?` · ${b.parts.length} shifts`:''}`;
       return `<div class="cal-shift-pill" onclick="event.stopPropagation();openDaySheet('${ymd}')">
-        <div class="cal-shift-pill"><div class="pill-dot${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>
-        <span class="pill-name">${loc?.name||'—'}${s.isBase?' (base)':''}</span>
-        <span class="pill-time">${fmtTime(s.start)}</span></div>
+        <div class="cal-shift-pill"><div class="pill-dot${allBase?' sq':''}" style="background:${loc?.color||'#888'}"></div>
+        <span class="pill-name">${label}</span>
+        <span class="pill-time">${cont?`until ${fmtTime(b.end)}`:fmtTime(b.start)}</span></div>
       </div>`;
     }).join('');
+    const shifts = dayBlocks;
     const addBtn = `<div class="cal-add-pill" onclick="event.stopPropagation();openAddShiftForDateStr('${ymd}')">+ add</div>`;
     return `<div class="cal-week-row${isToday?' today':''}${ymd===calSelectedDate?' selected':''}" onclick="selectCalendarDay('${ymd}')">
       <div class="cal-week-day-label${isToday?' today':''}">
@@ -1483,12 +1592,20 @@ function renderCalDayPreview(dateStr){
   const unavails=getUnavailForDate(dateStr);
   const leaves=getLeaveForDate(dateStr);
   const rows=[];
-  shifts.slice(0,3).forEach(s=>{
-    const loc=getLocById(s.locationId);
+  // One row per stretch of back-to-back shifts at the same house (display only).
+  const dayBlocks=DisplayBlocks.build([
+    ...getShiftsForDate(PayEngine.addDays(dateStr,-1)),
+    ...shifts,
+    ...getShiftsForDate(PayEngine.addDays(dateStr,1)),
+  ]).filter(b=>b.parts.some(p=>p.date===dateStr));
+  dayBlocks.slice(0,3).forEach(b=>{
+    const loc=getLocById(b.locationId);
+    const cont=b.date<dateStr;
+    const allBase=b.parts.every(p=>p.isBase);
     rows.push(`<div class="cal-preview-row">
-      <span class="preview-mark${s.isBase?' sq':''}" style="background:${loc?.color||'#888'}"></span>
-      <span>${loc?.name||'Unknown'}${s.isBase?' · base':''}</span>
-      <b>${fmtTime(s.start)}-${fmtTime(s.end)}</b>
+      <span class="preview-mark${allBase?' sq':''}" style="background:${loc?.color||'#888'}"></span>
+      <span>${cont?'↳ ':''}${loc?.name||'Unknown'}${allBase?' · base':''}${b.combined?` · ${b.parts.length} shifts`:''}</span>
+      <b>${cont?`until ${fmtTime(b.end)}`:`${fmtTime(b.start)}-${fmtTime(b.end)}`}</b>
     </div>`);
   });
   leaves.forEach(r=>{
@@ -1543,10 +1660,19 @@ function openDaySheet(dateStr){
     ];
     const bdMap = {}; breakdown.forEach(b=>{ bdMap[b.id+(b.isBase?'_b':'')]=b; });
 
-    listEl.innerHTML = unavailHTML + shifts.map(s=>{
-      const key = s.id+(s.isBase?'_b':'');
-      return shiftItemHTML(s, bdMap[key]);
-    }).join('');
+    // Combined back-to-back shifts: look one day either side so a stretch that
+    // crosses midnight shows whole, on both days it touches. Only this day's
+    // own shifts count toward the day totals below, so nothing counts twice.
+    const bdFor = p=>bdMap[p.id+(p.isBase?'_b':'')];
+    const windowParts = [
+      ...getShiftsForDate(PayEngine.addDays(dateStr,-1)),
+      ...shifts,
+      ...getShiftsForDate(PayEngine.addDays(dateStr,1)),
+    ];
+    listEl.innerHTML = unavailHTML + DisplayBlocks.build(windowParts)
+      .filter(b=>b.parts.some(p=>p.date===dateStr))
+      .map(b=>blockHTML(b,{bdFor, continuesFrom:b.date<dateStr}))
+      .join('');
 
     // Summary — use effective hours/pay from breakdown (call-offs already deducted)
     const dayShifts = shifts;

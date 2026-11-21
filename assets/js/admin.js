@@ -1738,28 +1738,49 @@ function weekDatesForDateStr(dateStr){
 }
 
 // Returns { locationId: [{ user, start, end, isBase }, ...] } for a date string
+// One entry per person per house per day, so headcounts, coverage gaps and
+// peak-staff figures count PEOPLE. Each entry carries every shift that person
+// works at that house that day in `spans`, and the views list each one.
+// It used to keep only the first shift per house: a second shift there the
+// same day, or a base shift next to a logged one, silently disappeared.
 function getDetailedStaffingForDate(dateStr){
   const byLoc = {};
   const wkDates = weekDatesForDateStr(dateStr);
   for(const u of allUsers){
     const shifts = allShifts[u.id] || [];
     const sched  = allSchedules[u.id] || [];
-    const seenLocs = new Set();
-    for(const s of shifts){
-      if(s.date === dateStr && !seenLocs.has(s.locationId)){
-        seenLocs.add(s.locationId);
-        (byLoc[s.locationId] = byLoc[s.locationId] || []).push({ user:u, start:s.start, end:s.end, isBase:false });
+    const mine = {};   // locationId -> this person's entry there today
+    const add = (locationId, start, end, isBase) => {
+      let e = mine[locationId];
+      if(!e){
+        e = mine[locationId] = { user:u, start, end, isBase, spans:[] };
+        (byLoc[locationId] = byLoc[locationId] || []).push(e);
       }
+      // The same hours entered twice (e.g. a base shift also logged) show once.
+      if(e.spans.some(sp => sp.start === start && sp.end === end)) return;
+      e.spans.push({ start, end, isBase });
+    };
+    for(const s of shifts) if(s.date === dateStr) add(s.locationId, s.start, s.end, false);
+    if(!allSuppressed[u.id]?.has(dateStr)){
+      for(const b of sched) if(baseToDate(b, wkDates) === dateStr) add(b.locationId, b.start, b.end, true);
     }
-    for(const b of sched){
-      const bDate = baseToDate(b, wkDates);
-      if(bDate === dateStr && !seenLocs.has(b.locationId) && !allSuppressed[u.id]?.has(dateStr)){
-        seenLocs.add(b.locationId);
-        (byLoc[b.locationId] = byLoc[b.locationId] || []).push({ user:u, start:b.start, end:b.end, isBase:true });
-      }
+  }
+  for(const list of Object.values(byLoc)){
+    for(const e of list){
+      e.spans.sort((a,b) => a.start.localeCompare(b.start));
+      // Earliest shift, kept for sorting and anything still reading these.
+      e.start = e.spans[0].start; e.end = e.spans[0].end; e.isBase = e.spans[0].isBase;
     }
   }
   return byLoc;
+}
+
+// One row per shift (a person working two shifts at a house gets two rows),
+// in time order. Headcounts still come from the entries themselves.
+function staffingRows(entries){
+  return entries
+    .flatMap(e => e.spans.map(sp => ({ user:e.user, start:sp.start, end:sp.end, isBase:sp.isBase })))
+    .sort((a,b) => a.start.localeCompare(b.start));
 }
 
 function renderStaffing(){
@@ -1945,7 +1966,8 @@ function renderStaffingWeek(wkDates, today){
             const cells = ymds.map(ymd => {
               const entry = (staffingByDay[ymd]?.[loc.id]||[]).find(e=>e.user.id===u.id);
               if(!entry) return '<td>—</td>';
-              return `<td><span class="stf-shift-pill${entry.isBase?' base':''}">${entry.start}–${entry.end}</span></td>`;
+              // Every shift this person works here that day, one pill each.
+              return `<td>${entry.spans.map(sp=>`<span class="stf-shift-pill${sp.isBase?' base':''}">${sp.start}–${sp.end}</span>`).join('<br>')}</td>`;
             }).join('');
             const name = u.name || u.email.split('@')[0];
             return `<tr><td>${name}${u.position?` <span style="font-size:9px;color:var(--dim)">${u.position}</span>`:''}</td>${cells}</tr>`;
@@ -1974,12 +1996,12 @@ function renderStaffingDay(dateStr, today){
   const chevronSvg = `<svg class="stf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><polyline points="6 9 12 15 18 9"/></svg>`;
   document.getElementById('staffing-body').innerHTML = `<div class="stf-location-grid stf-day-grid">${stfRenderLocCards(loc => {
     const c = loc.color || '#888';
-    const entries = (staffing[loc.id] || []).sort((a,b)=>a.start.localeCompare(b.start));
+    const entries = staffing[loc.id] || [];   // one per person: the headcount
     const countBadge = entries.length
       ? `<div class="stf-house-count" style="color:${c};background:${c}20">${entries.length} staff</div>`
       : `<div class="stf-house-count" style="color:var(--dim);background:var(--bg3)">No staff</div>`;
     const listHtml = entries.length
-      ? entries.map(e => {
+      ? staffingRows(entries).map(e => {
           const name = e.user.name || e.user.email.split('@')[0];
           return `<div class="stf-day-row">
             <div class="stf-day-name">${name}</div>
@@ -2015,8 +2037,7 @@ function stfMonthDayClick(dateStr, locId){
   if(!entries.length){
     content.innerHTML = '<div class="empty" style="padding:20px 0">No staff scheduled</div>';
   } else {
-    content.innerHTML = entries
-      .sort((a,b)=>a.start.localeCompare(b.start))
+    content.innerHTML = staffingRows(entries)
       .map(e => {
         const name = e.user.name || e.user.email.split('@')[0];
         return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">

@@ -2,7 +2,8 @@ const express   = require('express');
 const router    = express.Router();
 const db        = require('../db/index');
 const auth      = require('../middleware/auth');
-const { getUserAnchor } = require('../utils/ppAnchor');
+const { getUserAnchor, payWeekOf } = require('../utils/ppAnchor');
+const { continuesStretch } = require('../utils/reminderRules');
 const { logNotification, reminderKey, claimReminder, releaseReminder, pushToSubs } = require('../utils/push');
 
 // GET /api/notifications/vapid-public-key
@@ -163,11 +164,32 @@ router.post('/send-upcoming', auth, async (req, res) => {
        FROM base_schedule b JOIN locations l ON b.location_id=l.id
        WHERE b.user_id=$1`, [req.userId]
     );
+    // Cancelled base dates: this path used to ignore them, so it could remind
+    // someone about a base shift an admin had cancelled. The cron always checked.
+    const suppressedRes = await db.query(
+      'SELECT date FROM base_suppressed_dates WHERE user_id=$1', [req.userId]
+    );
+    const suppressed = new Set(suppressedRes.rows.map(r => String(r.date).slice(0, 10)));
+    // Approved leave near today (see utils/reminderRules.js).
+    const leaveRes = await db.query(
+      `SELECT date FROM leave_requests
+       WHERE status='approved' AND user_id=$1
+         AND date BETWEEN CURRENT_DATE - INTERVAL '3 days' AND CURRENT_DATE + INTERVAL '2 days'`,
+      [req.userId]
+    );
 
     const now = new Date();
     const anchorStr = await getUserAnchor(req.userId);
-    const anchor = new Date(anchorStr + 'T00:00:00');
     let sent = 0;
+
+    // One reminder per stretch: skip a shift that continues one at the same
+    // house. Same rule as the cron (utils/reminderRules.js).
+    const stretchCtx = {
+      logged: shiftsRes.rows, base: baseRes.rows, anchorStr, suppressed,
+      leaveDates: new Set(leaveRes.rows.map(r => String(r.date).slice(0, 10))),
+    };
+    const continues = (dateStr, start, locationId) =>
+      continuesStretch({ date: dateStr, start, locationId }, stretchCtx);
 
     // This endpoint is a catch-up: it exists so that opening the app after a
     // missed cron tick still delivers the reminder. It is NOT an early warning.
@@ -194,7 +216,7 @@ router.post('/send-upcoming', auth, async (req, res) => {
       // Check logged shifts
       shiftsRes.rows.forEach(s => {
         const dateStr = String(s.date).slice(0,10);
-        if(isDue(dateStr, s.start_time)) {
+        if(isDue(dateStr, s.start_time) && !continues(dateStr, s.start_time, s.location_id)) {
           due.set(reminderKey('logged', s.id, dateStr),
             { name: s.location_name, time: s.start_time.slice(0,5) });
         }
@@ -205,13 +227,16 @@ router.post('/send-upcoming', auth, async (req, res) => {
       for(let dayOffset=0; dayOffset<14; dayOffset++) {
         const localD = new Date(localNowMs + dayOffset * 86400000);
         const dayStr = localD.toISOString().slice(0,10);
-        const diffDays = Math.round((localD - anchor) / 86400000);
-        const inPeriod = ((diffDays % 14) + 14) % 14;
-        const weekNum = inPeriod < 7 ? 1 : 2;
+        // Week 1/2 from the DATE, like the cron. This used to round the current
+        // TIME of day, which in the evening could land on the next day's week
+        // and remind about the wrong base shift.
+        const weekNum = payWeekOf(dayStr, anchorStr);
         const dayOfWeek = localD.getUTCDay();
+        if(suppressed.has(dayStr)) continue;
 
         baseRes.rows.forEach(b => {
-          if(b.week === weekNum && b.day_of_week === dayOfWeek && isDue(dayStr, b.start_time)) {
+          if(Number(b.week) === weekNum && Number(b.day_of_week) === dayOfWeek
+             && isDue(dayStr, b.start_time) && !continues(dayStr, b.start_time, b.location_id)) {
             due.set(reminderKey('base', b.id, dayStr),
               { name: b.location_name, time: b.start_time.slice(0,5) });
           }

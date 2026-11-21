@@ -726,3 +726,18 @@ body::before{display:none;}
   padding-top:12px;
   padding-bottom:8px;
 }
+
+/* ── Combined back-to-back shifts (display only; see assets/js/display-blocks.js) ── */
+.shift-block{border-bottom:1px solid var(--border);}
+.shift-block:last-child{border-bottom:none;}
+.shift-block > .block-hd{border-bottom:none;}
+.block-count{display:flex;align-items:center;gap:4px;margin-top:3px;font-size:11px;font-family:var(--mono);color:var(--accent);}
+.block-chevron{width:12px;height:12px;transition:transform .2s ease;}
+.shift-block.open .block-chevron{transform:rotate(90deg);}
+.block-parts{display:none;margin:0 12px 10px 22px;border-left:2px solid var(--border2);}
+.shift-block.open .block-parts{display:block;}
+.shift-item.block-part{padding:9px 12px;}
+.shift-item.block-part .name{font-size:13px;}
+.part-icon{display:inline-block;width:18px;font-size:12px;opacity:.85;}
+.shift-block.done > .block-hd{opacity:.45;}
+.shift-block.active-block > .block-hd{border-left:2px solid var(--green);padding-left:14px;background:rgba(46,204,138,.04);}

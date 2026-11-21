@@ -4,6 +4,7 @@ const db      = require('./db/index');
 const { payWeekOf, DEFAULT_ANCHOR } = require('./utils/ppAnchor');
 const { getPtoAnnualHours, availableHours } = require('./routes/leave');
 const { reminderKey, claimReminder, releaseReminder, pushToSubs, logNotification } = require('./utils/push');
+const { continuesStretch } = require('./utils/reminderRules');
 
 function groupBy(arr, key) {
   return arr.reduce((acc, item) => {
@@ -34,14 +35,15 @@ cron.schedule('*/5 * * * *', async () => {
 
     const userIds = [...new Set(subsRes.rows.map(s => s.user_id))];
 
-    // Batch fetch all data needed for every subscribed user in 4 queries.
+    // Batch fetch all data needed for every subscribed user in 5 queries.
     // Logged reminders only need shifts near the current date, not full history.
-    const [shiftsRes, baseRes, suppressedRes, anchorsRes] = await Promise.all([
+    const [shiftsRes, baseRes, suppressedRes, anchorsRes, leaveRes] = await Promise.all([
       db.query(
         // id is part of each reminder's ledger key. Without it every key read
         // "logged:undefined:<date>", so a second shift on the same day was
         // treated as already reminded, and keys never matched send-upcoming's.
-        `SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, l.name AS location_name
+        // location_id lets a shift that continues a stretch be recognised.
+        `SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, s.location_id, l.name AS location_name
          FROM shifts s JOIN locations l ON s.location_id = l.id
          WHERE s.user_id = ANY($1)
            AND s.date BETWEEN CURRENT_DATE - INTERVAL '2 days'
@@ -49,7 +51,7 @@ cron.schedule('*/5 * * * *', async () => {
         [userIds]
       ),
       db.query(
-        `SELECT b.id, b.user_id, b.week, b.day_of_week, b.start_time, b.end_time, l.name AS location_name
+        `SELECT b.id, b.user_id, b.week, b.day_of_week, b.start_time, b.end_time, b.location_id, l.name AS location_name
          FROM base_schedule b JOIN locations l ON b.location_id = l.id
          WHERE b.user_id = ANY($1)`,
         [userIds]
@@ -60,6 +62,15 @@ cron.schedule('*/5 * * * *', async () => {
       ),
       db.query(
         'SELECT user_id, pp_anchor FROM user_settings WHERE user_id = ANY($1)',
+        [userIds]
+      ),
+      // Approved leave near today: a shift on a leave day may not be worked, so
+      // it does not count as the start of a stretch (see utils/reminderRules.js).
+      db.query(
+        `SELECT user_id, date FROM leave_requests
+         WHERE status = 'approved' AND user_id = ANY($1)
+           AND date BETWEEN CURRENT_DATE - INTERVAL '3 days'
+                        AND CURRENT_DATE + INTERVAL '2 days'`,
         [userIds]
       ),
     ]);
@@ -75,6 +86,10 @@ cron.schedule('*/5 * * * *', async () => {
     for (const r of anchorsRes.rows) {
       anchorByUser[r.user_id] = String(r.pp_anchor).slice(0, 10);
     }
+    const leaveByUser = {};
+    for (const r of leaveRes.rows) {
+      (leaveByUser[r.user_id] ||= new Set()).add(String(r.date).slice(0, 10));
+    }
 
     // Walk users rather than subscriptions: a reminder is claimed once per user
     // per shift, then delivered to every device they have registered. Iterating
@@ -88,6 +103,13 @@ cron.schedule('*/5 * * * *', async () => {
       const userBase      = baseByUser[userId]       || [];
       const suppressedSet = suppressedByUser[userId] || new Set();
       const anchorStr     = anchorByUser[userId]     || DEFAULT_ANCHOR;
+
+      // One reminder per stretch: skip a shift that continues one at the same
+      // house, since the employee is already there.
+      const stretchCtx = { logged: userShifts, base: userBase, anchorStr,
+                           suppressed: suppressedSet, leaveDates: leaveByUser[userId] };
+      const continues = (dateStr, start, locationId) =>
+        continuesStretch({ date: dateStr, start, locationId }, stretchCtx);
 
       // Devices can carry different notify_minutes / tz_offset, so collect the
       // union of what is due across them, keyed so duplicates collapse.
@@ -110,7 +132,7 @@ cron.schedule('*/5 * * * *', async () => {
         // Logged shifts - date/time stored in user's local timezone
         for (const s of userShifts) {
           const dateStr = String(s.date).slice(0, 10);
-          if (isDue(dateStr, s.start_time)) {
+          if (isDue(dateStr, s.start_time) && !continues(dateStr, s.start_time, s.location_id)) {
             due.set(reminderKey('logged', s.id, dateStr),
               { name: s.location_name, time: s.start_time.slice(0, 5) });
           }
@@ -128,7 +150,7 @@ cron.schedule('*/5 * * * *', async () => {
 
           for (const b of userBase) {
             if (Number(b.week) === weekNum && Number(b.day_of_week) === dayOfWeek) {
-              if (isDue(dayStr, b.start_time)) {
+              if (isDue(dayStr, b.start_time) && !continues(dayStr, b.start_time, b.location_id)) {
                 due.set(reminderKey('base', b.id, dayStr),
                   { name: b.location_name, time: b.start_time.slice(0, 5) });
               }
