@@ -2,7 +2,12 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const root = path.resolve(__dirname, '..');
+// The API, plus the frontend assets — assets/js had no syntax gate at all,
+// which is how encoding artifacts and a stale helper reference survived there.
+const roots = [
+  path.resolve(__dirname, '..'),
+  path.resolve(__dirname, '..', '..', 'assets', 'js'),
+];
 const files = [];
 
 function walk(dir) {
@@ -18,7 +23,9 @@ function walk(dir) {
   }
 }
 
-walk(root);
+for (const root of roots) {
+  if (fs.existsSync(root)) walk(root);
+}
 
 for (const file of files) {
   const result = spawnSync(process.execPath, ['--check', file], {

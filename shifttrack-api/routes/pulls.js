@@ -122,7 +122,7 @@ router.post('/admin', auth, adminOnly, async (req, res) => {
          (user_id, shift_id, from_location_id, to_location_id, pull_date, shift_start, shift_end, has_bonus, bonus_amount, created_by, is_base_shift, pay_rate_mode)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
-      [user_id, finalShiftId, fromLocId, to_location_id, pull_date, shift_start, shift_end, has_bonus, bonusAmount, req.userId, isBaseShift, pay_rate_mode]
+      [user_id, finalShiftId, fromLocId, to_location_id, pull_date, shift_start, shift_end, !!has_bonus, bonusAmount, req.userId, isBaseShift, pay_rate_mode]
     );
     pull = pullRes.rows[0];
 

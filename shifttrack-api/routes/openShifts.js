@@ -4,6 +4,11 @@ const db      = require('../db/index');
 const auth    = require('../middleware/auth');
 const { adminOnly } = require('../middleware/auth');
 const { notifyUsers } = require('../utils/push');
+const {
+  checkConsecutiveHours,
+  overlapsExistingShift,
+  overlapsBaseSchedule,
+} = require('../utils/shiftRules');
 
 // Process a shift whose deadline has passed (assign by seniority for house, expire otherwise)
 // The UPDATE uses WHERE status='open' to be atomic - only one concurrent call succeeds.
@@ -230,13 +235,22 @@ router.post('/:id/respond', auth, async (req, res) => {
       return res.status(409).json({ ok: false, error: 'The response deadline has passed' });
 
     if (response === 'claimed') {
-      const conflict = await db.query(
-        `SELECT id FROM shifts WHERE user_id=$1 AND date=$2
-           AND start_time < $4::time AND end_time > $3::time`,
-        [req.userId, shift.date, shift.start_time, shift.end_time]
-      );
-      if (conflict.rows.length)
+      // Run the same rulebook the employee, admin and swap write paths use.
+      // This route previously compared clock times on a single date, which is
+      // exactly the check utils/shiftRules.js was written to replace: it missed
+      // overnight-vs-overnight collisions and shifts spilling in from the day
+      // before, so an open shift could be claimed on top of one.
+      const shiftDate = String(shift.date).slice(0, 10);
+
+      if (await overlapsExistingShift(req.userId, shiftDate, shift.start_time, shift.end_time))
         return res.status(409).json({ ok: false, error: 'You already have a shift that overlaps this time' });
+
+      if (await overlapsBaseSchedule(req.userId, shiftDate, shift.start_time, shift.end_time))
+        return res.status(409).json({ ok: false, error: 'This shift overlaps your base schedule on that day' });
+
+      const chainErr = await checkConsecutiveHours(req.userId, shiftDate, shift.start_time, shift.end_time);
+      if (chainErr)
+        return res.status(409).json({ ok: false, error: chainErr });
     }
 
     await db.query(

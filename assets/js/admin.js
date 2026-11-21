@@ -113,27 +113,29 @@ function switchTab(name,el){
 // ══════════════════════════════
 //  DATA
 // ══════════════════════════════
-let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allRegions=[], allSuppressed={}, openShiftsPendingCount=0;
+let allUsers=[], allShifts={}, allSchedules={}, allLocs=[], allRegions=[], allSuppressed={}, allCallOffs={}, openShiftsPendingCount=0;
 
 async function loadAll(){
   showToast('Loading data…');
   try{
-    const [usersRes,locsRes,regsRes]=await Promise.all([
+    // These six are independent, so they go out together rather than as three
+    // parallel requests followed by three sequential round trips.
+    const [usersRes,locsRes,regsRes,settingsRes,suppRes,leaveRes]=await Promise.all([
       apiFetch('/api/admin/users'),
       apiFetch('/api/locations'),
-      apiFetch('/api/regions')
+      apiFetch('/api/regions'),
+      apiFetch('/api/settings'),
+      apiFetch('/api/admin/suppressed-dates'),
+      apiFetch('/api/leave/admin/requests?status=approved')
     ]);
     if(usersRes?.ok) allUsers=usersRes.users;
     if(locsRes?.ok)  allLocs=locsRes.locations;
     if(regsRes?.ok)  allRegions=regsRes.regions;
 
     // Keep admin's pay-period anchor in sync with their personal settings
-    const settingsRes = await apiFetch('/api/settings');
     if(settingsRes?.ok && settingsRes.settings?.pp_anchor)
       PP_ANCHOR = settingsRes.settings.pp_anchor.slice(0,10);
 
-    // Load shifts + schedule for every user, and suppressed dates
-    const suppRes = await apiFetch('/api/admin/suppressed-dates');
     allSuppressed = {};
     if(suppRes?.ok) {
       for(const row of suppRes.suppressed){
@@ -141,6 +143,8 @@ async function loadAll(){
         allSuppressed[row.user_id].add(row.date);
       }
     }
+
+    setCallOffs(leaveRes);
 
     await Promise.all(allUsers.map(async u=>{
       const [sr,scr]=await Promise.all([
@@ -198,15 +202,9 @@ function shiftHours(start,end){
 }
 function formatPay(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 function toYMD(d){ if(!d||typeof d.toISOString!=='function') return null; return d.toISOString().slice(0,10); }
-function normalizeCalcShift(s) {
-  const [h, m] = s.start.split(':').map(Number);
-  if (h === 23 && m >= 55) {
-    const d = new Date(s.date + 'T00:00:00');
-    d.setDate(d.getDate() + 1);
-    return { ...s, date: d.toISOString().slice(0, 10), start: '00:00' };
-  }
-  return s;
-}
+// normalizeCalcShift now lives in assets/js/pay-engine.js, applied by
+// PayEngine.prepare() alongside chain tagging. This copy is gone so the two
+// cannot drift.
 function fmt(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function fmtShort(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
 
@@ -243,32 +241,65 @@ function baseToDate(base,weekDates){
   return toYMD(dd);
 }
 
-function computePayForShifts(shifts,schedules,ymds,userId){
-  const suppressed = allSuppressed[userId] || new Set();
+// Pay options for one employee, matching what the employee's own app uses.
+//
+// Caveat on the threshold: the employee app reads their own
+// user_settings.ot_threshold, but there is no admin endpoint exposing another
+// user's settings, so this still assumes the company default. The two agree for
+// everyone on the default; anyone moved off it will read differently here until
+// that endpoint exists.
+function payOptionsFor(userId){
   const user = allUsers.find(u=>u.id===userId);
-  const isBlock = user?.work_type === 'block';
-  function weekShifts(wkYMDs){
-    const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
-    const logged=shifts.map(normalizeCalcShift).filter(s=>wkYMDs.includes(s.date));
-    const base=schedules
-      .map(b=>({...b,date:baseToDate(b,wkD),isBase:true}))
-      .filter(b=>b.date&&wkYMDs.includes(b.date)&&!suppressed.has(b.date));
-    const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
-    let regRun=0,pay=0,hrs=0,ot=0;
-    for(const s of all){
-      const h=shiftHours(s.start,s.end);
-      const blockPremium=(isBlock&&s.isBase)?0.50:0;
-      const rate=(s.payRateOverride ?? (s.rate||0))+blockPremium;
-      const reg=Math.max(0,Math.min(h,OT_THRESH-regRun));
-      const otH=h-reg;
-      pay+=reg*rate+otH*rate*1.5;
-      regRun+=reg; hrs+=h; ot+=otH;
-    }
-    return {pay,hrs,ot,count:all.length};
+  return {
+    otThreshold: OT_THRESH,
+    isBlock:     user?.work_type === 'block',
+    rateOf:      s => s.rate || 0,          // admin rows carry the rate denormalised
+    callOffHoursByDate: PayEngine.callOffMap(allCallOffs[userId] || []),
+  };
+}
+
+// Every segment that could affect `ymds`, padded a day either side so a chain
+// starting the evening before is visible, then prepared by the shared engine.
+function preparedSegmentsForUser(shifts,schedules,ymds,userId){
+  if(!ymds.length) return [];
+  const suppressed = allSuppressed[userId] || new Set();
+  const window=new Set(ymds);
+  window.add(PayEngine.addDays(ymds[0],-1));
+  window.add(PayEngine.addDays(ymds[ymds.length-1],1));
+
+  const logged=shifts.filter(s=>window.has(s.date)).map(s=>({...s,isBase:false}));
+
+  const base=[];
+  const seenWeeks=new Set();
+  for(const d of window){
+    const wkD=weekDatesForDateStr(d);
+    const key=toYMD(wkD[0]);
+    if(seenWeeks.has(key)) continue;
+    seenWeeks.add(key);
+    schedules.forEach(b=>{
+      const bd=baseToDate(b,wkD);
+      if(bd&&window.has(bd)&&!suppressed.has(bd)) base.push({...b,date:bd,isBase:true});
+    });
   }
-  const w1=ymds.slice(0,7),w2=ymds.slice(7,14);
-  const r1=weekShifts(w1),r2=weekShifts(w2);
-  return {pay:r1.pay+r2.pay,hrs:r1.hrs+r2.hrs,ot:r1.ot+r2.ot,count:r1.count+r2.count};
+  return PayEngine.prepare([...logged,...base]);
+}
+
+function computePayForShifts(shifts,schedules,ymds,userId){
+  const prepared=preparedSegmentsForUser(shifts,schedules,ymds,userId);
+  const opts=payOptionsFor(userId);
+  const w1=ymds.slice(0,7), w2=ymds.slice(7,14);
+
+  const week=startYMD=>{
+    const key=PayEngine.weekSundayOf(startYMD);
+    return PayEngine.computePay(prepared.filter(s=>s.payWeek===key),opts);
+  };
+  const r1=week(w1[0]), r2=week(w2[0]);
+  return {
+    pay:   r1.totalPay+r2.totalPay,
+    hrs:   r1.totalHrs+r2.totalHrs,
+    ot:    r1.totalOt +r2.totalOt,
+    count: r1.rows.length+r2.rows.length,
+  };
 }
 
 // ══════════════════════════════
@@ -491,32 +522,27 @@ function renderUserDashboard(){
   const shifts=allShifts[viewUserId]||[];
   const sched=allSchedules[viewUserId]||[];
 
-  const suppressed=allSuppressed[viewUserId]||new Set();
-  const viewUser=allUsers.find(u=>u.id===viewUserId);
-  const isViewBlock=viewUser?.work_type==='block';
+  // Shares the engine with the overview table and the employee's own app, so
+  // this detail view can no longer disagree with either.
+  const udashPrepared=preparedSegmentsForUser(shifts,sched,ymds,viewUserId);
+  const udashOpts=payOptionsFor(viewUserId);
   function weekRows(wkYMDs){
-    const wkD=wkYMDs.map(y=>new Date(y+'T12:00:00'));
-    const logged=shifts.map(normalizeCalcShift).filter(s=>wkYMDs.includes(s.date));
-    const base=sched.map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkYMDs.includes(b.date)&&!suppressed.has(b.date));
-    const all=[...base,...logged].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
-    let regRun=0,totPay=0,totHrs=0,totOt=0;
-    const rows=all.map(s=>{
-      const h=shiftHours(s.start,s.end);
-      const blockPremium=(isViewBlock&&s.isBase)?0.50:0;
-      const rate=(s.payRateOverride ?? (s.rate||0))+blockPremium;
-      const reg=Math.max(0,Math.min(h,OT_THRESH-regRun)), otH=h-reg;
-      const p=reg*rate+otH*rate*1.5;
-      regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
-      return {...s,h,otH,p};
-    });
-    return {rows,totPay,totHrs,totOt};
+    const key=PayEngine.weekSundayOf(wkYMDs[0]);
+    const r=PayEngine.computePay(udashPrepared.filter(s=>s.payWeek===key),udashOpts);
+    return {
+      rows: r.rows.map(s=>({...s,h:s.hrs,otH:s.otHrs,p:s.pay})),
+      totPay: r.totalPay, totHrs: r.totalHrs, totOt: r.totalOt,
+    };
   }
 
   const w1=weekRows(ymds.slice(0,7)), w2=weekRows(ymds.slice(7,14));
   const allRows=[...w1.rows,...w2.rows];
   const totPay=w1.totPay+w2.totPay, totHrs=w1.totHrs+w2.totHrs, totOt=w1.totOt+w2.totOt;
 
-  // Pull bonuses active in this pay period
+  // Pull bonuses active in this pay period, kept for the itemised breakdown.
+  // They are NOT added to totPay: the engine already includes each shift's
+  // pull_bonus in its row pay, so adding them again here would pay every pull
+  // twice. The rows and the total now come from the same place.
   const periodPulls=(_udashPulls||[]).filter(p=>!p.undone_at&&ymds.includes(String(p.pull_date).slice(0,10)));
   const pullBonusTotal=periodPulls.reduce((sum,p)=>sum+parseFloat(p.bonus_amount||0),0);
   _udashPullBonus=pullBonusTotal;
@@ -524,11 +550,11 @@ function renderUserDashboard(){
 
   document.getElementById('udash-hrs').textContent=totHrs.toFixed(1);
   document.getElementById('udash-ot').textContent=totOt.toFixed(1);
-  document.getElementById('udash-pay').textContent=formatPay(totPay+pullBonusTotal);
+  document.getElementById('udash-pay').textContent=formatPay(totPay);
   document.getElementById('udash-count').textContent=allRows.length;
 
   // Store for PDF export
-  _udashRows=allRows; _udashTotHrs=totHrs; _udashTotPay=totPay+pullBonusTotal;
+  _udashRows=allRows; _udashTotHrs=totHrs; _udashTotPay=totPay;
   _udashPPLabel=document.getElementById('udash-pp-label').textContent;
 
   const tbody=document.getElementById('udash-tbody');
@@ -866,12 +892,12 @@ function editPull(pullId){
 
   const date=new Date(String(p.pull_date).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   const shiftSel=document.getElementById('pull-shift-sel');
-  shiftSel.innerHTML=`<option value="edit">${date} Â· ${p.from_location_name||'Original'} Â· ${String(p.shift_start||'').slice(0,5)}â€“${String(p.shift_end||'').slice(0,5)}</option>`;
+  shiftSel.innerHTML=`<option value="edit">${date} · ${p.from_location_name||'Original'} · ${String(p.shift_start||'').slice(0,5)}–${String(p.shift_end||'').slice(0,5)}</option>`;
   shiftSel.value='edit';
   shiftSel.disabled=true;
 
   const locSel=document.getElementById('pull-to-loc-sel');
-  locSel.innerHTML='<option value="">Select destination locationâ€¦</option>'+
+  locSel.innerHTML='<option value="">Select destination location…</option>'+
     allLocs.filter(l=>l.id!==p.from_location_id).map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
   locSel.value=p.to_location_id||'';
 
@@ -2454,7 +2480,28 @@ async function refreshLeavePendingBadge() {
   }
 }
 
+// Approved call-offs are unpaid hours. The admin pay columns ignored them
+// entirely, so they read higher than the employee's own dashboard.
+// KNOWN LIMIT: /api/leave/admin/requests returns at most the 200 newest
+// requests of any type, so very old call-offs drop out once that many exist.
+function setCallOffs(leaveRes){
+  allCallOffs = {};
+  if(leaveRes?.ok) {
+    for(const r of leaveRes.requests){
+      (allCallOffs[r.user_id] ||= []).push(r);
+    }
+  }
+}
+async function refreshCallOffs(){
+  setCallOffs(await apiFetch('/api/leave/admin/requests?status=approved'));
+}
+
 async function loadLeavePanel() {
+  // Every leave action (approve, reverse, record call-off, convert to sick)
+  // ends here, so refresh the call-offs that payroll deducts at the same time.
+  // They were loaded once at startup and went stale until a full reload.
+  refreshCallOffs();
+
   // Populate user filter + call-off employee picker
   const userSel = document.getElementById('leave-filter-user');
   const coUser  = document.getElementById('co-user');

@@ -61,6 +61,7 @@ async function saveCredential(email,password){
 
 function doLogout(force=false){
   if(!force && !confirm('Sign out of ShiftTrack?')) return;
+  stopLiveTicker();
   clearAuth();
   cache.locations=[]; cache.shifts=[]; cache.base=[]; cache.settings=null; cache.suppressedBases=[]; cache.loaded=false; cache.allShiftsLoaded=false;
   swapsData=[];
@@ -369,84 +370,61 @@ function baseToDate(base, weekDates){
 //  Output: totalHrs, totalPay, totalOt, breakdown[]
 //  OT = hours past the weekly threshold (resets each week)
 // ═══════════════════════════════════════
-function computeWeekPay(shifts){
-  const thresh=getSettings().otThreshold;
-  const isBlock=(getUser()?.work_type==='block');
-  let regRunning=0, totalPay=0;
-  const sorted=[...shifts].sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
-  const breakdown=sorted.map(s=>{
-    const loc=getLocById(s.locationId);
-    const blockPremium=(isBlock&&s.isBase)?0.50:0;
-    const rate=(s.payRateOverride ?? (loc?loc.rate:0))+blockPremium;
-    const rawHrs=shiftHours(s.start,s.end);
-    // Approved call-offs reduce worked hours (unpaid)
-    const callOffHrs=leaveCache.loaded
-      ? leaveCache.requests
-          .filter(r=>r.type_name==='call_off'&&r.status==='approved'&&r.date&&String(r.date).slice(0,10)===s.date)
-          .reduce((sum,r)=>sum+parseFloat(r.hours_requested||0),0)
-      : 0;
-    const hrs=Math.max(0,rawHrs-callOffHrs);
-    const regHrs=Math.max(0,Math.min(hrs,thresh-regRunning));
-    const otHrs=hrs-regHrs;
-    const pay=regHrs*rate+otHrs*rate*1.5+(s.pullBonus||0);
-    regRunning+=regHrs;
-    totalPay+=pay;
-    return {...s,hrs,rawHrs,callOffHrs,regHrs,otHrs,pay,rate};
-  });
-  const totalHrs=breakdown.reduce((a,b)=>a+b.hrs,0);
-  const totalOt =breakdown.reduce((a,b)=>a+b.otHrs,0);
-  return {totalHrs,totalPay,totalOt,breakdown};
+// ── Pay calculation ──────────────────────────────────────────────────────────
+// All of it lives in assets/js/pay-engine.js so the dashboard, the week groups,
+// the pay-history cards, the PDF and the admin panel cannot drift apart. What
+// used to be three near-copies here (computeWeekPay, normalizeCalcShift,
+// mergeConsecutiveShifts) is now the two helpers below feeding that one engine.
+
+// The settings the engine needs to price this user's shifts.
+function payOptions(){
+  return {
+    otThreshold: getSettings().otThreshold,
+    isBlock:     getUser()?.work_type === 'block',
+    rateOf:      s => getLocById(s.locationId)?.rate || 0,
+    // Leave loads a couple of seconds after the dashboard; until it arrives
+    // there is nothing to deduct and the render repeats once it lands.
+    callOffHoursByDate: leaveCache.loaded ? PayEngine.callOffMap(leaveCache.requests) : {},
+  };
 }
 
-// Shifts starting 23:55–23:59 count as midnight of the next day for pay/OT purposes.
-// Display (calendar) keeps the original date/time; only calc logic uses this.
-function normalizeCalcShift(s) {
-  const [h, m] = s.start.split(':').map(Number);
-  if (h === 23 && m >= 55) {
-    const d = new Date(s.date + 'T00:00:00');
-    d.setDate(d.getDate() + 1);
-    return { ...s, date: d.toISOString().slice(0, 10), start: '00:00' };
+// Every logged and base segment that could affect the given dates, padded one
+// day either side so a chain starting the evening before is visible, then run
+// through the engine (late-night normalisation + chain tagging).
+//
+// Callers filter the result by `payWeek`, never by the segment's own date —
+// that is what keeps a Saturday-night chain out of the Sunday week.
+function preparedSegmentsFor(ymds){
+  if(!ymds.length) return [];
+  const window=new Set(ymds);
+  window.add(PayEngine.addDays(ymds[0],-1));
+  window.add(PayEngine.addDays(ymds[ymds.length-1],1));
+
+  const logged=getShifts()
+    .filter(s=>window.has(s.date))
+    .map(s=>({...s,isBase:false}));
+
+  // Base entries resolve through the week they fall in, so collect the weeks
+  // the padded window touches and expand each one once.
+  const base=[];
+  const seenWeeks=new Set();
+  for(const d of window){
+    const wk=weekDatesForDate(d);
+    const key=toYMD(wk[0]);
+    if(seenWeeks.has(key)) continue;
+    seenWeeks.add(key);
+    getBase().forEach(b=>{
+      const bd=baseToDate(b,wk);            // null when suppressed or another week
+      if(bd&&window.has(bd)) base.push({...b,date:bd,isBase:true});
+    });
   }
-  return s;
+  return PayEngine.prepare([...logged,...base]);
 }
 
-// When two shifts at the same location are exactly adjacent (first ends when second starts),
-// treat them as one continuous shift for OT/pay purposes.
-// The combined shift keeps the first shift's date/start; the second is absorbed.
-function mergeConsecutiveShifts(shifts) {
-  if (shifts.length < 2) return [...shifts];
-  const abs = shifts.map(s => {
-    const d = dateToDay(s.date) * 1440;
-    const sM = toMins(s.start);
-    let eM = toMins(s.end);
-    if (eM <= sM) eM += 1440;
-    return { ...s, _as: d + sM, _ae: d + eM };
-  });
-  abs.sort((a, b) => a._as - b._as);
-  const absorbed = new Set();
-  const result = [];
-  for (let i = 0; i < abs.length; i++) {
-    if (absorbed.has(i)) continue;
-    let cur = { ...abs[i] };
-    let extended = true;
-    while (extended) {
-      extended = false;
-      for (let j = 0; j < abs.length; j++) {
-        if (j === i || absorbed.has(j)) continue;
-        if (abs[j].locationId === cur.locationId && abs[j]._as === cur._ae) {
-          cur._ae = abs[j]._ae;
-          const em = cur._ae % 1440;
-          cur.end = `${String(Math.floor(em / 60)).padStart(2, '0')}:${String(em % 60).padStart(2, '0')}`;
-          absorbed.add(j);
-          extended = true;
-          break;
-        }
-      }
-    }
-    const { _as, _ae, ...clean } = cur;
-    result.push(clean);
-  }
-  return result;
+// Pay for one calendar week, given segments already prepared by the helper above.
+function weekPayFrom(prepared,weekStartYMD){
+  const key=PayEngine.weekSundayOf(weekStartYMD);
+  return PayEngine.computePay(prepared.filter(s=>s.payWeek===key),payOptions());
 }
 
 // ═══════════════════════════════════════
@@ -723,8 +701,12 @@ function updateCalc(){
   const baseShifts=getBase()
     .map(b=>({...b,date:baseToDate(b,wkDates)}))
     .filter(b=>b.date&&wkYMDs.includes(b.date));
-  const previewShift={id:PREVIEW_ID,locationId:locId,date,start,end};
-  const {breakdown}=computeWeekPay([...otherLogged,...baseShifts,previewShift]);
+  const previewShift={id:PREVIEW_ID,locationId:locId,date,start,end,isBase:false};
+  const previewPrepared=PayEngine.prepare([...otherLogged,...baseShifts,previewShift]);
+  const previewKey=previewPrepared.find(s=>s.id===PREVIEW_ID)?.payWeek;
+  const {rows:breakdown}=PayEngine.computePay(
+    previewPrepared.filter(s=>s.payWeek===previewKey), payOptions()
+  );
   const entry=breakdown.find(s=>s.id===PREVIEW_ID);
   const regHrs=entry?entry.regHrs:0;
   const otHrs =entry?entry.otHrs :0;
@@ -848,27 +830,12 @@ function renderDash(){
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('week-label').textContent=`${fmt(wkDates[0])}–${fmt(wkDates[6])}`;
 
-  // Logged shifts this week
-  const logged=getShifts().map(normalizeCalcShift).filter(s=>wkYMDs.includes(s.date));
-
-  // Base shifts this week
-  const baseThisWeek=getBase()
-    .map(b=>({...b,date:baseToDate(b,wkDates),isBase:true}))
-    .filter(b=>b.date!==null);
-
-  const allShifts=[...baseThisWeek,...logged.map(s=>({...s,isBase:false}))];
-
-  // For OT/pay totals: extend range by one day to catch chains that cross into next week,
-  // merge same-location consecutive shifts, then filter back to this week's dates.
-  const nextWkDay0=toYMD(new Date(new Date(wkYMDs[6]+'T00:00:00').setDate(new Date(wkYMDs[6]+'T00:00:00').getDate()+1)));
-  const nextWkDates=getWeekDates(weekOffset+1);
-  const nextDayExtra=[
-    ...getShifts().map(normalizeCalcShift).filter(s=>s.date===nextWkDay0).map(s=>({...s,isBase:false})),
-    ...getBase().map(b=>({...b,date:baseToDate(b,nextWkDates),isBase:true})).filter(b=>b.date===nextWkDay0)
-  ];
-  const mergedWk=mergeConsecutiveShifts([...allShifts,...nextDayExtra]).filter(s=>wkYMDs.includes(s.date));
-  const {totalHrs,totalPay,totalOt}=computeWeekPay(mergedWk);
-  const {breakdown}=computeWeekPay(allShifts);
+  // One computation feeds both the headline stats and the rows underneath, so
+  // the rows always sum to the header. Previously these were two different
+  // calls — one merged, one not — and disagreed whenever a chain existed.
+  const prepared=preparedSegmentsFor(wkYMDs);
+  const {rows:breakdown,totalHrs,totalPay,totalOt}=weekPayFrom(prepared,wkYMDs[0]);
+  const allShifts=breakdown;
 
   countUp(document.getElementById('stat-hours'), totalHrs, 600, 'float1');
   countUp(document.getElementById('stat-pay'),   totalPay, 700, 'currency');
@@ -885,16 +852,8 @@ function renderDash(){
   const ppYMDs=[];
   for(let d=new Date(ppS);d<=ppE;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
   const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
-  const ppW1D=ppW1.map(y=>new Date(y+'T12:00:00')), ppW2D=ppW2.map(y=>new Date(y+'T12:00:00'));
-  const _ppMerged=mergeConsecutiveShifts([
-    ...getShifts().map(normalizeCalcShift).filter(s=>ppYMDs.includes(s.date)),
-    ...getBase().map(b=>({...b,date:baseToDate(b,ppW1D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date)),
-    ...getBase().map(b=>({...b,date:baseToDate(b,ppW2D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date))
-  ]);
-  function ppWeekShifts(ymdSet){
-    return computeWeekPay(_ppMerged.filter(s=>ymdSet.includes(s.date)));
-  }
-  const r1=ppWeekShifts(ppW1), r2=ppWeekShifts(ppW2);
+  const ppPrepared=preparedSegmentsFor(ppYMDs);
+  const r1=weekPayFrom(ppPrepared,ppW1[0]), r2=weekPayFrom(ppPrepared,ppW2[0]);
   const ppTotal=r1.totalPay+r2.totalPay;
   const ppHrs  =r1.totalHrs+r2.totalHrs;
   const ppOt   =r1.totalOt +r2.totalOt;
@@ -907,8 +866,10 @@ function renderDash(){
   document.getElementById('prog-pp').style.width  =Math.min(100,(ppHrs/(thresh*2))*100)+'%';
 
   // ── Hours by location ──
+  // s.hrs, not a raw recount: these bars have to add up to the headline hours,
+  // which means honouring call-off deductions the same way.
   const locHrs={};
-  allShifts.forEach(s=>{ locHrs[s.locationId]=(locHrs[s.locationId]||0)+shiftHours(s.start,s.end); });
+  allShifts.forEach(s=>{ locHrs[s.locationId]=(locHrs[s.locationId]||0)+s.hrs; });
   const locBars=document.getElementById('loc-bars');
   if(!Object.keys(locHrs).length){
     locBars.innerHTML='<div class="empty-state" style="padding:12px;font-size:12px">No shifts this week</div>';
@@ -925,13 +886,10 @@ function renderDash(){
   }
 
   // ── Shift list ──
-  // Build a lookup from shift id → breakdown entry
-  const bdMap={};
-  breakdown.forEach(b=>{ bdMap[b.id+(b.isBase?'_b':'')]=b; });
-
-  const sorted=[...allShifts].sort((a,b2)=>a.date.localeCompare(b2.date)||a.start.localeCompare(b2.start));
+  // breakdown rows already carry their own priced figures and are in order, so
+  // there is no id lookup to get wrong and no row without a matching entry.
   const listEl=document.getElementById('shift-list-dash');
-  if(!sorted.length){
+  if(!breakdown.length){
     listEl.innerHTML='<div class="empty-state"><div class="icon">🗓</div>No shifts this week.<br>Tap ＋ to log one.</div>';
     return;
   }
@@ -941,10 +899,9 @@ function renderDash(){
     const myDate=sw.initiator_id===myId?(sw.target_date||'').slice(0,10):(sw.initiator_date||'').slice(0,10);
     dashSwapDateMap[myDate]=sw.id;
   });
-  listEl.innerHTML=sorted.map(s=>{
-    const key=s.id+(s.isBase?'_b':'');
-    return shiftItemHTML(s,bdMap[key],(!s.isBase&&dashSwapDateMap[s.date])||null);
-  }).join('');
+  listEl.innerHTML=breakdown.map(s=>
+    shiftItemHTML(s,s,(!s.isBase&&dashSwapDateMap[s.date])||null)
+  ).join('');
 }
 
 // ═══════════════════════════════════════
@@ -956,13 +913,24 @@ function renderAllShifts(){
   const el=document.getElementById('shift-list-all');
   if(!shifts.length){ el.innerHTML='<div class="empty-state"><div class="icon">📋</div>No shifts yet.<br>Tap ＋ to add your first.</div>'; return; }
 
-  // Group by week (Sun as key, descending)
+  // Group by the week each shift is PAID in, not the week its own date falls
+  // in — an overnight chain that runs into Sunday belongs to the week it began.
+  // Base shifts must be part of that calculation: a logged Sunday-morning shift
+  // that continues a Saturday-night BASE shift belongs to Saturday's week.
+  // Preparing logged shifts alone missed that link, filed the shift under the
+  // next week, and that week then (correctly) priced it at $0.
+  const chainDates=new Set();
+  shifts.forEach(s=>{ chainDates.add(PayEngine.addDays(s.date,-1)); chainDates.add(s.date); });
+  const payWeekOfShift=new Map();
+  preparedSegmentsFor([...chainDates].sort())
+    .filter(s=>!s.isBase)
+    .forEach(s=>payWeekOfShift.set(s.id,s.payWeek));
+
   const sorted=[...shifts].sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start));
   const groups=new Map();
   sorted.forEach(s=>{
-    const wkD=weekDatesForDate(s.date);
-    const key=toYMD(wkD[0]);
-    if(!groups.has(key)) groups.set(key,{wkD,shifts:[]});
+    const key=payWeekOfShift.get(s.id)||toYMD(weekDatesForDate(s.date)[0]);
+    if(!groups.has(key)) groups.set(key,{wkD:weekDatesForDate(key),shifts:[]});
     groups.get(key).shifts.push(s);
   });
 
@@ -974,16 +942,13 @@ function renderAllShifts(){
 
   const groupsHtml=[...groups.entries()].map(([key,{wkD,shifts:wkShifts}])=>{
     const wkY=wkD.map(toYMD);
-    const allWkShifts=[
-      ...getShifts().filter(x=>wkY.includes(x.date)),
-      ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkY.includes(b.date))
-    ];
-    const {breakdown}=computeWeekPay(allWkShifts);
-    const totHrs=wkShifts.reduce((t,s)=>t+shiftHours(s.start,s.end),0);
-    const totPay=wkShifts.reduce((t,s)=>{
-      const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
-      return t+(bd?bd.pay:shiftHours(s.start,s.end)*(getLocById(s.locationId)?.rate||0));
-    },0);
+    // Priced by the same engine as the dashboard. This used to sum raw hours and
+    // fall back to an unpriced rate x hours whenever a row had no breakdown
+    // entry, which is why a week's header could differ from the dashboard's.
+    const {rows:breakdown}=weekPayFrom(preparedSegmentsFor(wkY),wkY[0]);
+    const loggedRows=breakdown.filter(b=>!b.isBase);
+    const totHrs=loggedRows.reduce((t,b)=>t+b.hrs,0);
+    const totPay=loggedRows.reduce((t,b)=>t+b.pay,0);
 
     const isCurrentWk=key===currentWkKey;
     const weekLabel=`${fmt(wkD[0])} – ${fmt(wkD[6])}`;
@@ -994,7 +959,7 @@ function renderAllShifts(){
       acceptedSwapDateMap[myDate]=sw.id;
     });
     const shiftsHtml=wkShifts.map(s=>{
-      const bd=breakdown.find(b=>b.id===s.id&&!b.isBase);
+      const bd=loggedRows.find(b=>b.id===s.id);
       return shiftItemHTML({...s,isBase:false},bd,acceptedSwapDateMap[s.date]||null);
     }).join('');
 
@@ -1097,7 +1062,7 @@ function shiftItemHTML(s,bd,swapId=null){
   const name =loc?.name||'Unknown';
   const rate =s.payRateOverride ?? (loc?.rate||0);
   const rawHrs=shiftHours(s.start,s.end);
-  // bd.hrs already accounts for call-off deduction via computeWeekPay
+  // bd.hrs already accounts for call-off deduction via the pay engine
   const effectiveHrs=bd?bd.hrs:rawHrs;
   const pay  =bd?bd.pay:effectiveHrs*rate;
   const otHrs=bd?bd.otHrs:0;
@@ -1566,14 +1531,16 @@ function openDaySheet(dateStr){
     listEl.innerHTML=(unavailHTML||'<div style="text-align:center;padding:16px 0;color:var(--muted);font-family:var(--mono);font-size:12px">No shifts on this day</div>');
     document.getElementById('day-summary').style.display='none';
   } else {
-    // Compute OT in weekly context
-    const wkD = weekDatesForDate(dateStr);
-    const wkY = wkD.map(toYMD);
-    const allWk = [
-      ...getShifts().filter(s=>wkY.includes(s.date)),
-      ...getBase().map(b=>({...b,date:baseToDate(b,wkD),isBase:true})).filter(b=>b.date&&wkY.includes(b.date))
+    // Compute OT in weekly context, through the shared engine. Each shift is
+    // priced in the week it is PAID in: a Sunday shift that continues a
+    // Saturday-night chain belongs to the previous week, so price both weeks.
+    const wkY = weekDatesForDate(dateStr).map(toYMD);
+    const prevWkY = weekDatesForDate(PayEngine.addDays(wkY[0],-7)).map(toYMD);
+    const dayPrepared = preparedSegmentsFor([...prevWkY, ...wkY]);
+    const breakdown = [
+      ...weekPayFrom(dayPrepared, prevWkY[0]).rows,
+      ...weekPayFrom(dayPrepared, wkY[0]).rows,
     ];
-    const {breakdown} = computeWeekPay(allWk);
     const bdMap = {}; breakdown.forEach(b=>{ bdMap[b.id+(b.isBase?'_b':'')]=b; });
 
     listEl.innerHTML = unavailHTML + shifts.map(s=>{
@@ -1684,16 +1651,11 @@ async function renderHistory(reset=true){
     for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
     const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
 
-    const ppW1D=ppW1.map(y=>new Date(y+'T12:00:00')), ppW2D=ppW2.map(y=>new Date(y+'T12:00:00'));
-    const _histMerged=mergeConsecutiveShifts([
-      ...getShifts().filter(s=>ppYMDs.includes(s.date)),
-      ...getBase().map(b=>({...b,date:baseToDate(b,ppW1D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date)),
-      ...getBase().map(b=>({...b,date:baseToDate(b,ppW2D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date))
-    ]);
-    function ppWkShifts(ymdSet){
-      return computeWeekPay(_histMerged.filter(s=>ymdSet.includes(s.date)));
-    }
-    const r1=ppWkShifts(ppW1), r2=ppWkShifts(ppW2);
+    // Same engine as the PDF button sitting next to this card. Previously this
+    // path skipped the 23:55 normalisation the PDF applied, so the two could
+    // print different totals for the very same pay period.
+    const histPrepared=preparedSegmentsFor(ppYMDs);
+    const r1=weekPayFrom(histPrepared,ppW1[0]), r2=weekPayFrom(histPrepared,ppW2[0]);
     const total=r1.totalPay+r2.totalPay;
     const hrs  =r1.totalHrs+r2.totalHrs;
     const ot   =r1.totalOt +r2.totalOt;
@@ -1873,32 +1835,14 @@ async function downloadPayPDF(offset){
   const ppYMDs=[];
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)) ppYMDs.push(toYMD(new Date(d)));
   const ppW1=ppYMDs.slice(0,7), ppW2=ppYMDs.slice(7,14);
-  const ppW1D=ppW1.map(y=>new Date(y+'T12:00:00')), ppW2D=ppW2.map(y=>new Date(y+'T12:00:00'));
-  const _pdfMerged=mergeConsecutiveShifts([
-    ...getShifts().map(normalizeCalcShift).filter(s=>ppYMDs.includes(s.date)),
-    ...getBase().map(b=>({...b,date:baseToDate(b,ppW1D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date)),
-    ...getBase().map(b=>({...b,date:baseToDate(b,ppW2D),isBase:true})).filter(b=>b.date&&ppYMDs.includes(b.date))
-  ]);
 
-  function weekBreakdown(ymdSet){
-    const all=_pdfMerged.filter(s=>ymdSet.includes(s.date)).sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
-    const { otThreshold:thresh } = getSettings();
-    let regRun=0, rows=[], totPay=0, totHrs=0, totOt=0;
-    for(const s of all){
-      const loc=getLocById(s.locationId);
-      const rate=s.payRateOverride ?? (loc?loc.rate:0);
-      const h=shiftHours(s.start,s.end);
-      const reg=Math.max(0,Math.min(h,thresh-regRun)), otH=h-reg;
-      const p=reg*rate+otH*rate*1.5+(s.pullBonus||0);
-      regRun+=reg; totPay+=p; totHrs+=h; totOt+=otH;
-      rows.push({...s,h,otH,p,loc});
-    }
-    return {rows,totPay,totHrs,totOt};
-  }
-
-  const w1=weekBreakdown(ppW1), w2=weekBreakdown(ppW2);
-  const allRows=[...w1.rows,...w2.rows];
-  const totPay=w1.totPay+w2.totPay, totHrs=w1.totHrs+w2.totHrs, totOt=w1.totOt+w2.totOt;
+  // The PDF used to carry its own OT loop, which silently omitted the block
+  // worker premium and every call-off deduction — so a printed paycheck could
+  // disagree with the dashboard it was generated from. It now shares the engine.
+  const pdfPrepared=preparedSegmentsFor(ppYMDs);
+  const w1=weekPayFrom(pdfPrepared,ppW1[0]), w2=weekPayFrom(pdfPrepared,ppW2[0]);
+  const allRows=[...w1.rows,...w2.rows].map(s=>({...s,h:s.hrs,otH:s.otHrs,p:s.pay,loc:getLocById(s.locationId)}));
+  const totPay=w1.totalPay+w2.totalPay, totHrs=w1.totalHrs+w2.totalHrs, totOt=w1.totalOt+w2.totalOt;
   const pullBonusTotal=allRows.reduce((sum,s)=>sum+(s.pullBonus||0),0);
   const shiftOnlyPay=totPay-pullBonusTotal;
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -1950,9 +1894,9 @@ async function downloadPayPDF(offset){
         <tbody>
           ${pulledRows.map(s=>`<tr>
             <td>${new Date(s.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</td>
-            <td>${s.pulledFromLocationName||'â€”'}</td>
-            <td>${s.loc?.name||'â€”'}</td>
-            <td>${s.start}â€“${s.end}</td>
+            <td>${s.pulledFromLocationName||'—'}</td>
+            <td>${s.loc?.name||'—'}</td>
+            <td>${s.start}–${s.end}</td>
             <td style="text-align:right;color:#c07000">+${formatPay(s.pullBonus||0)}</td>
           </tr>`).join('')}
         </tbody>
@@ -2504,12 +2448,16 @@ function updateLiveTicker() {
 
   const thresh = getSettings().otThreshold;
 
+  // Earned-so-far and the OT flag come from one pass. This used to run the same
+  // O(shifts x 7) week scan once per active shift for `earned` and then a second
+  // identical time for `otActive`, every single second.
   let earned = 0;
+  let otActive = false;
   for (const active of all) {
     const rate = active.payRateOverride ?? (getLocById(active.locationId)?.rate || 0);
     const elapsedHrs = elapsedHoursForActive(active);
 
-    // Sum reg hours from all shifts that started strictly before this active shift
+    // Reg hours already banked by shifts that started before this one
     let regBefore = 0;
     for (const s of weekShiftsForDate(active.date)) {
       if (s.date > active.date || (s.date === active.date && s.start >= active.start)) continue;
@@ -2520,19 +2468,8 @@ function updateLiveTicker() {
     const regElapsed = Math.min(elapsedHrs, regRemaining);
     const otElapsed  = Math.max(0, elapsedHrs - regElapsed);
     earned += regElapsed * rate + otElapsed * rate * 1.5;
+    if (rate && elapsedHrs > regRemaining) otActive = true;
   }
-
-  const otActive = all.some(s => {
-    const rate = s.payRateOverride ?? (getLocById(s.locationId)?.rate || 0);
-    if (!rate) return false;
-    const elapsedHrs = elapsedHoursForActive(s);
-    let regBefore = 0;
-    for (const w of weekShiftsForDate(s.date)) {
-      if (w.date > s.date || (w.date === s.date && w.start >= s.start)) continue;
-      regBefore = Math.min(thresh, regBefore + shiftHours(w.start, w.end));
-    }
-    return elapsedHrs > Math.max(0, thresh - regBefore);
-  });
 
   const sub = all.map(s => { const loc = getLocById(s.locationId); return `${loc?.name||'?'} · ${fmtTime(s.start)} – ${fmtTime(s.end)}`; }).join(' / ')
     + (otActive ? ' · OT rate active' : '');
@@ -2541,9 +2478,28 @@ function updateLiveTicker() {
   document.getElementById('ticker-sub').textContent = sub;
 }
 function startLiveTicker() {
-  if (_tickerInterval) clearInterval(_tickerInterval);
+  stopLiveTicker();
   updateLiveTicker();
   _tickerInterval = setInterval(updateLiveTicker, 1000);
+  // A phone left on the dashboard was recomputing the whole week once a second
+  // in the background for no visible benefit. Pause while hidden, catch up on
+  // return. (Registered once; re-entering startLiveTicker just resets the timer.)
+  if (!startLiveTicker._visBound) {
+    startLiveTicker._visBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopLiveTicker();
+      } else if (cache.loaded && !_tickerInterval) {
+        updateLiveTicker();
+        _tickerInterval = setInterval(updateLiveTicker, 1000);
+      }
+    });
+  }
+}
+
+function stopLiveTicker() {
+  if (_tickerInterval) clearInterval(_tickerInterval);
+  _tickerInterval = null;
 }
 
 // ─── Confetti ───

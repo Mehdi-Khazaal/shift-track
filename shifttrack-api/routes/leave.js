@@ -445,33 +445,49 @@ router.post('/calloff', auth, adminOnly, async (req, res) => {
       await initUserLeaveBalances(user_id, userRes.rows[0].hire_date);
 
     let sickApplied = 0;
+    let result;
 
-    // If admin chose to apply sick time
-    if (apply_sick_time && sickLt) {
-      const sickBal = await db.query(
-        'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
-        [user_id, sickLt.id]
-      );
-      if (sickBal.rows.length) {
-        const available = availableHours(sickBal.rows[0]);
-        sickApplied = Math.min(available, hrs);
-        if (sickApplied > 0) {
-          await db.query(
-            `UPDATE leave_balances SET used_hours = used_hours + $1
-             WHERE user_id=$2 AND leave_type_id=$3`,
-            [sickApplied, user_id, sickLt.id]
-          );
+    // The sick-time deduction and the call-off record are one unit of work.
+    // Run apart, a failure on the insert left the employee's hours deducted
+    // with nothing on file to show for it. Matches the approve/reverse handlers
+    // above, which already transact.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+
+      if (apply_sick_time && sickLt) {
+        const sickBal = await client.query(
+          'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2 FOR UPDATE',
+          [user_id, sickLt.id]
+        );
+        if (sickBal.rows.length) {
+          const available = availableHours(sickBal.rows[0]);
+          sickApplied = Math.min(available, hrs);
+          if (sickApplied > 0) {
+            await client.query(
+              `UPDATE leave_balances SET used_hours = used_hours + $1
+               WHERE user_id=$2 AND leave_type_id=$3`,
+              [sickApplied, user_id, sickLt.id]
+            );
+          }
         }
       }
-    }
 
-    const result = await db.query(
-      `INSERT INTO leave_requests
-         (user_id, leave_type_id, date, hours_requested, notes, submitted_by, reviewed_by, reviewed_at, status, sick_hours_applied)
-       VALUES ($1,$2,$3,$4,$5,$6,$6,NOW(),'approved',$7)
-       RETURNING *`,
-      [user_id, callOffLt.id, date, hrs, notes || '', req.userId, sickApplied]
-    );
+      result = await client.query(
+        `INSERT INTO leave_requests
+           (user_id, leave_type_id, date, hours_requested, notes, submitted_by, reviewed_by, reviewed_at, status, sick_hours_applied)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,NOW(),'approved',$7)
+         RETURNING *`,
+        [user_id, callOffLt.id, date, hrs, notes || '', req.userId, sickApplied]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     // Notify employee
     const empName = userRes.rows[0]?.name || 'Employee';
@@ -517,31 +533,47 @@ router.patch('/calloff/:id/convert-sick', auth, adminOnly, async (req, res) => {
     if (remaining <= 0)
       return res.status(400).json({ ok: false, error: 'Sick time is already fully applied to this call-off' });
 
-    // Get available sick balance
-    const sickBal = await db.query(
-      'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2',
-      [lr.user_id, sickLt.id]
-    );
-    const available = sickBal.rows.length ? availableHours(sickBal.rows[0]) : 0;
-    const toApply   = Math.min(available, remaining);
+    // Deduct the sick balance and record it against the call-off as one unit of
+    // work — separately, a failure on the second statement would consume the
+    // employee's hours without attaching them to anything.
+    let toApply = 0;
+    let newApplied = alreadyApplied;
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
 
-    if (toApply <= 0)
-      return res.status(400).json({ ok: false, error: 'No sick time balance available' });
+      const sickBal = await client.query(
+        'SELECT * FROM leave_balances WHERE user_id=$1 AND leave_type_id=$2 FOR UPDATE',
+        [lr.user_id, sickLt.id]
+      );
+      const available = sickBal.rows.length ? availableHours(sickBal.rows[0]) : 0;
+      toApply = Math.min(available, remaining);
 
-    // Deduct from sick balance
-    await db.query(
-      `UPDATE leave_balances SET used_hours = used_hours + $1
-       WHERE user_id=$2 AND leave_type_id=$3`,
-      [toApply, lr.user_id, sickLt.id]
-    );
+      if (toApply <= 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ ok: false, error: 'No sick time balance available' });
+      }
 
-    // Update request
-    const newApplied = alreadyApplied + toApply;
-    await db.query(
-      `UPDATE leave_requests SET sick_hours_applied=$1, reviewed_by=$2, reviewed_at=NOW()
-       WHERE id=$3`,
-      [newApplied, req.userId, req.params.id]
-    );
+      await client.query(
+        `UPDATE leave_balances SET used_hours = used_hours + $1
+         WHERE user_id=$2 AND leave_type_id=$3`,
+        [toApply, lr.user_id, sickLt.id]
+      );
+
+      newApplied = alreadyApplied + toApply;
+      await client.query(
+        `UPDATE leave_requests SET sick_hours_applied=$1, reviewed_by=$2, reviewed_at=NOW()
+         WHERE id=$3`,
+        [newApplied, req.userId, req.params.id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     // Notify employee
     await sendPushToUser(

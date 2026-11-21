@@ -223,6 +223,24 @@ async function migrate() {
       )
     `);
 
+    // Ledger of shift reminders already delivered, so a reminder is sent exactly
+    // once no matter which path gets there first — the 5-minute cron, or
+    // /api/notifications/send-upcoming when the app is opened.
+    //
+    // This replaces window-tuning as the duplicate defense. Commit 48370f7 had
+    // narrowed the cron's match window to stop duplicates; that coupled
+    // correctness to the cron interval, and broke silently when c277893 changed
+    // the interval from 1 to 5 minutes without widening the window.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reminder_sends (
+        id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        shift_key TEXT NOT NULL,
+        sent_at   TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, shift_key)
+      )
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS notification_log (
         id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -399,6 +417,7 @@ async function migrate() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_leave_req_user       ON leave_requests(user_id, status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_osc_shift            ON open_shift_claims(open_shift_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_notif_log_user       ON notification_log(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_reminder_sends_at    ON reminder_sends(sent_at)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_suppressed_user      ON base_suppressed_dates(user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_open_shifts_status   ON open_shifts(status, deadline)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_shift_pulls_user     ON shift_pulls(user_id, pull_date)`);

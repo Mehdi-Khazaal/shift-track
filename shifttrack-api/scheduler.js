@@ -3,6 +3,7 @@ const webpush = require('./utils/webpush');
 const db      = require('./db/index');
 const { payWeekOf, DEFAULT_ANCHOR } = require('./utils/ppAnchor');
 const { getPtoAnnualHours, availableHours } = require('./routes/leave');
+const { reminderKey, claimReminder, releaseReminder, pushToSubs, logNotification } = require('./utils/push');
 
 function groupBy(arr, key) {
   return arr.reduce((acc, item) => {
@@ -15,7 +16,13 @@ function groupBy(arr, key) {
 cron.schedule('*/5 * * * *', async () => {
   try {
     const now = new Date();
-    const windowBackMs = 60 * 1000;
+    // The look-back window must match the cron interval, or reminders whose
+    // moment lands between ticks are never sent at all. It was left at 60s when
+    // c277893 moved this job from every minute to every five, which meant only
+    // ~1 minute in every 5 was covered and most reminders silently vanished.
+    // Duplicates are now prevented by the reminder_sends ledger, not by keeping
+    // this window artificially narrow.
+    const windowBackMs = 5 * 60 * 1000;
     const windowFwdMs  = 5  * 1000;
 
     // Cheap count check before fetching all subscription data
@@ -31,7 +38,10 @@ cron.schedule('*/5 * * * *', async () => {
     // Logged reminders only need shifts near the current date, not full history.
     const [shiftsRes, baseRes, suppressedRes, anchorsRes] = await Promise.all([
       db.query(
-        `SELECT s.user_id, s.date, s.start_time, s.end_time, l.name AS location_name
+        // id is part of each reminder's ledger key. Without it every key read
+        // "logged:undefined:<date>", so a second shift on the same day was
+        // treated as already reminded, and keys never matched send-upcoming's.
+        `SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, l.name AS location_name
          FROM shifts s JOIN locations l ON s.location_id = l.id
          WHERE s.user_id = ANY($1)
            AND s.date BETWEEN CURRENT_DATE - INTERVAL '2 days'
@@ -39,7 +49,7 @@ cron.schedule('*/5 * * * *', async () => {
         [userIds]
       ),
       db.query(
-        `SELECT b.user_id, b.week, b.day_of_week, b.start_time, b.end_time, l.name AS location_name
+        `SELECT b.id, b.user_id, b.week, b.day_of_week, b.start_time, b.end_time, l.name AS location_name
          FROM base_schedule b JOIN locations l ON b.location_id = l.id
          WHERE b.user_id = ANY($1)`,
         [userIds]
@@ -66,75 +76,84 @@ cron.schedule('*/5 * * * *', async () => {
       anchorByUser[r.user_id] = String(r.pp_anchor).slice(0, 10);
     }
 
-    for (const sub of subsRes.rows) {
-      const notifyMs      = Number(sub.notify_minutes) * 60 * 1000;
-      // tz_offset from getTimezoneOffset(): positive = behind UTC (e.g. Eastern = 240)
-      // UTC = local + tz_offset  =>  add offset to convert stored local time to UTC
-      const tzOffset      = Number(sub.tz_offset || 0);
-      const userShifts    = shiftsByUser[sub.user_id]     || [];
-      const userBase      = baseByUser[sub.user_id]       || [];
-      const suppressedSet = suppressedByUser[sub.user_id] || new Set();
-      const anchorStr     = anchorByUser[sub.user_id]     || DEFAULT_ANCHOR;
+    // Walk users rather than subscriptions: a reminder is claimed once per user
+    // per shift, then delivered to every device they have registered. Iterating
+    // subscriptions instead would let the first device claim the reminder and
+    // leave the others silent.
+    const subsByUser = groupBy(subsRes.rows, 'user_id');
 
-      const toSend = [];
+    for (const userId of Object.keys(subsByUser)) {
+      const userSubs      = subsByUser[userId];
+      const userShifts    = shiftsByUser[userId]     || [];
+      const userBase      = baseByUser[userId]       || [];
+      const suppressedSet = suppressedByUser[userId] || new Set();
+      const anchorStr     = anchorByUser[userId]     || DEFAULT_ANCHOR;
 
-      // Logged shifts - date/time stored in user's local timezone
-      for (const s of userShifts) {
-        const dateStr   = String(s.date).slice(0, 10);
-        const shiftTime = new Date(`${dateStr}T${s.start_time}`);
-        shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
-        const notifTime = new Date(shiftTime.getTime() - notifyMs);
-        if (notifTime >= now - windowBackMs && notifTime <= now.getTime() + windowFwdMs) {
-          toSend.push({ name: s.location_name, time: s.start_time.slice(0, 5) });
+      // Devices can carry different notify_minutes / tz_offset, so collect the
+      // union of what is due across them, keyed so duplicates collapse.
+      const due = new Map();
+
+      for (const sub of userSubs) {
+        const notifyMs = Number(sub.notify_minutes) * 60 * 1000;
+        // tz_offset from getTimezoneOffset(): positive = behind UTC (e.g. Eastern = 240)
+        // UTC = local + tz_offset  =>  add offset to convert stored local time to UTC
+        const tzOffset = Number(sub.tz_offset || 0);
+
+        const isDue = (dateStr, startTime) => {
+          const shiftTime = new Date(`${dateStr}T${startTime}`);
+          shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
+          const notifTime = new Date(shiftTime.getTime() - notifyMs);
+          return notifTime >= now.getTime() - windowBackMs
+              && notifTime <= now.getTime() + windowFwdMs;
+        };
+
+        // Logged shifts - date/time stored in user's local timezone
+        for (const s of userShifts) {
+          const dateStr = String(s.date).slice(0, 10);
+          if (isDue(dateStr, s.start_time)) {
+            due.set(reminderKey('logged', s.id, dateStr),
+              { name: s.location_name, time: s.start_time.slice(0, 5) });
+          }
         }
-      }
 
-      // Base schedule - check next 14 days in user's local time
-      const localNowMs = now.getTime() - tzOffset * 60 * 1000;
-      for (let offset = 0; offset < 14; offset++) {
-        const localD    = new Date(localNowMs + offset * 86400000);
-        const dayStr    = localD.toISOString().slice(0, 10);
-        const dayOfWeek = localD.getUTCDay();
-        const weekNum   = payWeekOf(dayStr, anchorStr);
+        // Base schedule - check next 14 days in user's local time
+        const localNowMs = now.getTime() - tzOffset * 60 * 1000;
+        for (let offset = 0; offset < 14; offset++) {
+          const localD    = new Date(localNowMs + offset * 86400000);
+          const dayStr    = localD.toISOString().slice(0, 10);
+          const dayOfWeek = localD.getUTCDay();
+          const weekNum   = payWeekOf(dayStr, anchorStr);
 
-        if (suppressedSet.has(dayStr)) continue;
+          if (suppressedSet.has(dayStr)) continue;
 
-        for (const b of userBase) {
-          if (Number(b.week) === weekNum && Number(b.day_of_week) === dayOfWeek) {
-            const shiftTime = new Date(`${dayStr}T${b.start_time}`);
-            shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
-            const notifTime = new Date(shiftTime.getTime() - notifyMs);
-            if (notifTime >= now - windowBackMs && notifTime <= now.getTime() + windowFwdMs) {
-              toSend.push({ name: b.location_name, time: b.start_time.slice(0, 5) });
+          for (const b of userBase) {
+            if (Number(b.week) === weekNum && Number(b.day_of_week) === dayOfWeek) {
+              if (isDue(dayStr, b.start_time)) {
+                due.set(reminderKey('base', b.id, dayStr),
+                  { name: b.location_name, time: b.start_time.slice(0, 5) });
+              }
             }
           }
         }
       }
 
-      for (const shift of toSend) {
+      for (const [shiftKey, shift] of due) {
+        // Skip anything send-upcoming already delivered when the app was opened.
+        if (!(await claimReminder(userId, shiftKey))) continue;
+
         const notifBody = `Your shift at ${shift.name} starts at ${shift.time}`;
-        const payload = JSON.stringify({
+        const delivered = await pushToSubs(userSubs, JSON.stringify({
           title: 'Shift Reminder',
           body:  notifBody,
           icon:  '/shift-track/icons/icon-192.png',
-        });
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            payload
-          );
-          await db.query(
-            'INSERT INTO notification_log (user_id, title, body) VALUES ($1,$2,$3)',
-            [sub.user_id, 'Shift Reminder', notifBody]
-          );
-          console.log(`[notify] Sent reminder to user ${sub.user_id} for ${shift.name} at ${shift.time}`);
-        } catch (e) {
-          if (e.statusCode === 410) {
-            await db.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
-          } else {
-            console.error(`[notify] Push failed for user ${sub.user_id}: ${e.statusCode || e.message}`);
-          }
+          tag:   shiftKey,
+        }));
+        if (!delivered) {
+          await releaseReminder(userId, shiftKey);   // let send-upcoming retry it
+          continue;
         }
+        await logNotification(userId, 'Shift Reminder', notifBody);
+        console.log(`[notify] Sent reminder to user ${userId} for ${shift.name} at ${shift.time}`);
       }
     }
   } catch (err) {
@@ -216,7 +235,20 @@ cron.schedule('*/5 * * * *', async () => {
   }
 });
 
-console.log('[scheduler] Notification cron started (every minute)');
+console.log('[scheduler] Notification cron started (every 5 minutes)');
+
+// -- Daily at 00:20 - prune the reminder ledger --------------------------------
+// Rows only exist to stop a reminder being sent twice; once the shift is well
+// past they are dead weight. Kept separate from the leave cron below so the two
+// concerns stay independent.
+cron.schedule('20 0 * * *', async () => {
+  try {
+    const r = await db.query(`DELETE FROM reminder_sends WHERE sent_at < NOW() - INTERVAL '30 days'`);
+    if (r.rowCount) console.log(`[scheduler] Pruned ${r.rowCount} reminder ledger rows`);
+  } catch (err) {
+    console.error('[scheduler] Reminder ledger prune error:', err.message);
+  }
+});
 
 // -- Daily at 00:05 - PTO accrual + anniversary processing --------------------
 cron.schedule('5 0 * * *', async () => {

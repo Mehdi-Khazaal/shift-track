@@ -160,24 +160,36 @@ router.patch('/users/:id', auth, adminOnly, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'name and email are required' });
   if (!['admin', 'user', 'specialist'].includes(role))
     return res.status(400).json({ ok: false, error: 'Invalid role' });
-  const workType = ['block', 'regular'].includes(work_type) ? work_type : 'regular';
-  const userGender = ['male', 'female'].includes(gender) ? gender : '';
+  // Build the SET list from the keys actually present in the body. Assigning
+  // every column unconditionally made this a PUT wearing a PATCH's name: a
+  // caller that omitted work_type/gender/hire_date silently reset them to
+  // 'regular'/''/NULL. Only work_type and gender are still normalised, because
+  // they are constrained to a fixed set of values.
+  const sets = [];
+  const params = [];
+  const set = (col, val) => { params.push(val); sets.push(`${col}=$${params.length}`); };
+
+  set('name', name);
+  set('email', email);
+  set('role', role);
+  if (position   !== undefined) set('position', position || '');
+  if (location_id!== undefined) set('location_id', location_id || null);
+  if (hire_date  !== undefined) set('hire_date', hire_date || null);
+  if (work_type  !== undefined) set('work_type', ['block', 'regular'].includes(work_type) ? work_type : 'regular');
+  if (gender     !== undefined) set('gender', ['male', 'female'].includes(gender) ? gender : '');
+
   try {
-    let result;
     if (password && password.length >= 8) {
-      const hash = await bcrypt.hash(password, 10);
-      result = await db.query(
-        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, password_hash=$6, hire_date=$7, work_type=$8, gender=$9
-         WHERE id=$10 RETURNING id, email, name, role, position, location_id, hire_date, work_type, gender`,
-        [name, email, role, position || '', location_id || null, hash, hire_date || null, workType, userGender, req.params.id]
-      );
-    } else {
-      result = await db.query(
-        `UPDATE users SET name=$1, email=$2, role=$3, position=$4, location_id=$5, hire_date=$6, work_type=$7, gender=$8
-         WHERE id=$9 RETURNING id, email, name, role, position, location_id, hire_date, work_type, gender`,
-        [name, email, role, position || '', location_id || null, hire_date || null, workType, userGender, req.params.id]
-      );
+      set('password_hash', await bcrypt.hash(password, 10));
     }
+    params.push(req.params.id);
+
+    const result = await db.query(
+      `UPDATE users SET ${sets.join(', ')}
+       WHERE id=$${params.length}
+       RETURNING id, email, name, role, position, location_id, hire_date, work_type, gender`,
+      params
+    );
     if (!result.rows.length) return res.status(404).json({ ok: false, error: 'User not found' });
     invalidateUserCache(req.params.id);
     res.json({ ok: true, user: result.rows[0] });

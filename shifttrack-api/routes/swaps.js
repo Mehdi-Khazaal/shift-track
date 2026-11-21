@@ -4,6 +4,7 @@ const db      = require('../db/index');
 const auth    = require('../middleware/auth');
 const { notifyUsers } = require('../utils/push');
 const { getUserAnchor, payWeekOf } = require('../utils/ppAnchor');
+const { overlapsExistingShift, overlapsBaseSchedule } = require('../utils/shiftRules');
 
 // Return the Sunday (YYYY-MM-DD) of the week containing dateStr
 function sunOf(dateStr) {
@@ -19,6 +20,7 @@ async function resolveShift(userId, dateStr, anchorStr) {
      FROM shifts s
      JOIN locations l ON s.location_id = l.id
      WHERE s.user_id = $1 AND s.date = $2
+     ORDER BY s.start_time ASC
      LIMIT 1`,
     [userId, dateStr]
   );
@@ -48,6 +50,7 @@ async function resolveShift(userId, dateStr, anchorStr) {
      FROM base_schedule s
      JOIN locations l ON s.location_id = l.id
      WHERE s.user_id = $1 AND s.week = $2 AND s.day_of_week = $3
+     ORDER BY s.start_time ASC
      LIMIT 1`,
     [userId, weekNum, dayOfWeek]
   );
@@ -62,6 +65,28 @@ async function resolveShift(userId, dateStr, anchorStr) {
     location_name: b.location_name,
     is_base: true
   };
+}
+
+// Check the slot one party is about to receive from a swap.
+// The shift they give up is still in the database at this point (it is removed
+// inside the transaction that follows), so it is excluded explicitly — otherwise
+// every same-day swap would collide with itself.
+//
+// checkConsecutiveHours is deliberately not run here: both shifts were already
+// vetted against the 18h rule when they were created, and the base occurrence
+// being suppressed by this swap is still visible to that query, which would
+// reject legitimate swaps.
+async function validateSwapSide({ userId, name, gainDate, gainStart, gainEnd, giveShiftId, giveIsBase, giveDate }) {
+  if (await overlapsExistingShift(userId, gainDate, gainStart, gainEnd, giveShiftId || null))
+    return `${name} already has a shift that overlaps those hours`;
+
+  // When the base occurrence being given up falls on the day being received,
+  // it is suppressed as part of this same swap — so it is not a real conflict.
+  if (!(giveIsBase && giveDate === gainDate)) {
+    if (await overlapsBaseSchedule(userId, gainDate, gainStart, gainEnd))
+      return `${name}'s base schedule overlaps those hours`;
+  }
+  return null;
 }
 
 // --- POST /api/shift-swaps - initiate a swap request --------------------------
@@ -203,6 +228,24 @@ router.patch('/:id/respond', auth, async (req, res) => {
     // === ACCEPT: execute the swap atomically ===
     const iDate = String(swap.initiator_date).slice(0, 10);
     const tDate = String(swap.target_date).slice(0, 10);
+
+    // A swap used to insert both shift rows with no validation at all, so it
+    // could create the very overlap the employee, admin and open-shift routes
+    // all refuse. Each side is checked against the slot it is about to receive,
+    // ignoring the shift it gives up in the same transaction below.
+    const iErr = await validateSwapSide({
+      userId: swap.initiator_id, name: swap.initiator_name,
+      gainDate: tDate, gainStart: swap.target_start, gainEnd: swap.target_end,
+      giveShiftId: swap.initiator_shift_id, giveIsBase: swap.initiator_is_base, giveDate: iDate,
+    });
+    if (iErr) return res.status(409).json({ ok: false, error: iErr });
+
+    const tErr = await validateSwapSide({
+      userId: swap.target_id, name: swap.target_name,
+      gainDate: iDate, gainStart: swap.initiator_start, gainEnd: swap.initiator_end,
+      giveShiftId: swap.target_shift_id, giveIsBase: swap.target_is_base, giveDate: tDate,
+    });
+    if (tErr) return res.status(409).json({ ok: false, error: tErr });
 
     let iSwapId, tSwapId;
     const client = await db.connect();

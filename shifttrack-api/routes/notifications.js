@@ -2,9 +2,8 @@ const express   = require('express');
 const router    = express.Router();
 const db        = require('../db/index');
 const auth      = require('../middleware/auth');
-const webpush   = require('../utils/webpush');
 const { getUserAnchor } = require('../utils/ppAnchor');
-const { logNotification } = require('../utils/push');
+const { logNotification, reminderKey, claimReminder, releaseReminder, pushToSubs } = require('../utils/push');
 
 // GET /api/notifications/vapid-public-key
 router.get('/vapid-public-key', (req, res) => {
@@ -120,29 +119,20 @@ router.post('/broadcast', auth, async (req, res) => {
       [userIds]
     );
 
-    const payload = JSON.stringify({ title: notifTitle, body, icon: '/shift-track/icons/icon-192.png' });
-    let sent = 0;
-    const loggedUsers = new Set(); // log once per user regardless of device count
+    const payload = JSON.stringify({
+      title: notifTitle,
+      body,
+      icon: '/shift-track/icons/icon-192.png',
+      tag: `broadcast-${Date.now()}`,
+    });
 
-    for(const sub of subs.rows) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload
-        );
-        if(!loggedUsers.has(sub.user_id)){
-          loggedUsers.add(sub.user_id);
-          await logNotification(sub.user_id, notifTitle, body);
-        }
-        sent++;
-      } catch(e) {
-        if(e.statusCode === 410) {
-          await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
-        } else {
-          console.error(`[broadcast] Push failed for user ${sub.user_id}: ${e.statusCode || e.message}`);
-        }
-      }
-    }
+    // Log for every targeted user first, not just the ones with a device
+    // registered — the in-app bell reads notification_log, and logging inside
+    // the send loop left anyone without push with nothing to show.
+    await Promise.all(userIds.map(id => logNotification(id, notifTitle, body)));
+
+    // Devices that actually accepted the push, not merely the ones attempted.
+    const sent = await pushToSubs(subs.rows, payload);
 
     res.json({ ok: true, sent, total: userIds.length });
   } catch(err) {
@@ -159,11 +149,14 @@ router.post('/send-upcoming', auth, async (req, res) => {
     );
     if(!subs.rows.length) return res.json({ ok: true, sent: 0 });
 
-    // Get user's shifts + base schedule
+    // Only shifts near today can have a reminder due. This used to load the
+    // user's entire shift history on every login to find shifts in the next hour.
     const shiftsRes = await db.query(
       `SELECT s.*, l.name as location_name, l.rate
        FROM shifts s JOIN locations l ON s.location_id=l.id
-       WHERE s.user_id=$1`, [req.userId]
+       WHERE s.user_id=$1
+         AND s.date BETWEEN CURRENT_DATE - INTERVAL '2 days'
+                        AND CURRENT_DATE + INTERVAL '2 days'`, [req.userId]
     );
     const baseRes = await db.query(
       `SELECT b.*, l.name as location_name
@@ -175,20 +168,35 @@ router.post('/send-upcoming', auth, async (req, res) => {
     const anchorStr = await getUserAnchor(req.userId);
     const anchor = new Date(anchorStr + 'T00:00:00');
     let sent = 0;
-    const logged = new Set(); // deduplicate log entries across multiple devices
+
+    // This endpoint is a catch-up: it exists so that opening the app after a
+    // missed cron tick still delivers the reminder. It is NOT an early warning.
+    //
+    // It used to fire for anything due within the next HOUR, which is why a
+    // 30-minute reminder for a 10:00 shift arrived the moment the app was opened
+    // at 08:35. A reminder is now only sent once its moment has actually passed,
+    // and only if the ledger shows nothing has sent it yet — so the cron and
+    // this path can never both deliver the same one.
+    const due = new Map();
 
     for(const sub of subs.rows) {
       const notifyMs = sub.notify_minutes * 60 * 1000;
       const tzOffset = Number(sub.tz_offset || 0);
-      const upcoming = [];
+
+      const isDue = (dateStr, startTime) => {
+        const shiftTime = new Date(`${dateStr}T${startTime}`);
+        shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
+        const notifTime = new Date(shiftTime.getTime() - notifyMs);
+        // Past its moment, but the shift itself has not started yet.
+        return notifTime <= now && shiftTime > now;
+      };
 
       // Check logged shifts
       shiftsRes.rows.forEach(s => {
-        const shiftTime = new Date(`${String(s.date).slice(0,10)}T${s.start_time}`);
-        shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
-        const notifTime = new Date(shiftTime.getTime() - notifyMs);
-        if(notifTime > now && notifTime < new Date(now.getTime() + 60*60*1000)) {
-          upcoming.push({ name: s.location_name, time: s.start_time.slice(0,5), shiftTime });
+        const dateStr = String(s.date).slice(0,10);
+        if(isDue(dateStr, s.start_time)) {
+          due.set(reminderKey('logged', s.id, dateStr),
+            { name: s.location_name, time: s.start_time.slice(0,5) });
         }
       });
 
@@ -203,42 +211,27 @@ router.post('/send-upcoming', auth, async (req, res) => {
         const dayOfWeek = localD.getUTCDay();
 
         baseRes.rows.forEach(b => {
-          if(b.week === weekNum && b.day_of_week === dayOfWeek) {
-            const shiftTime = new Date(`${dayStr}T${b.start_time}`);
-            shiftTime.setMinutes(shiftTime.getMinutes() + tzOffset);
-            const notifTime = new Date(shiftTime.getTime() - notifyMs);
-            if(notifTime > now && notifTime < new Date(now.getTime() + 60*60*1000)) {
-              upcoming.push({ name: b.location_name, time: b.start_time.slice(0,5), shiftTime });
-            }
+          if(b.week === weekNum && b.day_of_week === dayOfWeek && isDue(dayStr, b.start_time)) {
+            due.set(reminderKey('base', b.id, dayStr),
+              { name: b.location_name, time: b.start_time.slice(0,5) });
           }
         });
       }
+    }
 
-      // Send push for each upcoming shift
-      for(const shift of upcoming) {
-        const notifBody = `Your shift at ${shift.name} starts at ${shift.time}`;
-        const payload = JSON.stringify({
-          title: 'Shift Reminder',
-          body: notifBody,
-          icon: '/shift-track/icons/icon-192.png'
-        });
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            payload
-          );
-          // Log once per unique shift body across all subscriptions
-          if(!logged.has(notifBody)){
-            logged.add(notifBody);
-            await logNotification(req.userId, 'Shift Reminder', notifBody);
-          }
-          sent++;
-        } catch(e) {
-          if(e.statusCode === 410) {
-            await db.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [sub.endpoint]);
-          }
-        }
-      }
+    for(const [shiftKey, shift] of due) {
+      if(!(await claimReminder(req.userId, shiftKey))) continue;   // cron got there first
+
+      const notifBody = `Your shift at ${shift.name} starts at ${shift.time}`;
+      const delivered = await pushToSubs(subs.rows, JSON.stringify({
+        title: 'Shift Reminder',
+        body: notifBody,
+        icon: '/shift-track/icons/icon-192.png',
+        tag: shiftKey
+      }));
+      if(!delivered){ await releaseReminder(req.userId, shiftKey); continue; }   // try again next open
+      await logNotification(req.userId, 'Shift Reminder', notifBody);
+      sent++;
     }
     res.json({ ok: true, sent });
   } catch(err) {

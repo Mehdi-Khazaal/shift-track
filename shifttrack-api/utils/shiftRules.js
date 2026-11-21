@@ -38,7 +38,7 @@ async function checkConsecutiveHours(userId, date, start, end, excludeId = null)
   const params = [userId, date];
   const excludeClause = excludeId ? `AND id != $${params.push(excludeId)}` : '';
 
-  const [{ rows: loggedRows }, { rows: baseRows }, { rows: settingsRows }] = await Promise.all([
+  const [{ rows: loggedRows }, { rows: baseRows }, { rows: settingsRows }, { rows: suppressedRows }] = await Promise.all([
     db.query(
       `SELECT date, start_time, end_time FROM shifts
        WHERE user_id=$1
@@ -48,10 +48,20 @@ async function checkConsecutiveHours(userId, date, start, end, excludeId = null)
     ),
     db.query('SELECT week, day_of_week, start_time, end_time FROM base_schedule WHERE user_id=$1', [userId]),
     db.query('SELECT pp_anchor FROM user_settings WHERE user_id=$1', [userId]),
+    db.query(
+      `SELECT date FROM base_suppressed_dates
+       WHERE user_id=$1
+         AND date BETWEEN $2::date - interval '2 days' AND $2::date + interval '2 days'`,
+      [userId, date]
+    ),
   ]);
 
   const anchor = settingsRows[0]?.pp_anchor?.slice(0, 10) || '2026-03-22';
   const anchorMs = Date.UTC(...anchor.split('-').map((v,i)=>i===1?Number(v)-1:Number(v)));
+  // A base occurrence an admin has cancelled is not worked, so it must not
+  // count toward the consecutive block — the same rule overlapsBaseSchedule
+  // already applies. Without this a cancelled shift still blocks its neighbours.
+  const suppressed = new Set(suppressedRows.map(r => String(r.date).slice(0, 10)));
 
   // Resolve base schedule entries to actual dates within ±2 days
   const baseRanges = [];
@@ -59,6 +69,7 @@ async function checkConsecutiveHours(userId, date, start, end, excludeId = null)
     const d = new Date(date + 'T00:00:00Z');
     d.setUTCDate(d.getUTCDate() + offset);
     const dateStr = d.toISOString().slice(0, 10);
+    if (suppressed.has(dateStr)) continue;
     const diff = Math.round((d.getTime() - anchorMs) / 86400000);
     const week = ((diff % 14) + 14) % 14 < 7 ? 1 : 2;
     const dow  = d.getUTCDay();
