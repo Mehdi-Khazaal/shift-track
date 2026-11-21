@@ -741,3 +741,7 @@ body::before{display:none;}
 .part-icon{display:inline-block;width:18px;font-size:12px;opacity:.85;}
 .shift-block.done > .block-hd{opacity:.45;}
 .shift-block.active-block > .block-hd{border-left:2px solid var(--green);padding-left:14px;background:rgba(46,204,138,.04);}
+
+/* ── "Your PDF is ready" bar (installed app, when iOS needs one more tap to share) ── */
+#pdf-ready-bar{position:fixed;left:16px;right:16px;bottom:96px;z-index:1000;display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.45);font-size:13px;}
+#pdf-ready-bar span{flex:1;font-weight:600;}
